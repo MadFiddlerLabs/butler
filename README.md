@@ -77,14 +77,28 @@ Lunch Money and Open-Meteo are read over their APIs.
 
 ## Get started
 
-The easiest way is with [Claude Code](https://claude.com/claude-code), following the
-[course](https://buildyourbutler.com). Install Butler to `~/Butler`:
+Go to [buildyourbutler.com](https://buildyourbutler.com), name your butler, and download it.
+The package installs into `~/Butler` without asking for your password. Then a Terminal window
+opens, and your butler says hello. In about five minutes, you sign in by email and paste three
+one-line lessons, and your first brief opens:
+
+```
+butler town "Lisbon"
+butler adults Sam Alex
+butler brief
+```
+
+Then `butler claude` moves into [Claude Code](https://claude.com/claude-code), where the rest of
+the setup happens one step at a time. `butler status` says where you are, and `butler help`
+lists the rest.
+
+Prefer a terminal? The same install, without the package:
 
 ```
 curl -fsSL https://raw.githubusercontent.com/nerolabs/butler/main/scripts/install.sh | bash
 ```
 
-Then open `~/Butler` in Claude Code and set it up one step at a time:
+In Claude Code, the steps are:
 
 | Step | What it does |
 |---|---|

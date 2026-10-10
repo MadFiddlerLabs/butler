@@ -41,8 +41,18 @@ def _no_network(*args, **kwargs):
     raise OSError(f"network access in a test: {args[:1]}")
 
 
-socket.create_connection = _no_network
-socket.socket.connect = lambda self, *a, **k: _no_network(*a)
+def _loopback(address) -> bool:
+    """This machine itself: the fake servers other tests start (tests/fakes/account_api.py).
+    The guard is installed process-wide when a test imports this module, so it must let them in."""
+    return isinstance(address, tuple) and address[0] in ("127.0.0.1", "localhost", "::1")
+
+
+_real_create_connection = socket.create_connection
+_real_connect = socket.socket.connect
+socket.create_connection = lambda address, *a, **k: (
+    _real_create_connection(address, *a, **k) if _loopback(address) else _no_network(address))
+socket.socket.connect = lambda self, address, *a, **k: (
+    _real_connect(self, address) if _loopback(address) else _no_network(address))
 
 
 # ---------- Gmail ----------

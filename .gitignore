@@ -25,7 +25,8 @@ caddy/domain.env
 # Build and environment
 /eval-output/
 /.butler-version
-/bin/
+/bin/*
+!/bin/butler
 /.venv/
 __pycache__/
 *.pyc

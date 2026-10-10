@@ -23,7 +23,7 @@ jobs:
           cache: pip
       - run: pip install -r requirements-dev.txt
       - run: python -m pyflakes src tests scripts
-      - run: git ls-files '*.sh' | xargs shellcheck -S warning
+      - run: git ls-files '*.sh' '*.command' bin/butler packaging/macos/scripts/postinstall | xargs shellcheck -S warning -x
       - run: python -m unittest discover tests -v
         env:
           PYTHONPATH: src

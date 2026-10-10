@@ -1,0 +1,43 @@
+#!/bin/bash
+# Runs right after the package puts Butler in ~/Butler. It names the butler from the package's
+# filename (the website serves it as "<Name>.pkg"), then opens the guided first run in Terminal.
+# On an upgrade (the household is set up already) it changes nothing and opens nothing.
+#   $1: the package's path   $2: where it installed
+set -u
+here="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source-path=SCRIPTDIR source=../../../scripts/lib/names.sh
+. "$here/names.sh"
+pkg="${1:-}"
+target="${2:-}"
+user="$(id -un)"
+home="$HOME"
+if [ "$(id -u)" = 0 ]; then
+  user="$(stat -f %Su /dev/console)"
+  home="$(dscl . -read "/Users/$user" NFSHomeDirectory | awk '{print $2}')"
+fi
+dir="$home/Butler"
+if [ -n "$target" ] && [ -d "${target%/}/Butler" ]; then
+  dir="${target%/}/Butler"
+fi
+[ -d "$dir" ] || exit 0
+if [ "$(id -u)" = 0 ]; then
+  chown -R "$user" "$dir"
+fi
+
+upgrade=""
+[ -f "$dir/config/settings.yaml" ] && upgrade=1
+name="$(name_from_pkg "$pkg")"
+if [ -n "$name" ] && [ -z "$upgrade" ]; then
+  printf '%s\n' "$name" > "$dir/.butler-name"
+  [ "$(id -u)" = 0 ] && chown "$user" "$dir/.butler-name"
+fi
+
+if [ -n "$upgrade" ] || [ -n "${COMMAND_LINE_INSTALL:-}" ] || [ -n "${BUTLER_PKG_NO_OPEN:-}" ]; then
+  exit 0
+fi
+if [ "$(id -u)" = 0 ]; then
+  launchctl asuser "$(id -u "$user")" sudo -u "$user" open -a Terminal "$dir/scripts/first-run.command"
+else
+  open -a Terminal "$dir/scripts/first-run.command"
+fi
+exit 0

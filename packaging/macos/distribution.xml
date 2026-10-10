@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Installs Butler into the current user's home folder (~/Butler), so no admin password is
+     needed. build-pkg.sh fills in __VERSION__. -->
+<installer-gui-script minSpecVersion="2">
+    <title>Butler</title>
+    <domains enable_anywhere="false" enable_currentUserHome="true" enable_localSystem="false"/>
+    <options customize="never" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+    <allowed-os-versions>
+        <os-version min="14.0"/>
+    </allowed-os-versions>
+    <welcome file="welcome.html" mime-type="text/html"/>
+    <conclusion file="conclusion.html" mime-type="text/html"/>
+    <choices-outline>
+        <line choice="default">
+            <line choice="com.buildyourbutler.butler"/>
+        </line>
+    </choices-outline>
+    <choice id="default"/>
+    <choice id="com.buildyourbutler.butler" visible="false">
+        <pkg-ref id="com.buildyourbutler.butler"/>
+    </choice>
+    <pkg-ref id="com.buildyourbutler.butler" version="__VERSION__" onConclusion="none">Butler-component.pkg</pkg-ref>
+</installer-gui-script>

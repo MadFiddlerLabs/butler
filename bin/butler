@@ -1,0 +1,17 @@
+#!/bin/bash
+# The `butler` command: each course lesson is one line that calls it. `butler setup` is the guided
+# first run (plain bash, so it works before Python is installed); everything else runs in Python.
+set -euo pipefail
+src="${BASH_SOURCE[0]}"
+while [ -L "$src" ]; do src="$(readlink "$src")"; done
+home="$(cd "$(dirname "$src")/.." && pwd)"
+
+if [ "${1:-}" = "setup" ]; then
+  shift
+  exec "$home/scripts/first-run.sh" "$@"
+fi
+if [ ! -x "$home/.venv/bin/python" ]; then
+  echo "Butler is still getting ready. Type: butler setup"
+  exit 1
+fi
+PYTHONPATH="$home/src" exec "$home/.venv/bin/python" -m butler.cli "$@"
