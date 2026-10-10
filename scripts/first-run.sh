@@ -20,6 +20,8 @@ version="$(cat "$home/.butler-version" 2>/dev/null || echo dev)"
 butler="$home/bin/butler"
 mkdir -p "$home/logs" "$home/data" "$home/out"
 log="$home/logs/setup.log"
+# shellcheck source-path=SCRIPTDIR source=lib/names.sh
+. "$home/scripts/lib/names.sh"
 
 bold=""; dim=""; green=""; reset=""
 if [ -t 1 ]; then
@@ -30,11 +32,6 @@ ok() { printf '%s✓%s %s\n' "$green" "$reset" "$*"; }
 heading() { printf '\n%s%s%s\n' "$bold" "$*" "$reset"; }
 lesson_line() { printf '\n    %s%s%s\n\n' "$bold" "$*" "$reset"; }
 
-valid_name() {
-  # Letters, digits, spaces, hyphens and apostrophes, up to 24 characters (the website's rule).
-  local n="$1"
-  [ -n "$n" ] && [ "${#n}" -le 24 ] && ! printf '%s' "$n" | LC_ALL=C grep -q "[^[:alnum:] '-]"
-}
 json_value() {
   # The string or number value of one key in a flat JSON object. Good enough for the account API.
   printf '%s' "$2" | tr -d '\n' | sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\{0,1\}\([^\",}]*\).*/\1/p"

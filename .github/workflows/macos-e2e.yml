@@ -37,6 +37,51 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: .github/scripts/report-failure.sh
 
+  package:
+    # The download students get: build the universal helper and an unsigned package, check them,
+    # then install it into this runner's home the way Installer does and check what landed.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - name: Package tests (names, postinstall, the built package)
+        run: python -m unittest -v tests/test_packaging.py tests/test_first_run.py
+        env:
+          PYTHONPATH: src
+      - name: Build the helper and the package
+        run: |
+          packaging/macos/build-helper.sh "$RUNNER_TEMP/butler-ek"
+          [ "$(lipo -archs "$RUNNER_TEMP/butler-ek")" = "x86_64 arm64" ]
+          pkg="$(packaging/macos/build-pkg.sh --version v0.0.0-ci --out "$RUNNER_TEMP/dist" --helper "$RUNNER_TEMP/butler-ek")"
+          cp "$pkg" "$RUNNER_TEMP/Bento (1).pkg"
+      - name: Install it as a student would, into the home folder, without admin rights
+        run: |
+          installer -pkg "$RUNNER_TEMP/Bento (1).pkg" -target CurrentUserHomeDirectory
+          b="$HOME/Butler"
+          test -x "$b/bin/butler"
+          test -x "$b/bin/butler-ek"
+          test -x "$b/scripts/first-run.command"
+          [ "$(cat "$b/.butler-name")" = "Bento" ]
+          [ "$(cat "$b/.butler-version")" = "v0.0.0-ci" ]
+          [ "$(stat -f %Su "$b/bin/butler")" = "$(id -un)" ]
+          test ! -e "$b/config/settings.yaml"
+          out="$("$b/bin/butler" status || true)"
+          echo "$out" | grep -q "butler setup"
+      - name: Upgrading keeps the household's files
+        run: |
+          b="$HOME/Butler"
+          printf 'name: Bento\n' > "$b/config/settings.yaml"
+          mkdir -p "$b/data" && echo "- a note" > "$b/data/household_notes.md"
+          cp "$RUNNER_TEMP/Bento (1).pkg" "$RUNNER_TEMP/Jeeves.pkg"
+          installer -pkg "$RUNNER_TEMP/Jeeves.pkg" -target CurrentUserHomeDirectory
+          [ "$(cat "$b/config/settings.yaml")" = "name: Bento" ]
+          [ "$(cat "$b/data/household_notes.md")" = "- a note" ]
+          [ "$(cat "$b/.butler-name")" = "Bento" ]
+
   hosted-installer:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
