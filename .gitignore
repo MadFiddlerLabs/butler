@@ -25,6 +25,7 @@ caddy/domain.env
 # Build and environment
 /eval-output/
 /.butler-version
+/.butler-unsigned-build
 /bin/*
 !/bin/butler
 /.venv/

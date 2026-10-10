@@ -16,7 +16,7 @@ import sys
 import textwrap
 from pathlib import Path
 
-from . import account, setup_settings as ss
+from . import account, setup_settings as ss, updates
 from .config import ROOT
 
 CLAUDE_INSTALL = "curl -fsSL https://claude.ai/install.sh | bash"
@@ -257,6 +257,10 @@ def cmd_doctor(args) -> int:
     return 0
 
 
+def cmd_update(args) -> int:
+    return updates.command(args.check, args.yes, say=say)
+
+
 HELP = """The butler command. Each course lesson gives you one line to paste.
 
   butler setup                  the guided first run
@@ -267,6 +271,7 @@ HELP = """The butler command. Each course lesson gives you one line to paste.
   butler status                 what's set up, and what's next
   butler claude                 continue in Claude Code
   butler doctor                 check for problems
+  butler update                 install a new version, if there is one
 """
 
 
@@ -285,6 +290,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--yes", action="store_true")
     p.add_argument("--dry-run", action="store_true")
     sub.add_parser("doctor")
+    p = sub.add_parser("update")
+    p.add_argument("--check", action="store_true")
+    p.add_argument("--yes", action="store_true")
     sub.add_parser("help")
     try:
         args = parser.parse_args(argv)
@@ -292,7 +300,7 @@ def main(argv: list[str] | None = None) -> int:
         say(HELP)
         return 1
     handlers = {"name": cmd_name, "town": cmd_town, "adults": cmd_adults, "brief": cmd_brief,
-                "status": cmd_status, "claude": cmd_claude, "doctor": cmd_doctor}
+                "status": cmd_status, "claude": cmd_claude, "doctor": cmd_doctor, "update": cmd_update}
     if args.cmd not in handlers:
         say(HELP)
         return 0
