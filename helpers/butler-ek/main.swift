@@ -1,5 +1,7 @@
 // butler-ek: a tiny EventKit bridge for Butler.
 // Reads calendar events and reads/writes Apple Reminders. Prints JSON to stdout.
+// It can add and complete, never edit or delete: Butler's promise that nothing it does
+// removes anything holds all the way down to this helper.
 //
 //   butler-ek calendars
 //   butler-ek events --start 2026-10-09T00:00:00+02:00 --end 2026-10-16T00:00:00+02:00
@@ -8,11 +10,8 @@
 //   butler-ek ensure-list --list Butler
 //   butler-ek add-reminder --list Shopping --title "Milk" [--notes "..."] [--due 2026-10-10]
 //   butler-ek complete-reminder --id REMINDER_ID
-//   butler-ek rename-reminder --id REMINDER_ID --title "New title"
 //   butler-ek completed --list Butler --start 2026-09-01 --end 2026-10-01
 //   butler-ek add-event --calendar "Family" --title T --start ISO --end ISO [--all-day 1] [--location L] [--notes N]
-//   butler-ek update-event --id EVENT_ID --title T --start ISO --end ISO [--all-day 1] [--location L] [--notes N]
-//   butler-ek delete-event --id EVENT_ID
 
 import EventKit
 import Foundation
@@ -191,14 +190,6 @@ case "completed":
     sem.wait()
     emit(out)
 
-case "rename-reminder":
-    guard let id = option("id", args), let title = option("title", args),
-          let r = store.calendarItem(withIdentifier: id) as? EKReminder
-    else { fail("rename-reminder needs a valid --id and --title") }
-    r.title = title
-    do { try store.save(r, commit: true) } catch { fail("butler-ek: could not rename reminder: \(error)") }
-    emit(["id": id, "title": title])
-
 case "add-event":
     guard let name = option("calendar", args), let cal = eventCalendar(named: name) else { fail("butler-ek: no writable calendar named '\(option("calendar", args) ?? "")'") }
     let e = EKEvent(eventStore: store)
@@ -206,17 +197,6 @@ case "add-event":
     fill(e, args)
     do { try store.save(e, span: .thisEvent, commit: true) } catch { fail("butler-ek: could not save event: \(error)") }
     emit(["event_id": e.eventIdentifier ?? "", "calendar": name, "title": e.title ?? ""])
-
-case "update-event":
-    guard let id = option("id", args), let e = store.event(withIdentifier: id) else { fail("butler-ek: no event with that id") }
-    fill(e, args)
-    do { try store.save(e, span: .thisEvent, commit: true) } catch { fail("butler-ek: could not update event: \(error)") }
-    emit(["event_id": e.eventIdentifier ?? "", "title": e.title ?? ""])
-
-case "delete-event":
-    guard let id = option("id", args), let e = store.event(withIdentifier: id) else { fail("butler-ek: no event with that id") }
-    do { try store.remove(e, span: .thisEvent, commit: true) } catch { fail("butler-ek: could not delete event: \(error)") }
-    emit(["deleted": id])
 
 default:
     fail("butler-ek: unknown command '\(command)'")
