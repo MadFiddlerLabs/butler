@@ -4,9 +4,9 @@ Run with: PYTHONPATH=src .venv/bin/python -m unittest discover tests"""
 
 import unittest
 
-from casa.budget import load_plan
-from casa.config import load_settings, people
-from casa.finance import load_rules
+from butler.budget import load_plan
+from butler.config import load_settings, people
+from butler.finance import load_rules
 
 
 class ConfigTest(unittest.TestCase):

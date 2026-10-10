@@ -1,11 +1,11 @@
 ---
-name: casa-setup
-description: Set up Casa for a household, end to end. Checks the Mac, interviews the user about their household, writes config/settings.yaml, drafts category_map.yaml and the budget workbook from Lunch Money, guides the user through storing secrets in Keychain, sends a test brief with permission, and installs the schedule. Use when the user runs /casa-setup or asks to set up or install Casa.
+name: butler-setup
+description: Set up Butler for a household, end to end. Checks the Mac, interviews the user about their household, writes config/settings.yaml, drafts category_map.yaml and the budget workbook from Lunch Money, guides the user through storing secrets in Keychain, sends a test brief with permission, and installs the schedule. Use when the user runs /butler-setup or asks to set up or install Butler.
 ---
 
-# Casa setup wizard
+# Butler setup wizard
 
-You are setting up Casa, a household manager, for the person in front of you. Work through
+You are setting up Butler, a household manager, for the person in front of you. Work through
 the stages in order. Each stage ends with a check that passes before you move on. Keep the
 user oriented: say which stage you're on and what's next, in a sentence.
 
@@ -33,9 +33,9 @@ Run these and report what's missing, with the fix:
 - Swift compiler: `swiftc --version` (fix: `xcode-select --install`)
 - Optional, for the portal: `tailscale version`
 
-Then run `scripts/bootstrap.sh`. It builds `bin/casa-ek`; the first run of the helper makes
+Then run `scripts/bootstrap.sh`. It builds `bin/butler-ek`; the first run of the helper makes
 macOS ask for Calendar and Reminders access. Ask the user to allow both, then check with
-`bin/casa-ek calendars` and `bin/casa-ek reminder-lists`.
+`bin/butler-ek calendars` and `bin/butler-ek reminder-lists`.
 
 ## Stage 2: Interview the household
 
@@ -47,9 +47,9 @@ long form. Collect:
    appear in calendar titles.
 3. Timezone and town. Offer the Mac's timezone (`readlink /etc/localtime`) as the default.
 4. Lunch Money's primary currency, and whether some budget lines are priced in a second one.
-5. Which calendars to include. Show the list from `bin/casa-ek calendars`, plus holiday
+5. Which calendars to include. Show the list from `bin/butler-ek calendars`, plus holiday
    calendars, and which one replies should add events to. Which calendars belong to whom.
-6. Reminders lists for to-dos and shopping (offer to create them; `casa-ek ensure-list`).
+6. Reminders lists for to-dos and shopping (offer to create them; `butler-ek ensure-list`).
 7. News: their town's paper (find its RSS feed with them; check it parses with
    `.venv/bin/python -c "import feedparser; print(len(feedparser.parse(URL).entries))"`),
    plus national and world regions. The language for summaries.
@@ -76,14 +76,14 @@ Check: `PYTHONPATH=src .venv/bin/python -m unittest tests.test_config`.
    for them. Put the address in `email.sender`.
 2. The user stores the secrets. Give these commands, one at a time:
    ```
-   ! security add-generic-password -s casa-gmail -a casa -w
-   ! security add-generic-password -s casa-anthropic -a casa -w
-   ! security add-generic-password -s casa-lunchmoney -a casa -w
+   ! security add-generic-password -s butler-gmail -a butler -w
+   ! security add-generic-password -s butler-anthropic -a butler -w
+   ! security add-generic-password -s butler-lunchmoney -a butler -w
    ```
    The Claude API key comes from console.anthropic.com. The Lunch Money token comes from
    Lunch Money > Settings > Developers.
 3. Check each exists without printing it:
-   `security find-generic-password -s casa-gmail >/dev/null && echo ok`
+   `security find-generic-password -s butler-gmail >/dev/null && echo ok`
 
 ## Stage 5: Money rules from Lunch Money
 
@@ -91,7 +91,7 @@ Read-only API calls through the code, so the token stays in Keychain:
 
 ```
 PYTHONPATH=src .venv/bin/python -c "
-from casa import lunchmoney
+from butler import lunchmoney
 cats = lunchmoney.get('categories')['categories']
 print([c['name'] for c in cats if not c.get('is_group')])
 print([(a['institution_name'], a['name'], a['type']) for a in lunchmoney.get('plaid_accounts')['plaid_accounts']])"
@@ -148,7 +148,7 @@ Create `data/household_notes.md` with any facts they shared that Claude should k
 1. `launchd/install.sh`
 2. The user sets a daily wake a minute before the send hour (needs their password):
    `! sudo pmset repeat wakeorpoweron MTWRFSU 06:59:00`
-3. Check: `launchctl list | grep com.casa` shows three jobs, and `tail logs/casa.log` shows
+3. Check: `launchctl list | grep com.butler` shows three jobs, and `tail logs/butler.log` shows
    a tick.
 
 ## Stage 10: Portal (if chosen)
@@ -160,4 +160,4 @@ and their logins in `portal.allowed_logins` and `portal.people`. Check from thei
 ## Finish
 
 Summarize what's set up, when the first scheduled brief arrives, how to reply, and that
-`/casa-tune` adjusts things as feedback comes in.
+`/butler-tune` adjusts things as feedback comes in.

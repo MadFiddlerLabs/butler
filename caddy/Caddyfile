@@ -20,7 +20,7 @@
 	reverse_proxy 127.0.0.1:8787 {
 		# The tailnet peer's address; the portal looks it up with `tailscale whois`.
 		# Overwrites anything a client sends under the same name.
-		header_up X-Casa-Peer {remote_host}
+		header_up X-Butler-Peer {remote_host}
 	}
 }
 

@@ -22,7 +22,7 @@ def send(settings: dict, subject: str, text: str, html: str | None = None,
     msg["To"] = ", ".join(to or cfg["recipients"])
     msg["Reply-To"] = cfg["sender"]
     msg["Subject"] = subject
-    msg["Message-ID"] = make_msgid(domain="casa.local")
+    msg["Message-ID"] = make_msgid(domain="butler.local")
     if in_reply_to:
         msg["In-Reply-To"] = msg["References"] = in_reply_to
     msg.set_content(text)

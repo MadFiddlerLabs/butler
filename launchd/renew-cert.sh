@@ -1,6 +1,6 @@
 #!/bin/bash
 # Renews your domain's certificate when it's within 30 days of expiry, then has Caddy pick it
-# up. Run daily by launchd (com.casa.cert). DOMAIN and EMAIL come from caddy/domain.env, which
+# up. Run daily by launchd (com.buildyourbutler.cert). DOMAIN and EMAIL come from caddy/domain.env, which
 # install.sh writes. See docs/PORTAL.md for the one-time setup.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"

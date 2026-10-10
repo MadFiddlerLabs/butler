@@ -5,9 +5,9 @@ Run with: PYTHONPATH=src .venv/bin/python -m unittest discover tests"""
 import unittest
 from unittest import mock
 
-from casa import portal
+from butler import portal
 
-SETTINGS = {"portal": {"url": "https://mac.tailnet.test", "hosts": ["casa.example.test"],
+SETTINGS = {"portal": {"url": "https://mac.tailnet.test", "hosts": ["butler.example.test"],
                        "allowed_logins": ["sam@example.com"]}}
 TAILNET = "mac.tailnet.test"
 
@@ -38,17 +38,17 @@ class GateTest(unittest.TestCase):
 
     def test_allowed_and_unknown_logins(self):
         self.assertNotEqual(self.status(Host=TAILNET, **{"Tailscale-User-Login": "Sam@example.com"}), 403)
-        self.assertNotEqual(self.status(Host="casa.example.test", **{"Tailscale-User-Login": "sam@example.com"}), 403)
+        self.assertNotEqual(self.status(Host="butler.example.test", **{"Tailscale-User-Login": "sam@example.com"}), 403)
         self.assertEqual(self.status(Host=TAILNET, **{"Tailscale-User-Login": "pat@example.com"}), 403)
 
     def test_caddy_peer_header_ignored_without_caddy(self):
         with mock.patch.object(portal, "_whois", return_value="sam@example.com"):
-            self.assertEqual(self.status(Host=TAILNET, **{"X-Casa-Peer": "100.64.0.9"}), 403)
+            self.assertEqual(self.status(Host=TAILNET, **{"X-Butler-Peer": "100.64.0.9"}), 403)
 
     def test_caddy_peer_header_with_caddy(self):
         with mock.patch.object(portal, "_caddy", return_value=True), \
              mock.patch.object(portal, "_whois", return_value="sam@example.com"):
-            self.assertNotEqual(self.status(Host=TAILNET, **{"X-Casa-Peer": "100.64.0.9"}), 403)
+            self.assertNotEqual(self.status(Host=TAILNET, **{"X-Butler-Peer": "100.64.0.9"}), 403)
             # Behind Caddy, the tailscale serve header means nothing.
             self.assertEqual(self.status(Host=TAILNET, **{"Tailscale-User-Login": "sam@example.com"}), 403)
 

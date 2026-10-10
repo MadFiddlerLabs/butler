@@ -1,5 +1,5 @@
 # How Lunch Money transactions are counted. Copy to category_map.yaml and edit (or let
-# /casa-setup and /casa-tune do it). Everything here is for the invented example household.
+# /butler-setup and /butler-tune do it). Everything here is for the invented example household.
 #
 # Three kinds of spending, never mixed:
 #   fixed monthly expenses  budget lines in categories NOT in rules.day_to_day (rent, insurance)

@@ -1,6 +1,6 @@
 # Configuration
 
-Casa reads three files in `config/`. Each falls back to its `.example.yaml` twin until you
+Butler reads three files in `config/`. Each falls back to its `.example.yaml` twin until you
 create your own, so a fresh clone runs on the invented example household.
 
 | File | What it holds |
@@ -16,7 +16,7 @@ Plus the budget workbook, `budget/budget.xlsx`, and the household notes Claude r
 
 | Setting | Meaning |
 |---|---|
-| `name` | What the assistant calls itself in subjects, the portal and Siri |
+| `name` | Your butler's name: it signs the emails, titles the portal and answers to it in Siri |
 | `timezone` | IANA name, e.g. `Europe/Lisbon`. All schedules follow it |
 | `currency.primary` | Lunch Money's primary currency |
 | `currency.second` | Optional second currency for budget lines (converted at Assumptions!C5) |
@@ -29,7 +29,7 @@ Plus the budget workbook, `budget/budget.xlsx`, and the household notes Claude r
 | `news.interests` | What you want from the news, in a sentence. With `household.place`, the only household detail the news call sees, so keep names out of it |
 | `household.about` | A short description of the household for Claude. Never put ID numbers here |
 | `household.notes_file` | Facts Claude should know, kept up to date by replies |
-| `calendar.include` | Calendar titles to read, as `bin/casa-ek calendars` lists them |
+| `calendar.include` | Calendar titles to read, as `bin/butler-ek calendars` lists them |
 | `calendar.holidays` | Holiday calendars, shown as a note on the day |
 | `calendar.write_to` | Where replies add events |
 | `people` | Everyone events can belong to (children too), with aliases, owned calendars and a color |
@@ -82,7 +82,7 @@ an override is appended with the date and who answered.
 
 ## The budget workbook
 
-Casa reads only input cells, so you can add sheets and formatting of your own.
+Butler reads only input cells, so you can add sheets and formatting of your own.
 
 | Sheet | Cells | Meaning |
 |---|---|---|
@@ -92,9 +92,9 @@ Casa reads only input cells, so you can add sheets and formatting of your own.
 | Expenses | A–F and I from row 5 | Category, item, currency, amount, frequency (`Monthly`, `Annual`, `5-Year`), due month, note |
 
 Annual lines appear in "Due this month" in their month. Annual and five-year lines are
-smoothed into a monthly set-aside in the Sunday letter. Before Casa updates the exchange rate,
+smoothed into a monthly set-aside in the Sunday letter. Before Butler updates the exchange rate,
 it saves a dated copy of the workbook in `budget/history/`. Budget suggestions from the
-monthly look-back are suggestions only: change the workbook yourself, or ask `/casa-tune`.
+monthly look-back are suggestions only: change the workbook yourself, or ask `/butler-tune`.
 
 ## deadlines.yaml
 

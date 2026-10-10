@@ -1,6 +1,6 @@
 # Security
 
-Casa handles a household's calendar, money and documents, so security reports get priority.
+Butler handles a household's calendar, money and documents, so security reports get priority.
 
 ## Reporting a problem
 
@@ -12,8 +12,8 @@ invented data in your report, never a real household's.
 
 ## What's in scope
 
-- The reply trust check (`src/casa/inbox.py`) and the reply allowlist (`src/casa/replies.py`).
-- The portal gate (`src/casa/portal.py`): who gets in, and which host names it answers to.
+- The reply trust check (`src/butler/inbox.py`) and the reply allowlist (`src/butler/replies.py`).
+- The portal gate (`src/butler/portal.py`): who gets in, and which host names it answers to.
 - Anything that sends personal data somewhere the README says it doesn't go.
 - Prompt injection that turns news, calendar text or email into actions.
 

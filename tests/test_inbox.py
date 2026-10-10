@@ -4,7 +4,7 @@ Run with: PYTHONPATH=src .venv/bin/python -m unittest discover tests"""
 import email
 import unittest
 
-from casa.inbox import _dkim_passes
+from butler.inbox import _dkim_passes
 
 GMAIL_PASS = ("Authentication-Results: mx.google.com;\n"
               "       dkim=pass header.i=@example.com header.s=s1 header.b=abc;\n"

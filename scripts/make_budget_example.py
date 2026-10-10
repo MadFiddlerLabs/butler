@@ -2,7 +2,7 @@
 
     .venv/bin/python scripts/make_budget_example.py
 
-Casa reads only the input cells (Assumptions C5–C6, Income A–D, Expenses A–F and I), so you can
+Butler reads only the input cells (Assumptions C5–C6, Income A–D, Expenses A–F and I), so you can
 add sheets, formatting and formulas of your own. Keep the columns and the first data row (5).
 """
 
@@ -53,7 +53,7 @@ def main() -> None:
     a.title = "Assumptions"
     a["A1"] = "Assumptions"
     a["A1"].font = Font(bold=True, size=14)
-    a["A2"] = "Yellow cells with blue text are inputs. Casa updates C5 each morning from Lunch Money."
+    a["A2"] = "Yellow cells with blue text are inputs. Butler updates C5 each morning from Lunch Money."
     header(a, 4, ["Assumption", "", "Value", "Notes"])
     rows = [("Exchange rate: primary-currency units per 1 unit of the second currency", 0.86,
              "e.g. EUR per USD. Every second-currency line converts with this."),

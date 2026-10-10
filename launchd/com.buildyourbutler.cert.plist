@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.casa.cert</string>
+    <string>com.buildyourbutler.cert</string>
     <key>ProgramArguments</key>
     <array>
         <string>__ROOT__/launchd/renew-cert.sh</string>

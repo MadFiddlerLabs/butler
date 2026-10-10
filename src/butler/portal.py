@@ -1,13 +1,13 @@
 """The household web portal. Listens on 127.0.0.1 only; `tailscale serve` puts HTTPS in
 front of it for devices on the tailnet.
 
-    python -m casa.portal            # serve on 127.0.0.1:8787
+    python -m butler.portal            # serve on 127.0.0.1:8787
 
 Who's allowed: requests that come through `tailscale serve` carry a Tailscale-User-Login
 header, checked against portal.allowed_logins. A request without a login is let in only
 when it comes straight from this Mac to 127.0.0.1 or localhost, with no proxy in between.
 Any other Host name is refused, so a web page can't reach the portal by DNS rebinding.
-Changes go through the same code paths as email replies (projects.update_step, casa-ek),
+Changes go through the same code paths as email replies (projects.update_step, butler-ek),
 so nothing here can delete anything.
 """
 
@@ -23,7 +23,7 @@ from flask import Flask, Response, abort, redirect, request, send_from_directory
 from urllib.parse import quote, urlparse
 
 from . import charts, finance, networth, projects, replies
-from .config import CASA_EK, ROOT, brand, load_settings, people, tz
+from .config import BUTLER_EK, ROOT, brand, load_settings, people, tz
 from .render import money_lines, one_off_note
 from .fmt import SYMBOLS, money, primary_code, second_code
 
@@ -67,7 +67,7 @@ def _login() -> str | None:
     Through your own domain (Caddy, see caddy/): the peer address Caddy passes on, looked up with
     whois. Each header counts only in its own setup, so a client can't send the other one."""
     if _caddy():
-        peer = request.headers.get("X-Casa-Peer")
+        peer = request.headers.get("X-Butler-Peer")
         return (_whois(peer) or "unknown") if peer else None
     return request.headers.get("Tailscale-User-Login")
 
@@ -666,7 +666,7 @@ def info_page():
 # ---------- lists (Apple Reminders) ----------
 
 def _ek(*args: str):
-    out = subprocess.run([str(CASA_EK), *args], capture_output=True, text=True, timeout=60)
+    out = subprocess.run([str(BUTLER_EK), *args], capture_output=True, text=True, timeout=60)
     if out.returncode != 0:
         raise RuntimeError(out.stderr.strip())
     return json.loads(out.stdout)

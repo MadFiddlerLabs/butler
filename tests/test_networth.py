@@ -3,7 +3,7 @@ Uses the example settings: EUR primary, USD second. All names and amounts are in
 
 import unittest
 
-from casa import networth as nw
+from butler import networth as nw
 
 
 def snap(day, usd_rate, savings_usd, invest_usd, eur_cash):

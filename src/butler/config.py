@@ -5,12 +5,12 @@ from zoneinfo import ZoneInfo
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
-CASA_EK = ROOT / "bin" / "casa-ek"
+BUTLER_EK = ROOT / "bin" / "butler-ek"
 
 # Keychain service names. Add them with:
-#   security add-generic-password -s <service> -a casa -w
-KEYCHAIN_GMAIL = "casa-gmail"
-KEYCHAIN_ANTHROPIC = "casa-anthropic"
+#   security add-generic-password -s <service> -a butler -w
+KEYCHAIN_GMAIL = "butler-gmail"
+KEYCHAIN_ANTHROPIC = "butler-anthropic"
 
 
 def config_path(name: str) -> Path:
@@ -31,7 +31,7 @@ def tz(settings: dict) -> ZoneInfo:
 
 def brand(settings: dict | None = None) -> str:
     """The household's name for the assistant, used in subjects and page titles."""
-    return (settings or load_settings()).get("name", "Casa")
+    return (settings or load_settings()).get("name", "Butler")
 
 
 def people(settings: dict | None = None) -> list[str]:

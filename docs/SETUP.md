@@ -1,31 +1,31 @@
 # Manual setup
 
-This is what `/casa-setup` does for you in Claude Code. Allow about an hour. Each step can be
+This is what `/butler-setup` does for you in Claude Code. Allow about an hour. Each step can be
 checked before moving on.
 
 ## 1. Install
 
 ```
-git clone https://github.com/nerolabs/casa.git
-cd casa
+git clone https://github.com/nerolabs/butler.git
+cd butler
 scripts/bootstrap.sh
 ```
 
-`bootstrap.sh` creates `.venv`, installs the Python packages and builds `bin/casa-ek`, a small
+`bootstrap.sh` creates `.venv`, installs the Python packages and builds `bin/butler-ek`, a small
 helper that reads macOS Calendar and Reminders. The first time it runs, macOS asks for Calendar
 and Reminders access. Allow both.
 
 Check that it sees your calendars:
 
 ```
-bin/casa-ek calendars
+bin/butler-ek calendars
 ```
 
 ## 2. Create the assistant's mailbox
 
-Casa sends from its own Gmail account and reads replies there.
+Butler sends from its own Gmail account and reads replies there.
 
-1. Create a new Gmail account for the assistant, used only by Casa.
+1. Create a new Gmail account for the assistant, used only by Butler.
 2. Turn on 2-Step Verification for it.
 3. Create an app password: Google Account > Security > App passwords.
 
@@ -34,9 +34,9 @@ Casa sends from its own Gmail account and reads replies there.
 Each command prompts for the value, so it never appears in your shell history or on screen.
 
 ```
-security add-generic-password -s casa-gmail -a casa -w          # the Gmail app password
-security add-generic-password -s casa-anthropic -a casa -w      # your Claude API key
-security add-generic-password -s casa-lunchmoney -a casa -w     # Lunch Money > Settings > Developers
+security add-generic-password -s butler-gmail -a butler -w          # the Gmail app password
+security add-generic-password -s butler-anthropic -a butler -w      # your Claude API key
+security add-generic-password -s butler-lunchmoney -a butler -w     # Lunch Money > Settings > Developers
 ```
 
 To replace one later, add `-U` to update it.
@@ -53,7 +53,7 @@ Edit `config/settings.yaml`. At minimum:
 - `email`: the assistant's address, the recipients, the trusted senders, the send hour
 - `household.adults`: your names and the addresses you reply from
 - `household.about`: two or three sentences about your household, for Claude. No ID numbers.
-- `calendar.include`, `calendar.write_to` and `people`, using names from `bin/casa-ek calendars`
+- `calendar.include`, `calendar.write_to` and `people`, using names from `bin/butler-ek calendars`
 - `news.regions`: your local paper's RSS feed first
 
 Optional sections (`weather`, `language_learning`, `score_tracker`) switch features on. Delete
@@ -84,7 +84,7 @@ PYTHONPATH=src .venv/bin/python -m unittest discover tests
 open out/preview/brief-$(date +%F).html
 ```
 
-Problems appear as a line at the bottom of the brief. Logs are in `logs/casa.log`.
+Problems appear as a line at the bottom of the brief. Logs are in `logs/butler.log`.
 
 When it looks right, send one. It goes to every recipient, so start with only yourself in
 `email.recipients` if you want a private first look:
@@ -132,7 +132,7 @@ See [PORTAL.md](PORTAL.md).
 ```
 launchd/uninstall.sh
 sudo pmset repeat cancel
-security delete-generic-password -s casa-gmail
-security delete-generic-password -s casa-anthropic
-security delete-generic-password -s casa-lunchmoney
+security delete-generic-password -s butler-gmail
+security delete-generic-password -s butler-anthropic
+security delete-generic-password -s butler-lunchmoney
 ```

@@ -1,11 +1,11 @@
 ---
-name: casa-tune
-description: Tune a running Casa install from what the household said and what happened. Reads reply feedback, logs, unanswered questions, unmapped transactions and budget drift, then proposes and applies config changes with the user's approval, and checks them with tests and a dry run. Use when the user runs /casa-tune or asks to adjust, improve or review their brief.
+name: butler-tune
+description: Tune a running Butler install from what the household said and what happened. Reads reply feedback, logs, unanswered questions, unmapped transactions and budget drift, then proposes and applies config changes with the user's approval, and checks them with tests and a dry run. Use when the user runs /butler-tune or asks to adjust, improve or review their brief.
 ---
 
-# Tune Casa
+# Tune Butler
 
-Casa learns from replies, but only you can turn what the household said into better rules.
+Butler learns from replies, but only you can turn what the household said into better rules.
 Gather evidence, propose a short list of changes, apply the ones the user approves, verify.
 
 Read `CLAUDE.md` first; its hard rules apply. In particular: never print secrets or ID
@@ -19,7 +19,7 @@ Read, and summarize for yourself:
   handled (the prompts read the last 30 lines) and what needs a config or code change.
 - `data/household_notes.md`: recent facts; look for ones that should change config (a new
   person, a new calendar, a nanny's new pay).
-- `logs/casa.log` (the last few days): failures, dead feeds, skipped sends.
+- `logs/butler.log` (the last few days): failures, dead feeds, skipped sends.
 - `data/questions.json`: questions from Sunday letters, and whether replies answered them
   (answered ones appear as overrides in `config/category_map.yaml` with a date).
 - The latest brief and Sunday letter in `out/` (text versions): problems listed in the
@@ -28,8 +28,8 @@ Read, and summarize for yourself:
   ```
   PYTHONPATH=src .venv/bin/python -c "
   from datetime import datetime, timedelta
-  from casa import finance
-  from casa.config import load_settings, tz
+  from butler import finance
+  from butler.config import load_settings, tz
   now = datetime.now(tz(load_settings())); m = finance.build(now.date(), now - timedelta(days=1))
   print('unmapped', sorted({x.payee for x in m.unmapped_mtd}))
   print('unbudgeted', m.unbudgeted)
@@ -62,7 +62,7 @@ budget workbook, copy it to `budget/history/budget_<date>_tune.xlsx`, and edit i
 only with openpyxl.
 
 When feedback is about wording or emphasis that config can't express, propose the smallest
-prompt change in `src/casa/llm.py`, `weekly.py` or `monthly.py`, and show the diff first.
+prompt change in `src/butler/llm.py`, `weekly.py` or `monthly.py`, and show the diff first.
 
 ## 4. Verify
 

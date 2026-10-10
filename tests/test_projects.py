@@ -6,7 +6,7 @@ import unittest
 from datetime import date
 from pathlib import Path
 
-from casa import projects
+from butler import projects
 
 FIXTURE = """name: Test
 summary: A test project.

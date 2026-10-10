@@ -3,12 +3,12 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>com.casa.casa-ek</string>
+    <string>com.buildyourbutler.butler-ek</string>
     <key>CFBundleName</key>
-    <string>casa-ek</string>
+    <string>butler-ek</string>
     <key>NSCalendarsFullAccessUsageDescription</key>
-    <string>Casa reads your calendars for the morning brief.</string>
+    <string>Butler reads your calendars for the morning brief.</string>
     <key>NSRemindersFullAccessUsageDescription</key>
-    <string>Casa adds shopping items and TODOs to Reminders.</string>
+    <string>Butler adds shopping items and TODOs to Reminders.</string>
 </dict>
 </plist>

@@ -1,6 +1,6 @@
 """What launchd runs every 5 minutes: handle replies, send the Sunday letter if it's due,
 then send the daily brief if it's due.
-Calendar copying and colors live in Apps Script (apps-script/casa-calendar.gs)."""
+Calendar copying and colors live in Apps Script (apps-script/butler-calendar.gs)."""
 
 import logging
 import sys
@@ -10,12 +10,12 @@ from datetime import datetime
 from . import daily, mailer, monthly, replies, weekly
 from .config import ROOT, brand, load_settings, tz
 
-log = logging.getLogger("casa")
+log = logging.getLogger("butler")
 
 
 def main() -> None:
     (ROOT / "logs").mkdir(exist_ok=True)
-    logging.basicConfig(filename=ROOT / "logs" / "casa.log", level=logging.INFO,
+    logging.basicConfig(filename=ROOT / "logs" / "butler.log", level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s")
     try:
         replies.process(load_settings())
@@ -42,7 +42,7 @@ def _weekly_if_due() -> None:
     except Exception as e:
         log.exception("weekly failed")
         mailer.send(settings, f"{brand(settings)} · Sunday letter failed {now:%-d %B}",
-                    f"This week's letter failed to build or send ({e}). Details are in logs/casa.log.")
+                    f"This week's letter failed to build or send ({e}). Details are in logs/butler.log.")
     marker.touch()
 
 
@@ -61,7 +61,7 @@ def _monthly_if_due() -> None:
     except Exception as e:
         log.exception("monthly failed")
         mailer.send(settings, f"{brand(settings)} · monthly look-back failed",
-                    f"The {last:%B} look-back failed ({e}). Details are in logs/casa.log.")
+                    f"The {last:%B} look-back failed ({e}). Details are in logs/butler.log.")
     marker.touch()
 
 

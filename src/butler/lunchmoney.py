@@ -7,7 +7,7 @@ from datetime import date
 
 from .config import ROOT, keychain
 
-KEYCHAIN_LUNCHMONEY = "casa-lunchmoney"
+KEYCHAIN_LUNCHMONEY = "butler-lunchmoney"
 BASE = "https://dev.lunchmoney.app/v1"
 
 
@@ -18,7 +18,7 @@ def get(path: str, **params) -> dict:
     query = f"?{urllib.parse.urlencode(params)}" if params else ""
     req = urllib.request.Request(
         f"{BASE}/{path}{query}",
-        headers={"Authorization": f"Bearer {token}", "User-Agent": "casa/1.0"},
+        headers={"Authorization": f"Bearer {token}", "User-Agent": "butler/1.0"},
     )
     with urllib.request.urlopen(req, timeout=60) as resp:
         return json.load(resp)

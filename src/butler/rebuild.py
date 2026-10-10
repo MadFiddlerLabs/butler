@@ -1,7 +1,7 @@
 """Rebuilds a day's brief page in the portal without sending anything.
 
-    python -m casa.rebuild               # today
-    python -m casa.rebuild --date 2026-10-09
+    python -m butler.rebuild               # today
+    python -m butler.rebuild --date 2026-10-09
 
 The first rebuild of a day keeps the version that was emailed as brief-DAY.sent.html, which
 the portal links to ("See the email as it was sent").

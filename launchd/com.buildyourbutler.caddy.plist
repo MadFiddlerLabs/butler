@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.casa.caddy</string>
+    <string>com.buildyourbutler.caddy</string>
     <!-- HTTPS for your own domain, reached over the tailnet only (see docs/PORTAL.md). -->
     <key>ProgramArguments</key>
     <array>

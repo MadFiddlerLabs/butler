@@ -1,4 +1,4 @@
-# Casa keeps your household's data next to the code. Everything personal is ignored here, so
+# Butler keeps your household's data next to the code. Everything personal is ignored here, so
 # a fork or a pull request can't publish it by accident. Only the *.example.* files and the
 # invented examples/ are tracked.
 

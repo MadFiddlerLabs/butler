@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.casa.morning</string>
+    <string>com.buildyourbutler.morning</string>
     <!-- One minute past send_hour and weekly_hour (install.sh fills them in from settings): a
          calendar trigger fires right after a scheduled wake if the time passed during sleep,
          instead of waiting for the 5-minute tick. The tick's sent markers stop any double send. -->

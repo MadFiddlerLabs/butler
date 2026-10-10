@@ -1,5 +1,5 @@
 /**
- * Optional calendar jobs for Casa. Runs in Google Apps Script every 5 minutes, whether or not
+ * Optional calendar jobs for Butler. Runs in Google Apps Script every 5 minutes, whether or not
  * the Mac is awake.
  *
  * 1. Copy (optional): every event on a source calendar (except declined invites) is copied
@@ -29,7 +29,7 @@ const CONFIG = {
   ],
 };
 
-const TAG = 'casaCopyOf';
+const TAG = 'butlerCopyOf';
 const COPY_NOTE = 'Copied from ' + CONFIG.source;
 
 function install() {

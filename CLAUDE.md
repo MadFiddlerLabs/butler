@@ -1,11 +1,11 @@
-# Casa
+# Butler
 
 An open-source household manager that runs on a Mac: a morning brief, a Sunday letter and a
 monthly look-back by email, replies that update things, and a tailnet-only portal. Setup and
 operations are in `README.md` and `docs/`.
 
-This file serves two kinds of sessions: someone running Casa for their own household, and
-someone developing Casa itself. The hard rules apply to both.
+This file serves two kinds of sessions: someone running Butler for their own household, and
+someone developing Butler itself. The hard rules apply to both.
 
 ## Hard rules
 
@@ -13,7 +13,7 @@ someone developing Casa itself. The hard rules apply to both.
   and the reference file are git-ignored. Never commit them, never paste them into issues,
   tests, examples or docs. Examples use invented people (the Riveras: Sam, Alex, Mia and the
   nanny Pat, in Lisbon) and invented amounts. Label any example as invented.
-- **Secrets live in the macOS Keychain** (`casa-gmail`, `casa-anthropic`, `casa-lunchmoney`).
+- **Secrets live in the macOS Keychain** (`butler-gmail`, `butler-anthropic`, `butler-lunchmoney`).
   Never put them in files, logs or chat. When a secret is needed, give the user the
   `security add-generic-password ... -w` command to run themselves (suggest the `!` prefix);
   never ask them to paste a secret into the conversation.
@@ -34,21 +34,21 @@ someone developing Casa itself. The hard rules apply to both.
 
 | Path | What it is |
 |---|---|
-| `src/casa/tick.py` | What launchd runs every 5 minutes: replies, then each email if due |
-| `src/casa/daily.py` | Builds and sends the morning brief; each section fails on its own |
-| `src/casa/weekly.py`, `monthly.py` | The Sunday letter and the monthly look-back |
-| `src/casa/render.py` | Email HTML and text; `money_lines()` and `split_lines()` are shared |
-| `src/casa/finance.py` | Lunch Money transactions to numbers. Pure arithmetic, tested |
-| `src/casa/budget.py` | Reads the budget workbook's input cells |
-| `src/casa/networth.py` | Daily snapshots; exchange-rate moves split from real ones |
-| `src/casa/llm.py` | The Claude calls: news, prep notes and phrase of the day |
-| `src/casa/replies.py` | Reply to allowlisted actions; confirmation to all recipients |
-| `src/casa/projects.py` | Project steps, gates and the "Next up" view |
-| `src/casa/portal.py` | Flask app served by Waitress on 127.0.0.1 |
-| `src/casa/agenda.py` + `helpers/casa-ek/` | Calendar and Reminders through a Swift EventKit helper |
-| `src/casa/config.py`, `fmt.py` | Config loading (with example fallback) and currency formatting |
+| `src/butler/tick.py` | What launchd runs every 5 minutes: replies, then each email if due |
+| `src/butler/daily.py` | Builds and sends the morning brief; each section fails on its own |
+| `src/butler/weekly.py`, `monthly.py` | The Sunday letter and the monthly look-back |
+| `src/butler/render.py` | Email HTML and text; `money_lines()` and `split_lines()` are shared |
+| `src/butler/finance.py` | Lunch Money transactions to numbers. Pure arithmetic, tested |
+| `src/butler/budget.py` | Reads the budget workbook's input cells |
+| `src/butler/networth.py` | Daily snapshots; exchange-rate moves split from real ones |
+| `src/butler/llm.py` | The Claude calls: news, prep notes and phrase of the day |
+| `src/butler/replies.py` | Reply to allowlisted actions; confirmation to all recipients |
+| `src/butler/projects.py` | Project steps, gates and the "Next up" view |
+| `src/butler/portal.py` | Flask app served by Waitress on 127.0.0.1 |
+| `src/butler/agenda.py` + `helpers/butler-ek/` | Calendar and Reminders through a Swift EventKit helper |
+| `src/butler/config.py`, `fmt.py` | Config loading (with example fallback) and currency formatting |
 | `config/*.example.yaml`, `budget/budget.example.xlsx`, `examples/` | The invented example household |
-| `.claude/skills/` | `/casa-setup` and `/casa-tune` |
+| `.claude/skills/` | `/butler-setup` and `/butler-tune` |
 
 Each config file falls back to its `.example` twin until the real one exists, so a fresh
 clone runs on the example household.
@@ -69,15 +69,15 @@ the portal's test client.
 - Amounts are in the primary currency (`currency.primary`, Lunch Money's). Budget lines may be
   in `currency.second`, converted at Assumptions!C5, which follows Lunch Money's daily rate.
 
-## When the user runs Casa for their household
+## When the user runs Butler for their household
 
 - At the start of a session, read `data/feedback.md` (feedback sent by reply) and the end of
-  `logs/casa.log`. `/casa-tune` does this systematically.
+  `logs/butler.log`. `/butler-tune` does this systematically.
 - Change behaviour through config first (`settings.yaml`, `category_map.yaml`, the budget
   workbook, `data/household_notes.md`). Change code only for something config can't express.
 - After any change: run the tests and a dry run.
 
-## When developing Casa
+## When developing Butler
 
 - Keep household specifics out of code. Anything one family needs and another doesn't is a
   setting, with the feature off when the setting is absent.

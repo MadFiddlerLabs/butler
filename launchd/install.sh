@@ -4,7 +4,7 @@
 #   ./launchd/install.sh
 #       The 5-minute tick, the send-time trigger and the always-on portal (127.0.0.1 only).
 #
-#   ./launchd/install.sh --domain casa.example.com --tailnet-host my-mac.my-tailnet.ts.net --email you@example.com
+#   ./launchd/install.sh --domain butler.example.com --tailnet-host my-mac.my-tailnet.ts.net --email you@example.com
 #       Also Caddy and a daily certificate renewal, to serve the portal under your own domain
 #       to your tailnet. See docs/PORTAL.md first: it needs DNS records and a one-time lego run.
 set -euo pipefail
@@ -21,9 +21,9 @@ done
 
 mkdir -p "$root/logs"
 read -r send_hour weekly_hour < <(cd "$root" && PYTHONPATH=src .venv/bin/python -c \
-  "from casa.config import load_settings as l; e = l()['email']; print(e['send_hour'], e['weekly_hour'])")
+  "from butler.config import load_settings as l; e = l()['email']; print(e['send_hour'], e['weekly_hour'])")
 
-labels="com.casa com.casa.morning com.casa.portal"
+labels="com.buildyourbutler.butler com.buildyourbutler.morning com.buildyourbutler.portal"
 if [ -n "$domain" ]; then
   if [ -z "$host" ] || [ -z "$email" ]; then
     echo "--domain needs --tailnet-host and --email too" >&2; exit 2
@@ -31,7 +31,7 @@ if [ -n "$domain" ]; then
   sed -e "s#__ROOT__#$root#g" -e "s#__DOMAIN__#$domain#g" -e "s#__TAILNET_HOST__#$host#g" \
     "$root/caddy/Caddyfile" > "$root/caddy/Caddyfile.local"
   printf 'DOMAIN=%s\nEMAIL=%s\n' "$domain" "$email" > "$root/caddy/domain.env"
-  labels="$labels com.casa.caddy com.casa.cert"
+  labels="$labels com.buildyourbutler.caddy com.buildyourbutler.cert"
 fi
 
 for label in $labels; do
@@ -42,4 +42,4 @@ for label in $labels; do
   launchctl bootstrap "gui/$(id -u)" "$target"
   echo "installed $target"
 done
-echo "watch it with: tail -f $root/logs/casa.log"
+echo "watch it with: tail -f $root/logs/butler.log"

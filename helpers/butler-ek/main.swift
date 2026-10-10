@@ -1,18 +1,18 @@
-// casa-ek: a tiny EventKit bridge for Casa.
+// butler-ek: a tiny EventKit bridge for Butler.
 // Reads calendar events and reads/writes Apple Reminders. Prints JSON to stdout.
 //
-//   casa-ek calendars
-//   casa-ek events --start 2026-10-09T00:00:00+02:00 --end 2026-10-16T00:00:00+02:00
-//   casa-ek reminder-lists
-//   casa-ek reminders --list Shopping
-//   casa-ek ensure-list --list Casa
-//   casa-ek add-reminder --list Shopping --title "Milk" [--notes "..."] [--due 2026-10-10]
-//   casa-ek complete-reminder --id REMINDER_ID
-//   casa-ek rename-reminder --id REMINDER_ID --title "New title"
-//   casa-ek completed --list Casa --start 2026-09-01 --end 2026-10-01
-//   casa-ek add-event --calendar "Family" --title T --start ISO --end ISO [--all-day 1] [--location L] [--notes N]
-//   casa-ek update-event --id EVENT_ID --title T --start ISO --end ISO [--all-day 1] [--location L] [--notes N]
-//   casa-ek delete-event --id EVENT_ID
+//   butler-ek calendars
+//   butler-ek events --start 2026-10-09T00:00:00+02:00 --end 2026-10-16T00:00:00+02:00
+//   butler-ek reminder-lists
+//   butler-ek reminders --list Shopping
+//   butler-ek ensure-list --list Butler
+//   butler-ek add-reminder --list Shopping --title "Milk" [--notes "..."] [--due 2026-10-10]
+//   butler-ek complete-reminder --id REMINDER_ID
+//   butler-ek rename-reminder --id REMINDER_ID --title "New title"
+//   butler-ek completed --list Butler --start 2026-09-01 --end 2026-10-01
+//   butler-ek add-event --calendar "Family" --title T --start ISO --end ISO [--all-day 1] [--location L] [--notes N]
+//   butler-ek update-event --id EVENT_ID --title T --start ISO --end ISO [--all-day 1] [--location L] [--notes N]
+//   butler-ek delete-event --id EVENT_ID
 
 import EventKit
 import Foundation
@@ -38,8 +38,8 @@ func requestAccess() {
     sem.wait()
     store.requestFullAccessToReminders { ok, _ in remindersOK = ok; sem.signal() }
     sem.wait()
-    if !eventsOK { fail("casa-ek: no Calendar access. Grant it in System Settings > Privacy & Security > Calendars.") }
-    if !remindersOK { fail("casa-ek: no Reminders access. Grant it in System Settings > Privacy & Security > Reminders.") }
+    if !eventsOK { fail("butler-ek: no Calendar access. Grant it in System Settings > Privacy & Security > Calendars.") }
+    if !remindersOK { fail("butler-ek: no Reminders access. Grant it in System Settings > Privacy & Security > Reminders.") }
 }
 
 func option(_ name: String, _ args: [String]) -> String? {
@@ -58,7 +58,7 @@ let dayOnly: DateFormatter = {
 func parseDate(_ s: String) -> Date {
     if let d = iso.date(from: s) { return d }
     if let d = dayOnly.date(from: s) { return d }
-    fail("casa-ek: cannot parse date '\(s)'")
+    fail("butler-ek: cannot parse date '\(s)'")
 }
 
 func reminderList(named name: String) -> EKCalendar? {
@@ -89,7 +89,7 @@ func declined(_ e: EKEvent) -> Bool {
 }
 
 let args = Array(CommandLine.arguments.dropFirst())
-guard let command = args.first else { fail("usage: casa-ek <calendars|events|reminder-lists|reminders|ensure-list|add-reminder> [options]") }
+guard let command = args.first else { fail("usage: butler-ek <calendars|events|reminder-lists|reminders|ensure-list|add-reminder> [options]") }
 requestAccess()
 
 switch command {
@@ -127,7 +127,7 @@ case "reminder-lists":
 
 case "reminders":
     guard let name = option("list", args) else { fail("reminders needs --list") }
-    guard let list = reminderList(named: name) else { fail("casa-ek: no Reminders list named '\(name)'") }
+    guard let list = reminderList(named: name) else { fail("butler-ek: no Reminders list named '\(name)'") }
     let sem = DispatchSemaphore(value: 0)
     var out: [[String: Any]] = []
     let predicate = store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: [list])
@@ -147,16 +147,16 @@ case "ensure-list":
     if let existing = reminderList(named: name) { emit(calendarInfo(existing)); break }
     // Create the list next to the existing iCloud lists so it syncs to phones.
     guard let source = store.calendars(for: .reminder).first(where: { $0.source.sourceType == .calDAV })?.source
-        ?? store.defaultCalendarForNewReminders()?.source else { fail("casa-ek: no Reminders account found") }
+        ?? store.defaultCalendarForNewReminders()?.source else { fail("butler-ek: no Reminders account found") }
     let list = EKCalendar(for: .reminder, eventStore: store)
     list.title = name
     list.source = source
-    do { try store.saveCalendar(list, commit: true) } catch { fail("casa-ek: could not create list: \(error)") }
+    do { try store.saveCalendar(list, commit: true) } catch { fail("butler-ek: could not create list: \(error)") }
     emit(calendarInfo(list))
 
 case "add-reminder":
     guard let name = option("list", args), let title = option("title", args) else { fail("add-reminder needs --list and --title") }
-    guard let list = reminderList(named: name) else { fail("casa-ek: no Reminders list named '\(name)'") }
+    guard let list = reminderList(named: name) else { fail("butler-ek: no Reminders list named '\(name)'") }
     let r = EKReminder(eventStore: store)
     r.calendar = list
     r.title = title
@@ -164,20 +164,20 @@ case "add-reminder":
     if let due = option("due", args) {
         r.dueDateComponents = Calendar.current.dateComponents([.year, .month, .day], from: parseDate(due))
     }
-    do { try store.save(r, commit: true) } catch { fail("casa-ek: could not save reminder: \(error)") }
+    do { try store.save(r, commit: true) } catch { fail("butler-ek: could not save reminder: \(error)") }
     emit(["id": r.calendarItemIdentifier, "list": name, "title": title])
 
 case "complete-reminder":
     guard let id = option("id", args), let r = store.calendarItem(withIdentifier: id) as? EKReminder
-    else { fail("casa-ek: no reminder with that id") }
+    else { fail("butler-ek: no reminder with that id") }
     r.isCompleted = true
-    do { try store.save(r, commit: true) } catch { fail("casa-ek: could not complete reminder: \(error)") }
+    do { try store.save(r, commit: true) } catch { fail("butler-ek: could not complete reminder: \(error)") }
     emit(["completed": id, "title": r.title ?? ""])
 
 case "completed":
     guard let name = option("list", args), let start = option("start", args), let end = option("end", args)
     else { fail("completed needs --list, --start and --end") }
-    guard let list = reminderList(named: name) else { fail("casa-ek: no Reminders list named '\(name)'") }
+    guard let list = reminderList(named: name) else { fail("butler-ek: no Reminders list named '\(name)'") }
     let sem = DispatchSemaphore(value: 0)
     var out: [[String: Any]] = []
     let predicate = store.predicateForCompletedReminders(withCompletionDateStarting: parseDate(start),
@@ -196,28 +196,28 @@ case "rename-reminder":
           let r = store.calendarItem(withIdentifier: id) as? EKReminder
     else { fail("rename-reminder needs a valid --id and --title") }
     r.title = title
-    do { try store.save(r, commit: true) } catch { fail("casa-ek: could not rename reminder: \(error)") }
+    do { try store.save(r, commit: true) } catch { fail("butler-ek: could not rename reminder: \(error)") }
     emit(["id": id, "title": title])
 
 case "add-event":
-    guard let name = option("calendar", args), let cal = eventCalendar(named: name) else { fail("casa-ek: no writable calendar named '\(option("calendar", args) ?? "")'") }
+    guard let name = option("calendar", args), let cal = eventCalendar(named: name) else { fail("butler-ek: no writable calendar named '\(option("calendar", args) ?? "")'") }
     let e = EKEvent(eventStore: store)
     e.calendar = cal
     fill(e, args)
-    do { try store.save(e, span: .thisEvent, commit: true) } catch { fail("casa-ek: could not save event: \(error)") }
+    do { try store.save(e, span: .thisEvent, commit: true) } catch { fail("butler-ek: could not save event: \(error)") }
     emit(["event_id": e.eventIdentifier ?? "", "calendar": name, "title": e.title ?? ""])
 
 case "update-event":
-    guard let id = option("id", args), let e = store.event(withIdentifier: id) else { fail("casa-ek: no event with that id") }
+    guard let id = option("id", args), let e = store.event(withIdentifier: id) else { fail("butler-ek: no event with that id") }
     fill(e, args)
-    do { try store.save(e, span: .thisEvent, commit: true) } catch { fail("casa-ek: could not update event: \(error)") }
+    do { try store.save(e, span: .thisEvent, commit: true) } catch { fail("butler-ek: could not update event: \(error)") }
     emit(["event_id": e.eventIdentifier ?? "", "title": e.title ?? ""])
 
 case "delete-event":
-    guard let id = option("id", args), let e = store.event(withIdentifier: id) else { fail("casa-ek: no event with that id") }
-    do { try store.remove(e, span: .thisEvent, commit: true) } catch { fail("casa-ek: could not delete event: \(error)") }
+    guard let id = option("id", args), let e = store.event(withIdentifier: id) else { fail("butler-ek: no event with that id") }
+    do { try store.remove(e, span: .thisEvent, commit: true) } catch { fail("butler-ek: could not delete event: \(error)") }
     emit(["deleted": id])
 
 default:
-    fail("casa-ek: unknown command '\(command)'")
+    fail("butler-ek: unknown command '\(command)'")
 }

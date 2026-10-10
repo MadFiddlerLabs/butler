@@ -1,4 +1,4 @@
-"""Reads events from macOS Calendar through the casa-ek helper."""
+"""Reads events from macOS Calendar through the butler-ek helper."""
 
 import json
 import re
@@ -7,9 +7,9 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from .config import CASA_EK
+from .config import BUTLER_EK
 
-# Events the Apps Script copied from another calendar (apps-script/casa-calendar.gs).
+# Events the Apps Script copied from another calendar (apps-script/butler-calendar.gs).
 COPY_NOTE = re.compile(r"^Copied from \S+@\S+")
 
 
@@ -62,11 +62,11 @@ def _assign(title: str, calendar: str, people: list[dict]) -> tuple[list[str], s
 
 def _fetch(start: datetime, end: datetime) -> list[dict]:
     out = subprocess.run(
-        [str(CASA_EK), "events", "--start", start.isoformat(), "--end", end.isoformat()],
+        [str(BUTLER_EK), "events", "--start", start.isoformat(), "--end", end.isoformat()],
         capture_output=True, text=True, timeout=60,
     )
     if out.returncode != 0:
-        raise RuntimeError(out.stderr.strip() or "casa-ek failed")
+        raise RuntimeError(out.stderr.strip() or "butler-ek failed")
     return json.loads(out.stdout)
 
 

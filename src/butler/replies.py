@@ -1,7 +1,7 @@
 """Turns replies to the household mailbox into actions, then confirms by email.
 
-    python -m casa.replies             # process unread replies
-    python -m casa.replies --dry-run   # show what would happen; change nothing
+    python -m butler.replies             # process unread replies
+    python -m butler.replies --dry-run   # show what would happen; change nothing
 
 Claude only proposes actions from a fixed list; Python validates and performs them.
 Nothing here can delete anything. Mail from untrusted senders is marked read and ignored.
@@ -14,9 +14,9 @@ import subprocess
 from datetime import date, datetime, time, timedelta
 
 from . import inbox, llm, mailer, projects
-from .config import CASA_EK, ROOT, load_settings, name_for_email, people, tz
+from .config import BUTLER_EK, ROOT, load_settings, name_for_email, people, tz
 
-log = logging.getLogger("casa")
+log = logging.getLogger("butler")
 PROCESSED = ROOT / "data" / "processed_replies.txt"
 NOTES = ROOT / "data" / "household_notes.md"
 FEEDBACK = ROOT / "data" / "feedback.md"
@@ -130,9 +130,9 @@ def _questions() -> dict:
 
 
 def _ek(*args: str) -> dict:
-    out = subprocess.run([str(CASA_EK), *args], capture_output=True, text=True, timeout=60)
+    out = subprocess.run([str(BUTLER_EK), *args], capture_output=True, text=True, timeout=60)
     if out.returncode != 0:
-        raise RuntimeError(out.stderr.strip() or "casa-ek failed")
+        raise RuntimeError(out.stderr.strip() or "butler-ek failed")
     return json.loads(out.stdout)
 
 
@@ -329,7 +329,7 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     (ROOT / "logs").mkdir(exist_ok=True)
-    logging.basicConfig(filename=ROOT / "logs" / "casa.log", level=logging.INFO,
+    logging.basicConfig(filename=ROOT / "logs" / "butler.log", level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s")
     process(load_settings(), dry_run=args.dry_run)
 

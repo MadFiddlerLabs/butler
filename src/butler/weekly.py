@@ -1,7 +1,7 @@
 """The Sunday letter: the week that was, the week ahead, money, drift, ideas, projects.
 
-    python -m casa.weekly --dry-run   # writes out/weekly-YYYY-WW.html/.txt
-    python -m casa.weekly             # also sends it and saves reports/YYYY-WW.md
+    python -m butler.weekly --dry-run   # writes out/weekly-YYYY-WW.html/.txt
+    python -m butler.weekly             # also sends it and saves reports/YYYY-WW.md
 
 Python does every sum; Claude writes the headline, picks the week's focus, suggests
 save/earn ideas and words the project notes, from the numbers it's handed.
@@ -20,7 +20,7 @@ from .config import ROOT, brand, load_settings, people, portal_url, tz
 from .finance import SPEND, Summary, Tx
 from .fmt import money, primary_code
 
-log = logging.getLogger("casa")
+log = logging.getLogger("butler")
 IDEAS = ROOT / "data" / "ideas.jsonl"
 QUESTIONS = ROOT / "data" / "questions.json"   # id -> {payee, text, asked}; replies resolve ids
 REPORTS = ROOT / "reports"
@@ -549,7 +549,7 @@ def main() -> None:
     args = parser.parse_args()
     (ROOT / "logs").mkdir(exist_ok=True)
     (ROOT / "out").mkdir(exist_ok=True)
-    logging.basicConfig(filename=ROOT / "logs" / "casa.log", level=logging.INFO,
+    logging.basicConfig(filename=ROOT / "logs" / "butler.log", level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s")
     logging.getLogger().addHandler(logging.StreamHandler())
     settings = load_settings()

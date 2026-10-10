@@ -4,8 +4,8 @@ All names and amounts are invented."""
 import unittest
 from datetime import date, datetime, timezone
 
-from casa.budget import Line, Plan
-from casa.finance import (CASH_TOPUP, DRAW, FUNDING, IGNORED, LEDGER, MANAGED_FEE, RENTAL, SPEND,
+from butler.budget import Line, Plan
+from butler.finance import (CASH_TOPUP, DRAW, FUNDING, IGNORED, LEDGER, MANAGED_FEE, RENTAL, SPEND,
                           TRANSFER, classify, summarize)
 
 RULES = {

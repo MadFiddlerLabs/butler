@@ -1,7 +1,7 @@
 # Projects
 
 A project is a goal with steps: a residence permit renewal, a school application, a move. One
-YAML file per project in `projects/`. Until you add one, Casa shows the invented examples in
+YAML file per project in `projects/`. Until you add one, Butler shows the invented examples in
 `examples/projects/`. The first change you make from the portal or by reply copies them into
 `projects/` so you can edit or delete them.
 
@@ -46,7 +46,7 @@ steps:
 | `waiting_on` | Who you're waiting for (with `status: waiting`); `chase_after` brings it back |
 | `priority` | `high`, `normal` (default) or `low` |
 | `notes` | Context for you and for Claude. Never put ID numbers here |
-| `last_done` | Set by Casa when a step is done or checked |
+| `last_done` | Set by Butler when a step is done or checked |
 
 `paused` steps are parked on purpose and stay out of the brief.
 
@@ -55,6 +55,6 @@ steps:
 - In the portal: Done, Pause, Checked today, or "Send an update" in your own words.
 - By reply: "done: school visit", "waiting on the clinic until the 20th", "checked the
   smoke alarms". Claude maps it to a step; Python makes the change.
-- In the file: edit freely. Casa edits only the lines it changes, so comments survive.
+- In the file: edit freely. Butler edits only the lines it changes, so comments survive.
 
 Every update is logged on the step and shown in the portal.

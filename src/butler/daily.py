@@ -1,9 +1,9 @@
 """Builds and sends the morning brief.
 
-    python -m casa.daily              # build and send
-    python -m casa.daily --dry-run    # build only; writes out/brief-YYYY-MM-DD.{html,txt}
-    python -m casa.daily --no-llm     # skip Claude: raw headlines, no prep notes
-    python -m casa.daily --scheduled  # launchd: send once per day, after send_hour in your timezone
+    python -m butler.daily              # build and send
+    python -m butler.daily --dry-run    # build only; writes out/brief-YYYY-MM-DD.{html,txt}
+    python -m butler.daily --no-llm     # skip Claude: raw headlines, no prep notes
+    python -m butler.daily --scheduled  # launchd: send once per day, after send_hour in your timezone
 
 Each section fails on its own. A broken section becomes a line in the footer, and
 if the whole run breaks, a short failure email still goes out.
@@ -24,7 +24,7 @@ from .fmt import primary_code
 from .news import fetch_stories
 from .render import Brief, to_html, to_text
 
-log = logging.getLogger("casa")
+log = logging.getLogger("butler")
 
 
 def _short(e: Exception) -> str:
@@ -120,8 +120,8 @@ def build(settings: dict, day: date, use_llm: bool, preview_projects: bool = Fal
     try:
         import json
         import subprocess
-        from .config import CASA_EK
-        out = subprocess.run([str(CASA_EK), "reminders", "--list", settings["reminders"]["todo_list"]],
+        from .config import BUTLER_EK
+        out = subprocess.run([str(BUTLER_EK), "reminders", "--list", settings["reminders"]["todo_list"]],
                              capture_output=True, text=True, timeout=60)
         if out.returncode == 0:
             # Overdue and dated items first, then the rest in list order.
@@ -194,7 +194,7 @@ def main() -> None:
     (ROOT / "logs").mkdir(exist_ok=True)
     (ROOT / "out").mkdir(exist_ok=True)
     logging.basicConfig(
-        filename=ROOT / "logs" / "casa.log", level=logging.INFO,
+        filename=ROOT / "logs" / "butler.log", level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
     )
     logging.getLogger().addHandler(logging.StreamHandler())

@@ -1,12 +1,13 @@
-# Casa settings. Copy this file to settings.yaml and edit it (or run /casa-setup in Claude
+# Butler settings. Copy this file to settings.yaml and edit it (or run /butler-setup in Claude
 # Code, which writes it for you). Until settings.yaml exists, the app runs on this example.
 #
 # Secrets are never stored here. They live in the macOS login Keychain (see docs/SETUP.md).
 # Everything below is an invented example household: Sam and Alex Rivera, their daughter Mia
 # and their nanny Pat, in Lisbon.
 
-# What the assistant calls itself: in subjects ("Casa · Monday 12 October"), the portal, Siri.
-name: Casa
+# Your butler's name. It signs the emails ("Bento · Monday 12 October"), titles the portal and
+# answers to it in Siri. The Riveras named theirs Bento.
+name: Bento
 
 timezone: Europe/Lisbon
 
@@ -15,8 +16,8 @@ currency:
   second: USD      # optional: budget lines priced in another currency; leave as is if unused
 
 email:
-  sender_name: Casa
-  sender: casa-assistant@example.com     # the assistant's own Gmail address
+  sender_name: Bento
+  sender: bento.rivera.butler@example.com     # the assistant's own Gmail address
   send_hour: 7          # the morning brief goes out at this hour, local time
   weekly_day: 6         # the Sunday letter: Monday = 0 ... Sunday = 6
   weekly_hour: 17
@@ -61,7 +62,7 @@ calendar:
 # Who each event belongs to. An event goes to everyone whose name (or alias) appears as a
 # word in its title; failing that, to the owner of its calendar; failing that, to the family.
 # Colors are used in the emails and the portal; Google Calendar color ids are optional and
-# used by apps-script/casa-calendar.gs.
+# used by apps-script/butler-calendar.gs.
 people:
   - name: Sam
     aliases: [Sam]
@@ -86,7 +87,7 @@ projects:
   in_brief: true        # "Next up" in the morning brief
 
 reminders:              # Apple Reminders lists (created if missing)
-  todo_list: Casa
+  todo_list: Bento
   shopping_list: Shopping
 
 news:

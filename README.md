@@ -1,6 +1,6 @@
-# Casa
+# Butler
 
-Casa is a private household manager that runs on your Mac. Every morning it emails the adults
+Butler is a private household manager that runs on your Mac. Every morning it emails the adults
 in your home one brief: the day's calendar for each person, what to prepare for, your to-dos,
 where the money stands, the next step on each family project, and the news you care about.
 You reply in plain words to change things. A private web portal on your tailnet shows the
@@ -28,7 +28,7 @@ Info (phones, IDs and document expiry dates, shown only there).
 
 ### Money, done carefully
 
-Casa reads [Lunch Money](https://lunchmoney.app), which connects to your banks. It keeps
+Butler reads [Lunch Money](https://lunchmoney.app), which connects to your banks. It keeps
 three kinds of spending apart, because mixing them is what makes budgets lie:
 
 - **Fixed monthly expenses** (rent, insurance, a nanny's salary): paid against the plan.
@@ -42,7 +42,7 @@ exchange-rate moves separated from real ones, and a budget in two currencies.
 
 ## Privacy
 
-Casa was designed so a household can trust it with everything.
+Butler was designed so a household can trust it with everything.
 
 - **Your data stays on your Mac.** Config, projects, budget, notes and the email archive are
   local files. The `.gitignore` excludes all of them, so a fork can't publish them by accident.
@@ -63,7 +63,7 @@ Lunch Money and Open-Meteo are read over their APIs.
 
 ## Requirements
 
-- A Mac that's on most mornings (macOS 14 or later). Casa wakes it for the brief.
+- A Mac that's on most mornings (macOS 14 or later). Butler wakes it for the brief.
 - Python 3.12 or later and the Xcode command-line tools.
 - A [Lunch Money](https://lunchmoney.app) account (for the money sections).
 - A [Claude API key](https://console.anthropic.com).
@@ -77,20 +77,20 @@ The easiest way is with [Claude Code](https://claude.com/claude-code). Clone the
 Claude Code in it, and run the setup wizard:
 
 ```
-git clone https://github.com/nerolabs/casa.git
-cd casa
+git clone https://github.com/nerolabs/butler.git
+cd butler
 claude
-> /casa-setup
+> /butler-setup
 ```
 
 The wizard checks your Mac, interviews you about your household, writes your config, drafts
 your category rules and budget from your Lunch Money history, walks you through the secrets
 (you type them into Keychain yourself; they never pass through chat), and sends a test brief.
-Later, `/casa-tune` reads your feedback and replies and adjusts the rules.
+Later, `/butler-tune` reads your feedback and replies and adjusts the rules.
 
 Prefer to do it by hand? Follow [docs/SETUP.md](docs/SETUP.md).
 
-To look around first, Casa runs on an invented example household out of the box:
+To look around first, Butler runs on an invented example household out of the box:
 
 ```
 scripts/bootstrap.sh
@@ -107,7 +107,7 @@ scripts/bootstrap.sh
 
 ## Support
 
-Casa is free and MIT-licensed. If it saves your household some hours, you can buy me a coffee.
+Butler is free and MIT-licensed. If it saves your household some hours, you can buy me a coffee.
 <!-- TODO: Buy Me a Coffee link -->
 (Link coming soon.)
 

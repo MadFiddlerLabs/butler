@@ -12,15 +12,15 @@ for candidate in python3.14 python3.13 python3.12 python3; do
   fi
 done
 if [ -z "$python" ]; then
-  echo "Casa needs Python 3.12 or later. Install it with: brew install python" >&2; exit 1
+  echo "Butler needs Python 3.12 or later. Install it with: brew install python" >&2; exit 1
 fi
 if ! command -v swiftc >/dev/null; then
-  echo "Casa needs the Swift compiler. Install it with: xcode-select --install" >&2; exit 1
+  echo "Butler needs the Swift compiler. Install it with: xcode-select --install" >&2; exit 1
 fi
 
 [ -d .venv ] || "$python" -m venv .venv
 .venv/bin/pip install -q --upgrade pip
 .venv/bin/pip install -q -r requirements.txt
-helpers/casa-ek/build.sh
+helpers/butler-ek/build.sh
 mkdir -p data logs out
 echo "ready. next: ./run.sh daily --dry-run --no-llm"

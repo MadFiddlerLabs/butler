@@ -3,20 +3,20 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.casa.portal</string>
+    <string>com.buildyourbutler.butler</string>
     <key>ProgramArguments</key>
     <array>
         <string>__ROOT__/run.sh</string>
-        <string>portal</string>
+        <string>tick</string>
     </array>
-    <!-- Always on; listens on 127.0.0.1 only. `tailscale serve` exposes it to the tailnet. -->
-    <key>KeepAlive</key>
-    <true/>
+    <!-- Tick every 5 minutes. The service decides whether it's time to send. -->
+    <key>StartInterval</key>
+    <integer>300</integer>
     <key>RunAtLoad</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>__ROOT__/logs/portal.out.log</string>
+    <string>__ROOT__/logs/launchd.out.log</string>
     <key>StandardErrorPath</key>
-    <string>__ROOT__/logs/portal.err.log</string>
+    <string>__ROOT__/logs/launchd.err.log</string>
 </dict>
 </plist>

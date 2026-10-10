@@ -1,8 +1,8 @@
 """The monthly look-back: what got done, where the time and money went, and what to carry
 into next month. Sent on the 1st (see tick.py); previews go to the portal's "Last month" tab.
 
-    python -m casa.monthly --preview --month 2026-09   # portal preview, nothing sent
-    python -m casa.monthly --month 2026-09             # send it
+    python -m butler.monthly --preview --month 2026-09   # portal preview, nothing sent
+    python -m butler.monthly --month 2026-09             # send it
 
 Python does every sum (including budget suggestions); Claude writes the headline, the
 accomplishments summary and the insights, from what it's handed.
@@ -19,11 +19,11 @@ from datetime import date, datetime, time, timedelta
 
 from . import charts, finance, llm, mailer, networth, projects
 from .agenda import COPY_NOTE, _assign
-from .config import CASA_EK, ROOT, brand, load_settings, people, portal_url, tz
+from .config import BUTLER_EK, ROOT, brand, load_settings, people, portal_url, tz
 from .finance import SPEND, Summary
 from .fmt import money, primary_code
 
-log = logging.getLogger("casa")
+log = logging.getLogger("butler")
 
 
 @dataclass
@@ -51,7 +51,7 @@ class Month:
 
 
 def _ek(*args: str):
-    out = subprocess.run([str(CASA_EK), *args], capture_output=True, text=True, timeout=120)
+    out = subprocess.run([str(BUTLER_EK), *args], capture_output=True, text=True, timeout=120)
     if out.returncode != 0:
         raise RuntimeError(out.stderr.strip())
     return json.loads(out.stdout)
