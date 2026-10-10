@@ -23,6 +23,7 @@ caddy/Caddyfile.local
 caddy/domain.env
 
 # Build and environment
+/.butler-version
 /bin/
 /.venv/
 __pycache__/

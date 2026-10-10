@@ -5,7 +5,7 @@ import urllib.parse
 import urllib.request
 from datetime import date
 
-from .config import ROOT, keychain
+from .config import ROOT, NotSetUp, keychain
 
 KEYCHAIN_LUNCHMONEY = "butler-lunchmoney"
 BASE = "https://dev.lunchmoney.app/v1"
@@ -14,7 +14,7 @@ BASE = "https://dev.lunchmoney.app/v1"
 def get(path: str, **params) -> dict:
     token = keychain(KEYCHAIN_LUNCHMONEY)
     if not token:
-        raise RuntimeError(f"no Lunch Money token in Keychain (service '{KEYCHAIN_LUNCHMONEY}')")
+        raise NotSetUp(f"no Lunch Money token in Keychain (service '{KEYCHAIN_LUNCHMONEY}')")
     query = f"?{urllib.parse.urlencode(params)}" if params else ""
     req = urllib.request.Request(
         f"{BASE}/{path}{query}",

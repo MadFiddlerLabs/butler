@@ -1,7 +1,7 @@
 # Butler
 
-Butler is a private household manager that runs on your Mac. Every morning it emails the adults
-in your home one brief: the day's calendar for each person, what to prepare for, your to-dos,
+Butler is your household's own AI butler. It runs on your Mac, works with your data, and
+answers to the name you give it. Every morning it emails the adults in your home one brief: the day's calendar for each person, what to prepare for, your to-dos,
 where the money stands, the next step on each family project, and the news you care about.
 You reply in plain words to change things. A private web portal on your tailnet shows the
 same information, with buttons.
@@ -9,6 +9,10 @@ same information, with buttons.
 It's built for families with real logistics: two calendars or more, a budget, paperwork with
 deadlines, kids, maybe a move abroad. Claude does the reading and writing. Python does every
 sum, and every change goes through a fixed list of actions.
+
+**New to all this?** [Build Your Butler](https://buildyourbutler.com) is a free, step-by-step
+course for people who've never used a terminal. You finish with a working butler, and you
+learn how AI works along the way.
 
 ## What you get
 
@@ -64,7 +68,7 @@ Lunch Money and Open-Meteo are read over their APIs.
 ## Requirements
 
 - A Mac that's on most mornings (macOS 14 or later). Butler wakes it for the brief.
-- Python 3.12 or later and the Xcode command-line tools.
+- The Xcode command-line tools, for the Calendar helper. The installer provides Python.
 - A [Lunch Money](https://lunchmoney.app) account (for the money sections).
 - A [Claude API key](https://console.anthropic.com).
 - A new Gmail account for the assistant, with an app password.
@@ -73,20 +77,30 @@ Lunch Money and Open-Meteo are read over their APIs.
 
 ## Get started
 
-The easiest way is with [Claude Code](https://claude.com/claude-code). Clone the repo, open
-Claude Code in it, and run the setup wizard:
+The easiest way is with [Claude Code](https://claude.com/claude-code), following the
+[course](https://buildyourbutler.com). Install Butler to `~/Butler`:
 
 ```
-git clone https://github.com/nerolabs/butler.git
-cd butler
-claude
-> /butler-setup
+curl -fsSL https://raw.githubusercontent.com/nerolabs/butler/main/scripts/install.sh | bash
 ```
 
-The wizard checks your Mac, interviews you about your household, writes your config, drafts
-your category rules and budget from your Lunch Money history, walks you through the secrets
-(you type them into Keychain yourself; they never pass through chat), and sends a test brief.
-Later, `/butler-tune` reads your feedback and replies and adjusts the rules.
+Then open `~/Butler` in Claude Code and set it up one step at a time:
+
+| Step | What it does |
+|---|---|
+| `/butler-setup install` | Name your butler and see its first brief |
+| `/butler-setup calendar` | Connect Calendar and Reminders |
+| `/butler-setup brain` | Add a Claude API key, with a spending limit |
+| `/butler-setup inbox` | Give it a Gmail address, send the first brief, start the schedule |
+| `/butler-setup replies` | Reply by email or Siri to change things |
+| `/butler-setup money` | Connect Lunch Money and draft your budget |
+| `/butler-setup projects` | Family projects and paperwork |
+| `/butler-setup letters` | The Sunday letter and the monthly look-back |
+| `/butler-setup phone` | The portal on your phones, with Tailscale |
+
+`/butler-setup` on its own says where you are. You type secrets into a Mac dialog, so they
+never pass through the chat. Later, `/butler-tune` adjusts the rules from your feedback, and
+`/butler-doctor` checks everything when something seems off.
 
 Prefer to do it by hand? Follow [docs/SETUP.md](docs/SETUP.md).
 
@@ -94,7 +108,7 @@ To look around first, Butler runs on an invented example household out of the bo
 
 ```
 scripts/bootstrap.sh
-./run.sh daily --dry-run --no-llm     # writes out/preview/brief-YYYY-MM-DD.html
+./run.sh preview                      # builds this morning's brief and opens it; sends nothing
 ./run.sh portal                       # http://127.0.0.1:8787
 ```
 
@@ -104,10 +118,11 @@ scripts/bootstrap.sh
 - [docs/CONFIG.md](docs/CONFIG.md): every setting and money rule
 - [docs/PROJECTS.md](docs/PROJECTS.md): family projects with steps, dependencies and dates
 - [docs/PORTAL.md](docs/PORTAL.md): the portal over Tailscale, and under your own domain
+- [SECURITY.md](SECURITY.md): how to report a vulnerability
 
 ## Support
 
-Butler is free and MIT-licensed. If it saves your household some hours, you can buy me a coffee.
+Butler is free and MIT-licensed. If it saves your household some hours, you can buy us a coffee.
 <!-- TODO: Buy Me a Coffee link -->
 (Link coming soon.)
 

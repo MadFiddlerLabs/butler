@@ -1,8 +1,10 @@
 # Butler
 
-An open-source household manager that runs on a Mac: a morning brief, a Sunday letter and a
-monthly look-back by email, replies that update things, and a tailnet-only portal. Setup and
-operations are in `README.md` and `docs/`.
+An open-source household butler that runs on a Mac: a morning brief, a Sunday letter and a
+monthly look-back by email, replies that update things, and a tailnet-only portal. Each
+household names its own butler (`name` in settings). Setup and operations are in `README.md`
+and `docs/`. The Build Your Butler course (buildyourbutler.com, a separate private repo)
+teaches non-technical people to set it up.
 
 This file serves two kinds of sessions: someone running Butler for their own household, and
 someone developing Butler itself. The hard rules apply to both.
@@ -48,14 +50,17 @@ someone developing Butler itself. The hard rules apply to both.
 | `src/butler/agenda.py` + `helpers/butler-ek/` | Calendar and Reminders through a Swift EventKit helper |
 | `src/butler/config.py`, `fmt.py` | Config loading (with example fallback) and currency formatting |
 | `config/*.example.yaml`, `budget/budget.example.xlsx`, `examples/` | The invented example household |
-| `.claude/skills/` | `/butler-setup` and `/butler-tune` |
+| `scripts/install.sh`, `bootstrap.sh` | Download to `~/Butler`; Python through uv, no Xcode tools |
+| `scripts/store-secret.sh` | A Mac dialog that puts a secret straight into Keychain |
+| `.claude/skills/` | `/butler-setup <step>`, `/butler-tune` and `/butler-doctor` |
 
 Each config file falls back to its `.example` twin until the real one exists, so a fresh
 clone runs on the example household.
 
 Tests: `PYTHONPATH=src .venv/bin/python -m unittest discover tests`
 
-Safe checks that send nothing: `./run.sh daily --dry-run [--no-llm]` (writes `out/preview/`),
+Safe checks that send nothing: `./run.sh preview` (opens the brief in the browser),
+`./run.sh daily --dry-run [--no-llm]` (writes `out/preview/`),
 `./run.sh weekly --dry-run`, `./run.sh monthly --preview`, `./run.sh replies --dry-run`, and
 the portal's test client.
 
@@ -85,6 +90,10 @@ the portal's test client.
   `docs/CONFIG.md`.
 - Match the surrounding code: small modules, dataclasses, plain functions, short docstrings
   that say why.
+- A part the household hasn't connected yet raises `config.NotSetUp`. The brief lists it
+  quietly as "not connected yet", because people set Butler up over weeks.
+- The course links to `/butler-setup` step names, `scripts/install.sh` and `./run.sh preview`.
+  Changing any of them means changing the course too.
 - Before committing, grep the diff for real names, addresses, account names and numbers.
 
 ## Voice

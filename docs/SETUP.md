@@ -1,9 +1,18 @@
 # Manual setup
 
-This is what `/butler-setup` does for you in Claude Code. Allow about an hour. Each step can be
+This is what `/butler-setup` does for you in Claude Code, step by step, and what the course at
+[buildyourbutler.com](https://buildyourbutler.com) teaches. Allow about an hour. Each step can be
 checked before moving on.
 
 ## 1. Install
+
+The installer downloads the newest release to `~/Butler` and sets up Python:
+
+```
+curl -fsSL https://raw.githubusercontent.com/nerolabs/butler/main/scripts/install.sh | bash
+```
+
+Or, to work on Butler itself, clone it:
 
 ```
 git clone https://github.com/nerolabs/butler.git
@@ -11,15 +20,19 @@ cd butler
 scripts/bootstrap.sh
 ```
 
-`bootstrap.sh` creates `.venv`, installs the Python packages and builds `bin/butler-ek`, a small
-helper that reads macOS Calendar and Reminders. The first time it runs, macOS asks for Calendar
-and Reminders access. Allow both.
+`bootstrap.sh` creates `.venv` with [uv](https://docs.astral.sh/uv/), which also provides
+Python, so no Xcode tools are needed yet. `./run.sh preview` then shows a first brief.
 
-Check that it sees your calendars:
+Then build `bin/butler-ek`, a small helper that reads macOS Calendar and Reminders. It needs
+the Xcode command line tools (`xcode-select --install`):
 
 ```
+helpers/butler-ek/build.sh
 bin/butler-ek calendars
 ```
+
+The first time it runs, macOS asks for Calendar access, and `bin/butler-ek reminder-lists` asks
+for Reminders. Allow both.
 
 ## 2. Create the assistant's mailbox
 
@@ -31,15 +44,16 @@ Butler sends from its own Gmail account and reads replies there.
 
 ## 3. Store the secrets in Keychain
 
-Each command prompts for the value, so it never appears in your shell history or on screen.
+Each command opens a Mac dialog for the value, so it never appears in your shell history, on
+screen or in a chat:
 
 ```
-security add-generic-password -s butler-gmail -a butler -w          # the Gmail app password
-security add-generic-password -s butler-anthropic -a butler -w      # your Claude API key
-security add-generic-password -s butler-lunchmoney -a butler -w     # Lunch Money > Settings > Developers
+scripts/store-secret.sh butler-gmail "The Gmail app password"
+scripts/store-secret.sh butler-anthropic "Your Claude API key"
+scripts/store-secret.sh butler-lunchmoney "Lunch Money > Settings > Developers > access token"
 ```
 
-To replace one later, add `-U` to update it.
+Running one again replaces the stored value.
 
 ## 4. Write your settings
 

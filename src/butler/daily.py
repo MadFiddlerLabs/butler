@@ -19,7 +19,7 @@ import anthropic
 
 from . import charts, finance, headsup, llm, mailer, networth, practice, projects, weather
 from .agenda import load_agenda
-from .config import ROOT, brand, load_settings, tz
+from .config import ROOT, NotSetUp, brand, butler_ek, load_settings, tz
 from .fmt import primary_code
 from .news import fetch_stories
 from .render import Brief, to_html, to_text
@@ -41,12 +41,16 @@ def build(settings: dict, day: date, use_llm: bool, preview_projects: bool = Fal
     zone = tz(settings)
     now = datetime.now(zone)
     problems: list[str] = []
+    not_set_up: list[str] = []
     labels = {r["key"]: r["label"] for r in settings["news"]["regions"]}
 
     agenda = None
     try:
         agenda = load_agenda(settings, day, zone)
         log.info("calendar: %d today, %d upcoming", len(agenda.today), len(agenda.upcoming))
+    except NotSetUp as e:
+        log.info("calendar: %s", e)
+        not_set_up.append("calendar")
     except Exception as e:
         log.exception("calendar failed")
         problems.append(f"calendar unavailable ({_short(e)})")
@@ -90,6 +94,9 @@ def build(settings: dict, day: date, use_llm: bool, preview_projects: bool = Fal
         except Exception as e:
             log.exception("charts failed")
             problems.append(f"charts unavailable ({_short(e)})")
+    except NotSetUp as e:
+        log.info("money: %s", e)
+        not_set_up.append("money")
     except Exception as e:
         log.exception("money failed")
         problems.append(f"money section unavailable ({_short(e)})")
@@ -120,14 +127,16 @@ def build(settings: dict, day: date, use_llm: bool, preview_projects: bool = Fal
     try:
         import json
         import subprocess
-        from .config import BUTLER_EK
-        out = subprocess.run([str(BUTLER_EK), "reminders", "--list", settings["reminders"]["todo_list"]],
+        out = subprocess.run([butler_ek(), "reminders", "--list", settings["reminders"]["todo_list"]],
                              capture_output=True, text=True, timeout=60)
         if out.returncode == 0:
             # Overdue and dated items first, then the rest in list order.
             todos = sorted(json.loads(out.stdout), key=lambda t: (t.get("due") is None, t.get("due") or ""))
         else:
             problems.append("Reminders unavailable")
+    except NotSetUp as e:
+        log.info("reminders: %s", e)
+        not_set_up.append("Reminders")
     except Exception as e:
         log.exception("reminders failed")
         problems.append(f"Reminders unavailable ({_short(e)})")
@@ -135,7 +144,8 @@ def build(settings: dict, day: date, use_llm: bool, preview_projects: bool = Fal
     next_up = None
     if settings.get("projects", {}).get("in_brief") or preview_projects:
         try:
-            next_up = projects.today_view(projects.load(), day)
+            loaded = projects.load()
+            next_up = projects.today_view(loaded, day) if loaded else None
         except Exception as e:
             log.exception("projects failed")
             problems.append(f"projects unavailable ({_short(e)})")
@@ -154,7 +164,7 @@ def build(settings: dict, day: date, use_llm: bool, preview_projects: bool = Fal
                  people=settings.get("people", []), money=money, next_up=next_up,
                  charts=chart_pngs, networth=nw_line, todos=todos,
                  portal_url=settings.get("portal", {}).get("url", ""),
-                 problems=problems)
+                 problems=problems, not_set_up=not_set_up)
 
 
 def _last_brief_time(day: date, zone) -> datetime:

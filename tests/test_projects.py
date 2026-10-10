@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from datetime import date
 from pathlib import Path
+from unittest import mock
 
 from butler import projects
 
@@ -49,6 +50,26 @@ steps:
     status: waiting
     chase_after: 2026-12-01
 """
+
+
+class ExampleFallbackTest(unittest.TestCase):
+    """The Riveras' projects stand in only while the app runs on the example settings."""
+
+    def setUp(self):
+        self._orig = projects.PROJECTS_DIR
+        projects.PROJECTS_DIR = Path(tempfile.mkdtemp())
+
+    def tearDown(self):
+        shutil.rmtree(projects.PROJECTS_DIR)
+        projects.PROJECTS_DIR = self._orig
+
+    def test_examples_on_the_example_settings(self):
+        with mock.patch.object(projects, "on_example", return_value=True):
+            self.assertTrue(projects.load())
+
+    def test_no_examples_for_a_real_household(self):
+        with mock.patch.object(projects, "on_example", return_value=False):
+            self.assertEqual(projects.load(), [])
 
 
 class ProjectsTest(unittest.TestCase):

@@ -1,13 +1,14 @@
 """Loads projects/*.yaml and works out what's actionable today. See docs/PROJECTS.md.
 
-Until projects/ has a project of your own, the examples in examples/projects/ are used."""
+While the app runs on the example household, the examples in examples/projects/ stand in
+until projects/ has a project of your own. A real household never sees the Riveras' projects."""
 
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
 import yaml
 
-from .config import ROOT
+from .config import ROOT, on_example
 
 PROJECTS_DIR = ROOT / "projects"
 EXAMPLES_DIR = ROOT / "examples" / "projects"
@@ -51,8 +52,9 @@ def _own_files() -> list:
 
 
 def _files() -> list:
-    """Your project files, or the examples until you have one."""
-    return _own_files() or sorted(EXAMPLES_DIR.glob("*.yaml"))
+    """Your project files, or the examples while the app runs on the example household."""
+    own = _own_files()
+    return own if own or not on_example() else sorted(EXAMPLES_DIR.glob("*.yaml"))
 
 
 def load() -> list[Project]:
@@ -187,7 +189,7 @@ def update_step(step_id: str, status: str | None = None, last_done: date | None 
                 who: str | None = None) -> str:
     """Sets `status` and/or `last_done` on one step, editing only those lines so the
     file's comments and layout survive. Returns the project name."""
-    if not _own_files():   # first change while running on the examples: make them yours
+    if not _own_files() and on_example():   # first change to the examples: make them yours
         PROJECTS_DIR.mkdir(exist_ok=True)
         for example in EXAMPLES_DIR.glob("*.yaml"):
             (PROJECTS_DIR / example.name).write_text(example.read_text())

@@ -1,26 +1,20 @@
 #!/bin/bash
-# One-time setup: a Python virtualenv with the dependencies, and the Calendar/Reminders helper.
-# Safe to run again.
+# Sets up Butler's Python: a virtualenv in .venv with the packages from requirements.txt.
+# uv provides Python itself, so this needs no Xcode tools. The Calendar and Reminders helper
+# is built later, by `/butler-setup calendar` (helpers/butler-ek/build.sh). Safe to run again.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 
-python=""
-for candidate in python3.14 python3.13 python3.12 python3; do
-  if command -v "$candidate" >/dev/null && "$candidate" -c 'import sys; sys.exit(sys.version_info < (3, 12))'; then
-    python="$candidate"; break
-  fi
-done
-if [ -z "$python" ]; then
-  echo "Butler needs Python 3.12 or later. Install it with: brew install python" >&2; exit 1
-fi
-if ! command -v swiftc >/dev/null; then
-  echo "Butler needs the Swift compiler. Install it with: xcode-select --install" >&2; exit 1
+uv="$(command -v uv || true)"
+[ -n "$uv" ] || [ ! -x "$HOME/.local/bin/uv" ] || uv="$HOME/.local/bin/uv"
+if [ -z "$uv" ]; then
+  echo "Installing uv, which gives Butler its own Python (https://docs.astral.sh/uv/)."
+  curl -LsSf https://astral.sh/uv/install.sh | env UV_NO_MODIFY_PATH=1 sh
+  uv="$HOME/.local/bin/uv"
 fi
 
-[ -d .venv ] || "$python" -m venv .venv
-.venv/bin/pip install -q --upgrade pip
-.venv/bin/pip install -q -r requirements.txt
-helpers/butler-ek/build.sh
+[ -x .venv/bin/python ] || "$uv" venv --quiet --python 3.13 .venv
+"$uv" pip install --quiet --python .venv/bin/python -r requirements.txt
 mkdir -p data logs out
-echo "ready. next: ./run.sh daily --dry-run --no-llm"
+echo "Python is ready. Next: ./run.sh preview"

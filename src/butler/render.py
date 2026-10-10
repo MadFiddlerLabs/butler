@@ -32,6 +32,7 @@ class Brief:
     next_up: ProjectsToday | None = None
     charts: dict[str, bytes] = field(default_factory=dict)   # name -> PNG, shown in Money
     problems: list[str] = field(default_factory=list)
+    not_set_up: list[str] = field(default_factory=list)  # parts still to connect, e.g. "money"
 
     @property
     def subject(self) -> str:
@@ -433,6 +434,8 @@ def to_html(brief: Brief, image_src=lambda name: f"cid:{name}") -> str:
                    f"{brief.money.fx_rate_plan} {primary_code()} per {second_code()}.")
     if brief.problems:
         footer += " Problems this morning: " + "; ".join(brief.problems) + "."
+    if brief.not_set_up:
+        footer += " Not connected yet: " + ", ".join(brief.not_set_up) + "."
     link = (f' <a href="{escape(brief.portal_url, quote=True)}" style="color:{MUTED}">Open the portal</a>.'
             if brief.portal_url else "")
     parts.append(f'<p style="margin-top:32px;color:{MUTED};font-size:12px;'
@@ -515,4 +518,6 @@ def to_text(brief: Brief) -> str:
 
     if brief.problems:
         lines += ["", "Problems this morning: " + "; ".join(brief.problems) + "."]
+    if brief.not_set_up:
+        lines += ["", "Not connected yet: " + ", ".join(brief.not_set_up) + "."]
     return "\n".join(lines) + "\n"

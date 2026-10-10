@@ -1,9 +1,10 @@
 # Projects
 
 A project is a goal with steps: a residence permit renewal, a school application, a move. One
-YAML file per project in `projects/`. Until you add one, Butler shows the invented examples in
-`examples/projects/`. The first change you make from the portal or by reply copies them into
-`projects/` so you can edit or delete them.
+YAML file per project in `projects/`. While Butler runs on the example settings, it shows the
+invented examples in `examples/projects/`, and the first change you make from the portal or by
+reply copies them into `projects/`. Once you have your own `config/settings.yaml`, the examples
+never appear.
 
 The morning brief shows each person's next steps ("Next up"). The Sunday letter adds a line
 per project on where it stands. The portal's Projects page ranks projects by what can be done

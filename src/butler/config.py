@@ -10,6 +10,18 @@ BUTLER_EK = ROOT / "bin" / "butler-ek"
 # Keychain service names. Add them with:
 #   security add-generic-password -s <service> -a butler -w
 KEYCHAIN_GMAIL = "butler-gmail"
+
+
+class NotSetUp(RuntimeError):
+    """A part the household hasn't connected yet. Normal while someone works through setup,
+    so the brief notes it quietly instead of reporting a problem."""
+
+
+def butler_ek() -> str:
+    """The Calendar and Reminders helper, once `/butler-setup calendar` has built it."""
+    if not BUTLER_EK.exists():
+        raise NotSetUp("the Calendar and Reminders helper isn't built yet (/butler-setup calendar)")
+    return str(BUTLER_EK)
 KEYCHAIN_ANTHROPIC = "butler-anthropic"
 
 
@@ -18,6 +30,11 @@ def config_path(name: str) -> Path:
     so a fresh clone runs on the examples."""
     real = ROOT / "config" / f"{name}.yaml"
     return real if real.exists() else ROOT / "config" / f"{name}.example.yaml"
+
+
+def on_example() -> bool:
+    """True until the household has its own settings.yaml: the app is showing the Riveras."""
+    return not (ROOT / "config" / "settings.yaml").exists()
 
 
 def load_settings() -> dict:

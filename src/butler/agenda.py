@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from .config import BUTLER_EK
+from .config import butler_ek
 
 # Events the Apps Script copied from another calendar (apps-script/butler-calendar.gs).
 COPY_NOTE = re.compile(r"^Copied from \S+@\S+")
@@ -62,7 +62,7 @@ def _assign(title: str, calendar: str, people: list[dict]) -> tuple[list[str], s
 
 def _fetch(start: datetime, end: datetime) -> list[dict]:
     out = subprocess.run(
-        [str(BUTLER_EK), "events", "--start", start.isoformat(), "--end", end.isoformat()],
+        [butler_ek(), "events", "--start", start.isoformat(), "--end", end.isoformat()],
         capture_output=True, text=True, timeout=60,
     )
     if out.returncode != 0:
