@@ -29,8 +29,9 @@ def _hash(token: str) -> str:
 
 
 class FakeAccountAPI:
-    def __init__(self, auto_verify: bool = False, expire: bool = False):
+    def __init__(self, auto_verify: bool = False, expire: bool = False, unavailable: bool = False):
         self.auto_verify = auto_verify
+        self.unavailable = unavailable   # sign-in down: /auth/start answers 503, like the real API without Resend
         self.expire = expire
         self.requests: dict[str, dict] = {}      # request_id -> {email, butler_name, poll_hash, token, status}
         self.sessions: dict[str, str] = {}       # sha256(session) -> email
@@ -102,6 +103,8 @@ class FakeAccountAPI:
                     return self._send(400, {"error": "bad json"})
                 api.calls.append(("POST", url.path, body))
                 if url.path == "/api/auth/start":
+                    if api.unavailable:
+                        return self._send(503, {"error": "email_unavailable"})
                     if "@" not in body.get("email", ""):
                         return self._send(400, {"error": "that email doesn't look right"})
                     request_id, poll_secret, link = (secrets.token_urlsafe(16), secrets.token_urlsafe(32),

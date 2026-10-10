@@ -140,6 +140,13 @@ while :; do
       email=""
       break
     fi
+    # A 5xx is our side (email sign-in down or not open yet), not the student's: carry on.
+    case "$code" in
+      5??)
+        say "Sign-in isn't available right now. That's on our side, not yours. Let's carry on, and sign in later with: butler setup"
+        email=""
+        break ;;
+    esac
     error="$(json_value error "$body")"
     say "That didn't work${error:+ ($error)}. Try again, or type skip."
     continue
