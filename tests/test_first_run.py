@@ -140,6 +140,18 @@ class FirstRunTest(unittest.TestCase):
         self.assertIn("doesn't look like an email address", proc.stdout)
         self.assertIn("You're signed in as sam@example.com.", proc.stdout)
 
+    def test_sign_in_down_carries_on_without_a_retry_loop(self):
+        api = FakeAccountAPI(unavailable=True).start()
+        self.addCleanup(api.stop)
+        h = self.home(api=api)
+        proc = h.first_run(["", "", "sam@example.com", *LESSONS])
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("Sign-in isn't available right now. That's on our side, not yours.", proc.stdout)
+        self.assertEqual(proc.stdout.count("Your email \u203a"), 1, "it asked for the email only once")
+        self.assertIn("Bento is ready.", proc.stdout)
+        self.assertIn("Your brief is ready", proc.stdout)
+        self.assertEqual(h.secrets(), {})
+
     def test_stop_before_claude(self):
         h = self.home()
         proc = h.first_run(["", "", "skip", *LESSONS[:3], ""])
