@@ -23,7 +23,7 @@ class FirstRunTest(unittest.TestCase):
 
     def test_the_whole_first_run(self):
         h = self.home()
-        proc = h.first_run(["", "", "sam@example.com", *LESSONS])
+        proc = h.first_run(["", "", "sam@example.com", "yes", *LESSONS])
         out = proc.stdout
         self.assertEqual(proc.returncode, 0, out + proc.stderr)
         self.assertIn("Hello! I'm Bento, your new butler.", out)
@@ -31,7 +31,10 @@ class FirstRunTest(unittest.TestCase):
         self.assertIn("Bento is ready.", out)
         self.assertIn("I work for Sam and Alex.", out)
         self.assertIn("Your brief is ready", out)
-        self.assertIn('"/butler-setup calendar"', out)
+        self.assertIn("It starts with Module 1: Meet Claude Code.", out)
+        self.assertIn("starting Module 1 of the Build Your Butler course", out)
+        # Weekly lesson emails only because they said yes.
+        self.assertEqual(self.api.prefs, [{"email": "sam@example.com", "nudges": True}])
         # The session went to Keychain, never to a file.
         token = h.secrets().get("butler-account")
         self.assertTrue(token)
@@ -83,9 +86,11 @@ class FirstRunTest(unittest.TestCase):
         accepted = json.loads((h.root / "data" / "terms.json").read_text())["terms_accepted_at"]
         h.env["BUTLER_API"] = self.api.url + "/api"
         h.env["BUTLER_GEOCODE_URL"] = self.api.url + "/geocode"
-        proc = h.first_run(["", "sam@example.com", *LESSONS])
+        proc = h.first_run(["", "sam@example.com", "", *LESSONS])
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertNotIn("By continuing", proc.stdout)
+        # Pressing Enter at the weekly-email question means no.
+        self.assertEqual(self.api.prefs, [{"email": "sam@example.com", "nudges": False}])
         request = self.api.requests[next(iter(self.api.requests))]
         self.assertEqual(request["terms_accepted_at"], accepted)
 
@@ -130,7 +135,7 @@ class FirstRunTest(unittest.TestCase):
 
     def test_bad_email_then_good(self):
         h = self.home()
-        proc = h.first_run(["", "", "not-an-email", "sam@example.com", *LESSONS])
+        proc = h.first_run(["", "", "not-an-email", "sam@example.com", "", *LESSONS])
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertIn("doesn't look like an email address", proc.stdout)
         self.assertIn("You're signed in as sam@example.com.", proc.stdout)

@@ -35,6 +35,7 @@ class FakeAccountAPI:
         self.requests: dict[str, dict] = {}      # request_id -> {email, butler_name, poll_hash, token, status}
         self.sessions: dict[str, str] = {}       # sha256(session) -> email
         self.progress: list[dict] = []
+        self.prefs: list[dict] = []
         self.calls: list[tuple[str, str, dict]] = []
         self.links: list[str] = []               # magic-link tokens "emailed"
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
@@ -136,6 +137,14 @@ class FakeAccountAPI:
                     if not email:
                         return self._send(401, {"error": "not signed in"})
                     api.progress.append({"email": email, "lesson": body.get("lesson"), "status": body.get("status")})
+                    return self._send(200, {"ok": True})
+                if url.path == "/api/prefs":
+                    email = self._session()
+                    if not email:
+                        return self._send(401, {"error": "not signed in"})
+                    if not isinstance(body.get("nudges"), bool):
+                        return self._send(400, {"error": "nudges must be true or false"})
+                    api.prefs.append({"email": email, "nudges": body["nudges"]})
                     return self._send(200, {"ok": True})
                 if url.path == "/api/auth/logout":
                     return self._send(200, {"ok": True})

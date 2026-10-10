@@ -111,7 +111,17 @@ class CliTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertIn("paid Claude plan", proc.stdout)
         self.assertIn("would run: curl -fsSL https://claude.ai/install.sh | bash", proc.stdout)
-        self.assertIn('"/butler-setup calendar"', proc.stdout)
+        self.assertIn("It starts with Module 1: Meet Claude Code.", proc.stdout)
+        self.assertIn("Don't change any files yet.", proc.stdout)
+
+    def test_claude_later_picks_up_where_you_left_off(self):
+        (self.home.root / "data").mkdir(exist_ok=True)
+        (self.home.root / "data" / "claude-welcomed").touch()
+        proc = self.home.butler("claude", "--yes")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn('would run:', proc.stdout)
+        self.assertIn('"/butler-setup"', proc.stdout)
+        self.assertNotIn("Module 1", proc.stdout)
 
     def test_claude_can_wait(self):
         proc = self.home.butler("claude", stdin="no\n")

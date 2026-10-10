@@ -155,6 +155,15 @@ while :; do
       || say "I couldn't save your sign-in to Keychain. You can sign in again later with: butler setup"
     post /progress '{"lesson":"setup.email","status":"done"}' "$token" >/dev/null || true
     ok "You're signed in as $email."
+    say "Would you like one short email a week with your next lesson? You can stop any time."
+    printf 'Weekly lesson email? Type yes, or press Enter for no › '
+    read -r nudge || nudge=""
+    case "$(printf '%s' "$nudge" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
+      y|yes) nudges=true ;;
+      *) nudges=false ;;
+    esac
+    post /prefs "{\"nudges\":$nudges}" "$token" >/dev/null || true
+    if [ "$nudges" = true ]; then ok "Done. One email a week, and every one has a stop link."; else say "No weekly emails. Change your mind any time on buildyourbutler.com."; fi
     break
   fi
   [ "${status:-}" = "expired" ] && continue
