@@ -1,5 +1,6 @@
-# Unit tests and pyflakes on every push and pull request. The tests are pure Python and read
-# the example config, so they run on Linux without Calendar, Keychain or network access.
+# Every push and pull request: pyflakes, shellcheck, and the unit, integration, privacy and
+# contract tests (tests/), on Linux with every outside service faked. No secrets needed.
+# A second job reruns the suite at awkward dates (month and year ends, DST changes).
 name: tests
 
 on:
@@ -19,8 +20,34 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -r requirements.txt pyflakes
+      - run: pip install -r requirements-dev.txt
       - run: python -m pyflakes src tests scripts
-      - run: python -m unittest discover tests
+      - run: git ls-files '*.sh' | xargs shellcheck -S warning
+      - run: python -m unittest discover tests -v
         env:
           PYTHONPATH: src
+
+  dates:
+    # libfaketime moves the clock for the tests and the flows they run.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        when:
+          - "2026-11-01 08:00:00"   # a Sunday that's the 1st: weekly and monthly both due
+          - "2026-10-25 09:00:00"   # Europe's clocks go back
+          - "2027-03-28 09:00:00"   # Europe's clocks go forward
+          - "2026-12-31 22:30:00"   # year end
+          - "2027-02-28 08:00:00"   # end of a short month
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: sudo apt-get install -y faketime
+      - run: pip install -r requirements-dev.txt
+      - run: faketime -f "@${{ matrix.when }}" python -m unittest discover tests
+        env:
+          PYTHONPATH: src
+          FAKETIME_DONT_FAKE_MONOTONIC: "1"

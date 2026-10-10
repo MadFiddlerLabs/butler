@@ -1,0 +1,33 @@
+# Paid, tiny: one real Claude call per schema through llm._ask_json, so the request shape
+# Butler depends on still works. Needs the ANTHROPIC_API_KEY repository secret.
+name: live-contract
+
+on:
+  schedule:
+    - cron: "5 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: python tests/live/live_contract.py
+        env:
+          PYTHONPATH: src
+      - name: Open an issue when a scheduled run fails
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/report-failure.sh

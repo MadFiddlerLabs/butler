@@ -6,6 +6,7 @@
 #
 # Set BUTLER_HOME to install somewhere else. Running it again updates the code and never
 # touches your settings, data, projects or budget: those files aren't in the download.
+# BUTLER_SOURCE=<a local checkout> installs that instead of downloading (used by the tests).
 set -euo pipefail
 repo="nerolabs/butler"
 home="${BUTLER_HOME:-$HOME/Butler}"
@@ -19,19 +20,25 @@ if [ -d "$home/.git" ]; then
   exit 1
 fi
 
-# The newest release, or main until the first release exists.
-tag="$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" 2>/dev/null \
-  | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1 || true)"
-if [ -n "$tag" ]; then
-  url="https://codeload.github.com/$repo/tar.gz/refs/tags/$tag"; version="$tag"
-else
-  url="https://codeload.github.com/$repo/tar.gz/refs/heads/main"; version="main"
-fi
-
-echo "Downloading Butler ($version) to $home"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-curl -fsSL "$url" | tar -xz -C "$tmp" --strip-components 1
+if [ -n "${BUTLER_SOURCE:-}" ]; then
+  # A local checkout: its committed files, exactly what a release download contains.
+  version="local"
+  echo "Installing Butler from $BUTLER_SOURCE to $home"
+  git -C "$BUTLER_SOURCE" archive HEAD | tar -x -C "$tmp"
+else
+  # The newest release, or main until the first release exists.
+  tag="$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" 2>/dev/null \
+    | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1 || true)"
+  if [ -n "$tag" ]; then
+    url="https://codeload.github.com/$repo/tar.gz/refs/tags/$tag"; version="$tag"
+  else
+    url="https://codeload.github.com/$repo/tar.gz/refs/heads/main"; version="main"
+  fi
+  echo "Downloading Butler ($version) to $home"
+  curl -fsSL "$url" | tar -xz -C "$tmp" --strip-components 1
+fi
 mkdir -p "$home"
 cp -R "$tmp"/. "$home"/
 echo "$version" > "$home/.butler-version"

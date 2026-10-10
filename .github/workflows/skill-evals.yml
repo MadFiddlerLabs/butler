@@ -1,0 +1,60 @@
+# Paid: headless Claude Code runs /butler-setup install, /butler-doctor and a pasted-secret
+# scenario in a fresh install, with a scripted user, and Python checks the results and the
+# safety rules. Needs the ANTHROPIC_API_KEY repository secret; skips cleanly without it.
+name: skill-evals
+
+on:
+  schedule:
+    - cron: "41 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      scenarios:
+        description: "Scenarios to run (space-separated; empty for all)"
+        default: ""
+      model:
+        description: "Model for Claude Code (empty for its default)"
+        default: ""
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  evals:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - name: Check for the API key
+        id: key
+        run: |
+          if [ -n "$ANTHROPIC_API_KEY" ]; then echo "present=true" >> "$GITHUB_OUTPUT"
+          else echo "No ANTHROPIC_API_KEY secret: skipping." >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/checkout@v4
+        if: steps.key.outputs.present == 'true'
+      - uses: actions/setup-python@v5
+        if: steps.key.outputs.present == 'true'
+        with:
+          python-version: "3.13"
+      - if: steps.key.outputs.present == 'true'
+        run: |
+          pip install pyyaml
+          npm install -g @anthropic-ai/claude-code
+      - if: steps.key.outputs.present == 'true'
+        # Word splitting on SCENARIOS is intended: one argument per scenario.
+        run: python tests/evals/run_evals.py $SCENARIOS
+        env:
+          SCENARIOS: ${{ inputs.scenarios }}
+          EVAL_MODEL: ${{ inputs.model }}
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: eval-transcripts
+          path: eval-output/
+          if-no-files-found: ignore
+      - name: Open an issue when a scheduled run fails
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/report-failure.sh

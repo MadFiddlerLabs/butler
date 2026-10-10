@@ -57,7 +57,11 @@ someone developing Butler itself. The hard rules apply to both.
 Each config file falls back to its `.example` twin until the real one exists, so a fresh
 clone runs on the example household.
 
-Tests: `PYTHONPATH=src .venv/bin/python -m unittest discover tests`
+Tests: `PYTHONPATH=src .venv/bin/python -m unittest discover tests` (needs `requirements-dev.txt`).
+There is no manual testing: every check is automated, and `docs/TESTING.md` lists the layers
+(unit, integration with fakes, privacy, contracts, dates, macOS end to end, paid skill evals and
+a live contract). New behaviour needs a test in the right layer; new outside services need a
+fake in `tests/fakes/`; a new Claude call needs its schema in `test_contracts.py`.
 
 Safe checks that send nothing: `./run.sh preview` (opens the brief in the browser),
 `./run.sh daily --dry-run [--no-llm]` (writes `out/preview/`),

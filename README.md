@@ -118,6 +118,7 @@ scripts/bootstrap.sh
 - [docs/CONFIG.md](docs/CONFIG.md): every setting and money rule
 - [docs/PROJECTS.md](docs/PROJECTS.md): family projects with steps, dependencies and dates
 - [docs/PORTAL.md](docs/PORTAL.md): the portal over Tailscale, and under your own domain
+- [docs/TESTING.md](docs/TESTING.md): how Butler is tested, all automated
 - [SECURITY.md](SECURITY.md): how to report a vulnerability
 
 ## Support

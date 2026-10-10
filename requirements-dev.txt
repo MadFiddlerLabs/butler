@@ -1,0 +1,4 @@
+# Test-only dependencies, on top of requirements.txt.
+-r requirements.txt
+jsonschema>=4.23
+pyflakes>=3.2

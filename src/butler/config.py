@@ -10,6 +10,7 @@ BUTLER_EK = ROOT / "bin" / "butler-ek"
 # Keychain service names. Add them with:
 #   security add-generic-password -s <service> -a butler -w
 KEYCHAIN_GMAIL = "butler-gmail"
+KEYCHAIN_ANTHROPIC = "butler-anthropic"
 
 
 class NotSetUp(RuntimeError):
@@ -22,7 +23,6 @@ def butler_ek() -> str:
     if not BUTLER_EK.exists():
         raise NotSetUp("the Calendar and Reminders helper isn't built yet (/butler-setup calendar)")
     return str(BUTLER_EK)
-KEYCHAIN_ANTHROPIC = "butler-anthropic"
 
 
 def config_path(name: str) -> Path:
