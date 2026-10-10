@@ -95,6 +95,7 @@ class SetupHome:
             "BUTLER_NO_OPEN": "1",
             "BUTLER_CLAUDE_DRY_RUN": "1",
             "MPLBACKEND": "Agg",
+            "BUTLER_COLUMNS": "1000",     # no wrapping, so tests match whole sentences; test_wrap checks 80
         }
         self.env.pop("PYTHONPATH", None)
         if api is not None:
