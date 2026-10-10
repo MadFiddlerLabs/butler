@@ -43,7 +43,7 @@ evidence). Prefer config over code:
 
 | Evidence | Usual fix |
 |---|---|
-| "Less sport / more local news" | `news.regions` feeds or order; the prompt already reads feedback |
+| "Less sport / more local news" | `news.interests`, and `news.regions` feeds or order. The news call never reads feedback, by design |
 | A payee in Other, or a wrong category | An override or a `map` entry in `category_map.yaml` |
 | A recurring charge that's really fixed | `fixed: true` with `line`, or `rules.fixed_lines` |
 | A one-off counted as daily spending | An override with `one_off: true` and a `note` |

@@ -35,10 +35,24 @@ def _text_body(msg: email.message.Message) -> str:
     return "\n".join(l for l in text.splitlines() if not l.startswith(">")).strip()
 
 
+GMAIL_AUTHSERV = "mx.google.com"
+
+
 def _dkim_passes(msg: email.message.Message, sender: str) -> bool:
+    """True when Gmail's own Authentication-Results header shows a DKIM pass for exactly the
+    sender's domain. Only the topmost header counts: Gmail adds it on arrival, and any below
+    it came with the message, so the sender could have written them."""
     domain = sender.rsplit("@", 1)[-1].lower()
-    results = " ".join(msg.get_all("Authentication-Results", []))
-    return re.search(rf"dkim=pass[^;]*header\.i=@{re.escape(domain)}\b", results, re.I) is not None
+    headers = msg.get_all("Authentication-Results") or []
+    if not headers:
+        return False
+    authserv, _, results = " ".join(str(headers[0]).split()).partition(";")
+    if authserv.strip().lower() != GMAIL_AUTHSERV:
+        return False
+    # The domain must end where the property ends, so "gmail.com.attacker.example" fails.
+    signed_by = re.compile(rf"\bheader\.(?:i=@|d=){re.escape(domain)}(?=[\s;)]|$)", re.I)
+    return any(re.match(r"\s*dkim=pass\b", r, re.I) and signed_by.search(r)
+               for r in results.split(";"))
 
 
 def _login(settings: dict) -> imaplib.IMAP4_SSL:

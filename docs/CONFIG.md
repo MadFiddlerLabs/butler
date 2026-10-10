@@ -26,6 +26,7 @@ Plus the budget workbook, `budget/budget.xlsx`, and the household notes Claude r
 | `email.send_hour`, `weekly_day`, `weekly_hour`, `monthly_hour` | When each email goes out |
 | `household.adults` | The adults, with the addresses they reply from |
 | `household.place` | Your town, for the news prompt |
+| `news.interests` | What you want from the news, in a sentence. With `household.place`, the only household detail the news call sees, so keep names out of it |
 | `household.about` | A short description of the household for Claude. Never put ID numbers here |
 | `household.notes_file` | Facts Claude should know, kept up to date by replies |
 | `calendar.include` | Calendar titles to read, as `bin/casa-ek calendars` lists them |
@@ -41,6 +42,7 @@ Plus the budget workbook, `budget/budget.xlsx`, and the household notes Claude r
 | `language_learning` | Optional: a phrase of the day for `learner` in `language` at `level` |
 | `score_tracker` | Optional: practice-test scores for `person` toward `pass_score`/`out_of` |
 | `portal` | Port, public URL, allowed Tailscale logins, login-to-name map |
+| `portal.hosts` | Optional: more names the portal answers to, besides the host in `portal.url` (e.g. the `.ts.net` name next to your own domain). Any other name is refused |
 | `budget.fee_label` | What Assumptions!C6 is (shown on the Budget page) |
 | `networth` | Thresholds for explaining a change, known reasons, short account labels |
 

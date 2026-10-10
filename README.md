@@ -54,8 +54,8 @@ Casa was designed so a household can trust it with everything.
   document names and dates only.
 - **Claude only proposes; Python acts.** Replies become actions from a fixed allowlist.
   Nothing can be deleted by a reply. Only trusted senders with a passing DKIM signature count.
-- **News is quarantined.** The news call sees no personal data and has no tools, and links
-  always come from the feed, never from the model.
+- **News is quarantined.** The news call sees only your town and a sentence about what news
+  you want, and it has no tools. Links always come from the feed, never from the model.
 
 What does leave the Mac: calendar titles, project steps, money summaries and household notes
 go to the Claude API to write the emails; email goes through the assistant's Gmail account;

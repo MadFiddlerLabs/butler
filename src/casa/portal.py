@@ -4,9 +4,11 @@ front of it for devices on the tailnet.
     python -m casa.portal            # serve on 127.0.0.1:8787
 
 Who's allowed: requests that come through `tailscale serve` carry a Tailscale-User-Login
-header, checked against portal.allowed_logins. Requests without it can only come from
-this Mac itself (the server binds to loopback). Changes go through the same code paths
-as email replies (projects.update_step, casa-ek), so nothing here can delete anything.
+header, checked against portal.allowed_logins. A request without a login is let in only
+when it comes straight from this Mac to 127.0.0.1 or localhost, with no proxy in between.
+Any other Host name is refused, so a web page can't reach the portal by DNS rebinding.
+Changes go through the same code paths as email replies (projects.update_step, casa-ek),
+so nothing here can delete anything.
 """
 
 import json
@@ -18,7 +20,7 @@ from html import escape
 
 from flask import Flask, Response, abort, redirect, request, send_from_directory
 
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from . import charts, finance, networth, projects, replies
 from .config import CASA_EK, ROOT, brand, load_settings, people, tz
@@ -52,24 +54,51 @@ def _whois(ip: str) -> str | None:
     return _cached(f"whois-{ip}", 600, look)
 
 
+LOCAL_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
+
+
+def _caddy() -> bool:
+    """True when the portal sits behind Caddy: launchd/install.sh --domain wrote caddy/domain.env."""
+    return (ROOT / "caddy" / "domain.env").exists()
+
+
 def _login() -> str | None:
     """Who's visiting. Through `tailscale serve` in HTTPS mode: the Tailscale-User-Login header.
-    Through your own domain (Caddy, see caddy/): the peer address Caddy passes on, looked up with whois."""
-    peer = request.headers.get("X-Casa-Peer")
-    if peer:
-        return _whois(peer) or "unknown"
+    Through your own domain (Caddy, see caddy/): the peer address Caddy passes on, looked up with
+    whois. Each header counts only in its own setup, so a client can't send the other one."""
+    if _caddy():
+        peer = request.headers.get("X-Casa-Peer")
+        return (_whois(peer) or "unknown") if peer else None
     return request.headers.get("Tailscale-User-Login")
+
+
+def _hostname(netloc: str) -> str:
+    return re.sub(r":\d+$", "", netloc).lower()
+
+
+def _served_hosts(settings: dict) -> set[str]:
+    """The names the portal answers to: this Mac, the host in portal.url, and portal.hosts."""
+    portal = settings["portal"]
+    names = {urlparse(portal.get("url", "")).hostname or ""}
+    names |= {h.lower() for h in portal.get("hosts", [])}
+    return {n for n in names if n} | LOCAL_HOSTS
 
 
 @app.before_request
 def _gate():
     settings = load_settings()
+    host = _hostname(request.host)
+    if host not in _served_hosts(settings):
+        abort(403)
     login = _login()
-    if login and login.lower() not in {l.lower() for l in settings["portal"]["allowed_logins"]}:
+    if login is None:
+        if host not in LOCAL_HOSTS or request.headers.get("X-Forwarded-For"):
+            abort(403)
+    elif login.lower() not in {l.lower() for l in settings["portal"]["allowed_logins"]}:
         abort(403)
     if request.method == "POST":
         origin = request.headers.get("Origin") or request.headers.get("Referer") or ""
-        if request.host not in origin:
+        if urlparse(origin).netloc.lower() != request.host.lower():
             abort(403)
 
 

@@ -24,8 +24,11 @@ open http://127.0.0.1:8787
    to a name in `portal.people` so updates say who made them.
 
 `tailscale serve` tells the portal who is visiting (the `Tailscale-User-Login` header), and the
-portal turns away anyone not in `allowed_logins`. On iPhone, open the address in Safari and
-use Share > Add to Home Screen for an app icon.
+portal turns away anyone not in `allowed_logins`. It also refuses any request for a name it
+doesn't serve (`portal.url`, `portal.hosts`, or 127.0.0.1 and localhost), and any request
+without a login unless it comes straight from the Mac itself.
+
+On iPhone, open the address in Safari and use Share > Add to Home Screen for an app icon.
 
 The portal works while the Mac is awake.
 
@@ -60,7 +63,8 @@ brew install caddy lego
    tailscale serve reset
    tailscale serve --bg --tcp 443 --proxy-protocol 2 tcp://127.0.0.1:8443
    ```
-5. Set `portal.url` to `https://casa.example.com`.
+5. Set `portal.url` to `https://casa.example.com`, and add the `.ts.net` name to
+   `portal.hosts` if you also want to use that one.
 
 With this setup the portal identifies visitors with `tailscale whois` on the address Caddy
 passes on, using the Tailscale app at `/Applications/Tailscale.app`.

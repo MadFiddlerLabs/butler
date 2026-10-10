@@ -93,6 +93,9 @@ news:
   max_age_hours: 30
   stories_per_region: 4
   language: English     # summaries are written in this language
+  # What the household wants from the news, in a sentence. This and household.place are
+  # all the news call sees: keep names and personal details out of it.
+  interests: Local services, schools and transport, the economy and major world events. Little sport.
   regions:
     # Add a local region with your town's paper first, for example:
     # - key: local
@@ -148,6 +151,9 @@ score_tracker:
 portal:
   port: 8787
   url: https://your-mac.your-tailnet.ts.net   # or your own domain (see docs/PORTAL.md)
+  # Other names the portal answers to, when it has more than the one in url (for example
+  # the .ts.net name next to your own domain). Requests for any other name are refused.
+  hosts: []
   # Tailscale logins allowed in.
   allowed_logins:
     - sam@example.com
