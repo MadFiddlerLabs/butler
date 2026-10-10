@@ -78,6 +78,26 @@ bootstrap_pid=$!
 # ---------- 2. email ----------
 
 heading "Step 1 of 4 · Your email"
+
+# The Terms, once per version: the website downloads at once, so they're agreed to here.
+# data/terms.json records it, and goes to the server with the sign-in (now or, offline, later).
+terms_version="$(tr -d '\n' < "$home/TERMS_VERSION" 2>/dev/null || echo unknown)"
+terms_file="$home/data/terms.json"
+if [ "$(json_value terms_version "$(cat "$terms_file" 2>/dev/null)")" != "$terms_version" ]; then
+  say "By continuing, you agree to the Terms (https://buildyourbutler.com/terms/) and Privacy (https://buildyourbutler.com/privacy/)."
+  printf 'Continue? [Y/n] '
+  read -r agree || agree=""
+  case "$(printf '%s' "$agree" | tr '[:upper:]' '[:lower:]')" in
+    n|no)
+      kill "$bootstrap_pid" 2>/dev/null || true
+      say "No problem. Nothing has been sent anywhere. If you change your mind, open Terminal and type: butler setup"
+      exit 0
+      ;;
+  esac
+  printf '{"terms_version":"%s","terms_accepted_at":"%s"}\n' "$terms_version" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$terms_file"
+fi
+terms_accepted_at="$(json_value terms_accepted_at "$(cat "$terms_file")")"
+
 say "I'll email you a link to sign in. It keeps your place in the course. Nothing from your"
 say "household ever leaves this Mac."
 token=""
@@ -95,7 +115,7 @@ while :; do
     say "That doesn't look like an email address. Try again, or type skip."
     continue
   fi
-  response="$(post /auth/start "{\"email\":\"$email\",\"butler_name\":\"$name\",\"client\":\"setup/$version\"}")"
+  response="$(post /auth/start "{\"email\":\"$email\",\"butler_name\":\"$name\",\"client\":\"setup/$version\",\"terms_version\":\"$terms_version\",\"terms_accepted_at\":\"$terms_accepted_at\"}")"
   code="$(printf '%s' "$response" | tail -n 1)"
   body="$(printf '%s' "$response" | sed '$d')"
   if [ "$code" != "200" ]; then

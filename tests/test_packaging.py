@@ -126,7 +126,8 @@ class BuildPackageTest(unittest.TestCase):
         files = subprocess.run(["pkgutil", "--payload-files", str(self.pkg)], capture_output=True,
                                text=True, check=True).stdout.splitlines()
         for path in ("./Butler/bin/butler", "./Butler/scripts/first-run.sh", "./Butler/scripts/first-run.command",
-                     "./Butler/src/butler/cli.py", "./Butler/config/settings.example.yaml", "./Butler/.butler-version"):
+                     "./Butler/src/butler/cli.py", "./Butler/config/settings.example.yaml", "./Butler/.butler-version",
+                     "./Butler/TERMS_VERSION"):
             self.assertIn(path, files)
         for path in files:
             self.assertFalse(path.startswith("./Butler/.github"), path)

@@ -30,7 +30,7 @@ All bodies are JSON. Return clear `error` strings. Rate-limit by email and IP.
 
 | Call | Body | Returns |
 |---|---|---|
-| `POST /api/auth/start` | `{email, butler_name, client:"setup/<version>"}` | `{request_id, poll_secret, expires_in}`; emails a magic link |
+| `POST /api/auth/start` | `{email, butler_name, client:"setup/<version>", terms_version, terms_accepted_at}` | `{request_id, poll_secret, expires_in}`; emails a magic link, stores the Terms acceptance |
 | `GET /verify?t=<token>` | (a page) | "You're in. Go back to your Terminal." It POSTs to `/api/auth/verify` |
 | `POST /api/auth/verify` | `{token}` | `{ok:true}`; marks the request verified |
 | `POST /api/auth/poll` | `{request_id, poll_secret}` | `{status:"pending"|"verified"|"expired"}`, plus `session_token` once verified (returned once) |
@@ -48,6 +48,16 @@ All bodies are JSON. Return clear `error` strings. Rate-limit by email and IP.
 - The magic-link email is plain and warm, names the butler, and says "If you didn't ask for
   this, ignore it."
 - Privacy: we hold emails, butler names and lesson progress. Nothing from the household.
+
+## The Terms
+
+The homepage downloads at once, so the Terms are agreed to in the Terminal setup, at the email
+step: "By continuing, you agree to the Terms (https://buildyourbutler.com/terms/) and Privacy
+(https://buildyourbutler.com/privacy/)." then "Continue? [Y/n]". "n" exits kindly, and nothing is
+sent. The agreement is recorded in `~/Butler/data/terms.json` (`terms_version` from the repo's
+`TERMS_VERSION` file, `terms_accepted_at` in ISO 8601 UTC) and goes with every
+`/api/auth/start`, so an agreement made offline reaches the server with the first sign-in. A new
+`TERMS_VERSION` asks again.
 
 ## The setup app (engine repo)
 

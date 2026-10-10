@@ -107,7 +107,9 @@ class FakeAccountAPI:
                                                      secrets.token_urlsafe(32))
                     api.requests[request_id] = {"email": body["email"], "butler_name": body.get("butler_name", ""),
                                                 "poll_hash": _hash(poll_secret), "link_hash": _hash(link),
-                                                "status": "pending", "issued": False}
+                                                "status": "pending", "issued": False,
+                                                "terms_version": body.get("terms_version"),
+                                                "terms_accepted_at": body.get("terms_accepted_at")}
                     api.links.append(link)
                     if api.auto_verify:
                         api._verify(link)

@@ -12,10 +12,11 @@ import subprocess
 import urllib.error
 import urllib.request
 
-from .config import keychain
+from .config import ROOT, keychain
 
 API = os.environ.get("BUTLER_API", "https://buildyourbutler.com/api").rstrip("/")
 KEYCHAIN_ACCOUNT = "butler-account"
+TERMS_FILE = ROOT / "data" / "terms.json"          # written when the student agrees, in first-run.sh
 TIMEOUT = 8
 
 
@@ -37,13 +38,25 @@ def _call(method: str, path: str, body: dict | None = None, token: str | None = 
             message = json.load(e).get("error") or e.reason
         except ValueError:
             message = e.reason
+        finally:
+            e.close()
         raise AccountError(str(message)) from None
     except (urllib.error.URLError, OSError, ValueError) as e:
         raise AccountError(f"couldn't reach buildyourbutler.com ({e})") from None
 
 
+def terms() -> dict:
+    """The Terms version the student agreed to and when, recorded locally by the first run. It goes
+    with every sign-in, so an agreement made offline still reaches the server."""
+    try:
+        recorded = json.loads(TERMS_FILE.read_text())
+        return {k: recorded[k] for k in ("terms_version", "terms_accepted_at")}
+    except (OSError, ValueError, KeyError):
+        return {}
+
+
 def start(email: str, butler_name: str, client: str) -> dict:
-    return _call("POST", "/auth/start", {"email": email, "butler_name": butler_name, "client": client})
+    return _call("POST", "/auth/start", {"email": email, "butler_name": butler_name, "client": client, **terms()})
 
 
 def poll(request_id: str, poll_secret: str) -> dict:

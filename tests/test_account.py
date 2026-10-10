@@ -28,6 +28,22 @@ class SignInTest(unittest.TestCase):
         # The session is handed out once.
         self.assertNotIn("session_token", account.poll(r["request_id"], r["poll_secret"]))
 
+    def test_start_sends_the_recorded_terms(self):
+        import tempfile
+        from pathlib import Path
+        terms = Path(tempfile.mkdtemp()) / "terms.json"
+        terms.write_text('{"terms_version": "0.1-draft", "terms_accepted_at": "2026-10-10T18:00:00Z"}')
+        with mock.patch.object(account, "TERMS_FILE", terms):
+            r = account.start("sam@example.com", "Bento", "setup/test")
+        sent = self.api.requests[r["request_id"]]
+        self.assertEqual((sent["terms_version"], sent["terms_accepted_at"]), ("0.1-draft", "2026-10-10T18:00:00Z"))
+
+    def test_start_without_terms_sends_none(self):
+        from pathlib import Path
+        with mock.patch.object(account, "TERMS_FILE", Path("/nonexistent/terms.json")):
+            r = account.start("sam@example.com", "Bento", "setup/test")
+        self.assertIsNone(self.api.requests[r["request_id"]]["terms_version"])
+
     def test_wrong_poll_secret(self):
         r = account.start("sam@example.com", "Bento", "setup/test")
         with self.assertRaises(account.AccountError):

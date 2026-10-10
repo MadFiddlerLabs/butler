@@ -1,6 +1,6 @@
 ---
 name: butler-setup
-description: Set up Butler for a household, one step at a time, matching the Build Your Butler course. Steps are install (name the butler, first preview), calendar, brain (Claude API key), inbox (Gmail and the daily schedule), replies, money (Lunch Money), projects, letters and phone (Tailscale portal). Use when the user runs /butler-setup, with or without a step, or asks to set up, install or continue setting up Butler.
+description: Set up Butler for a household, one step at a time, matching the Build Your Butler course. Steps are install (review and complete the household after the guided first run), calendar, brain (Claude API key), inbox (Gmail and the daily schedule), replies, money (Lunch Money), projects, letters and phone (Tailscale portal). Use when the user runs /butler-setup, with or without a step, or asks to set up, install or continue setting up Butler.
 argument-hint: "[install | calendar | brain | inbox | replies | money | projects | letters | phone]"
 ---
 
@@ -39,17 +39,20 @@ one sentence, and offer the next step.
 Never overwrite a real config file without a yes. Copy it to `<name>.yaml.bak` first.
 Examples you show are invented (the Riveras and their butler Bento), and you say so.
 
-## install (course Module 2: Hire your butler)
+## install (course Module 2: Hire your butler properly)
 
-The win: their butler's first brief, on screen, with their names and their weather. It needs
-no accounts besides Claude.
+The win: their household, complete. Their butler knows everyone, the town, the news they want,
+and their first brief looks like theirs.
 
-Students who downloaded the package have usually done this already, in the guided first run
-(`butler setup`): their butler is named, `config/settings.yaml` has their town and adults, and a
-brief exists in `out/preview/`. Check that first. If it's done, say so warmly, show them
-`butler status`, and offer the calendar step instead. The `butler` command writes the same
-settings this step does (`src/butler/setup_settings.py`), so you can also use `butler town …`
-and `butler adults …` here.
+Students reach this step after Module 0 ("Your first two minutes", the guided first run the
+download opens: email, `butler town`, `butler adults`, `butler brief`) and Module 1 ("Meet
+Claude Code", `butler claude`). So usually their butler is named, `config/settings.yaml` has
+their town and adults, and a brief exists in `out/preview/`. Start by reading the settings and
+running `butler status`. Say warmly what's already done. Then review it with them and complete
+what the first run skips: everyone else in the household (children, a nanny, a carer), nicknames,
+the news. The `butler` command writes the same settings this step does
+(`src/butler/setup_settings.py`), so you can use `butler town …` and `butler adults …` here too.
+If they never ran the first run, do the whole step below.
 
 1. Check you're in the Butler folder: `scripts/install.sh` exists. If `.venv/bin/python` is
    missing, run `scripts/bootstrap.sh`. It downloads Python with uv, takes a minute or two,

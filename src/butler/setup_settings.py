@@ -1,6 +1,6 @@
 """Writes config/settings.yaml one answer at a time, for the `butler` command and the first-run
-setup. It writes what `/butler-setup install` writes (course Module 2): the butler's name, the
-adults, the town and its weather. Everything later steps fill stays empty, so the brief lists it
+setup (course Module 0, "Your first two minutes"). It writes what `/butler-setup install` writes
+(Module 2): the butler's name, the adults, the town and its weather. Everything later steps fill stays empty, so the brief lists it
 as "not connected yet" instead of showing the example household's details."""
 
 import json
