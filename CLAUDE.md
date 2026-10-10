@@ -50,6 +50,10 @@ someone developing Butler itself. The hard rules apply to both.
 | `src/butler/agenda.py` + `helpers/butler-ek/` | Calendar and Reminders through a Swift EventKit helper |
 | `src/butler/config.py`, `fmt.py` | Config loading (with example fallback) and currency formatting |
 | `config/*.example.yaml`, `budget/budget.example.xlsx`, `examples/` | The invented example household |
+| `bin/butler`, `src/butler/cli.py` | The `butler` command: one pasted line per early lesson |
+| `scripts/first-run.sh` | The guided first run the package opens: sign-in, lessons, then Claude Code |
+| `src/butler/setup_settings.py`, `account.py` | Settings written one answer at a time; the course account |
+| `packaging/macos/` | The installer package and the universal Calendar helper (docs/RELEASING.md) |
 | `scripts/install.sh`, `bootstrap.sh` | Download to `~/Butler`; Python through uv, no Xcode tools |
 | `scripts/store-secret.sh` | A Mac dialog that puts a secret straight into Keychain |
 | `.claude/skills/` | `/butler-setup <step>`, `/butler-tune` and `/butler-doctor` |
@@ -96,8 +100,11 @@ the portal's test client.
   that say why.
 - A part the household hasn't connected yet raises `config.NotSetUp`. The brief lists it
   quietly as "not connected yet", because people set Butler up over weeks.
-- The course links to `/butler-setup` step names, `scripts/install.sh` and `./run.sh preview`.
-  Changing any of them means changing the course too.
+- The course links to `/butler-setup` step names, the `butler` subcommands, `scripts/install.sh`
+  and `./run.sh preview`. Changing any of them means changing the course too. The account API is
+  a contract with the website: `docs/ACCOUNTS.md`.
+- The session token lives in Keychain (`butler-account`), never in a file. The account holds
+  the email, the butler's name and lesson progress, nothing from the household.
 - Before committing, grep the diff for real names, addresses, account names and numbers.
 
 ## Voice

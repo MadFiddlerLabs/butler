@@ -44,6 +44,13 @@ Examples you show are invented (the Riveras and their butler Bento), and you say
 The win: their butler's first brief, on screen, with their names and their weather. It needs
 no accounts besides Claude.
 
+Students who downloaded the package have usually done this already, in the guided first run
+(`butler setup`): their butler is named, `config/settings.yaml` has their town and adults, and a
+brief exists in `out/preview/`. Check that first. If it's done, say so warmly, show them
+`butler status`, and offer the calendar step instead. The `butler` command writes the same
+settings this step does (`src/butler/setup_settings.py`), so you can also use `butler town …`
+and `butler adults …` here.
+
 1. Check you're in the Butler folder: `scripts/install.sh` exists. If `.venv/bin/python` is
    missing, run `scripts/bootstrap.sh`. It downloads Python with uv, takes a minute or two,
    and needs no Xcode tools.
@@ -75,10 +82,12 @@ no accounts besides Claude.
 
 The win: the preview shows their real day, and their to-dos.
 
-1. **Xcode command line tools.** `xcode-select -p` succeeds if they're installed. If not, run
-   `xcode-select --install`. A Mac dialog appears; they click Install and agree. It can take
-   10 to 30 minutes. Check again when they say it's done.
-2. **Build the helper:** `helpers/butler-ek/build.sh`.
+1. **Xcode command line tools**, only if `bin/butler-ek` is missing. The downloaded package
+   includes the helper, prebuilt and signed, so skip to step 3. Otherwise: `xcode-select -p`
+   succeeds if the tools are installed. If not, run `xcode-select --install`. A Mac dialog
+   appears; they click Install and agree. It can take 10 to 30 minutes. Check again when they
+   say it's done.
+2. **Build the helper** (again, only if `bin/butler-ek` is missing): `helpers/butler-ek/build.sh`.
 3. **Permission.** Run `bin/butler-ek calendars`. macOS asks to allow access to Calendars;
    they click Allow. Then `bin/butler-ek reminder-lists`, and they allow Reminders. If they
    clicked Don't Allow: System Settings > Privacy & Security > Calendars (and Reminders),
