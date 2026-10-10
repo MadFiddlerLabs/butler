@@ -50,7 +50,9 @@ jobs:
           cache: pip
       - run: pip install -r requirements-dev.txt
       - name: Package tests (names, postinstall, the built package)
-        run: python -m unittest -v tests/test_packaging.py tests/test_first_run.py
+        run: |
+          python -m unittest discover -v -s tests -p test_packaging.py
+          python -m unittest discover -v -s tests -p test_first_run.py
         env:
           PYTHONPATH: src
       - name: Build the helper and the package
