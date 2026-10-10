@@ -41,6 +41,7 @@ jobs:
     # The download students get: build the universal helper and an unsigned package, check them,
     # then install it into this runner's home the way Installer does and check what landed.
     runs-on: macos-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

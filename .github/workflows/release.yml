@@ -18,6 +18,7 @@ permissions:
 jobs:
   package:
     runs-on: macos-latest
+    timeout-minutes: 60
     env:
       INSTALLER_P12: ${{ secrets.MACOS_INSTALLER_P12_BASE64 }}
       APP_P12: ${{ secrets.MACOS_APP_P12_BASE64 }}
