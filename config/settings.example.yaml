@@ -1,0 +1,171 @@
+# Casa settings. Copy this file to settings.yaml and edit it (or run /casa-setup in Claude
+# Code, which writes it for you). Until settings.yaml exists, the app runs on this example.
+#
+# Secrets are never stored here. They live in the macOS login Keychain (see docs/SETUP.md).
+# Everything below is an invented example household: Sam and Alex Rivera, their daughter Mia
+# and their nanny Pat, in Lisbon.
+
+# What the assistant calls itself: in subjects ("Casa · Monday 12 October"), the portal, Siri.
+name: Casa
+
+timezone: Europe/Lisbon
+
+currency:
+  primary: EUR     # what Lunch Money reports in (its "primary currency")
+  second: USD      # optional: budget lines priced in another currency; leave as is if unused
+
+email:
+  sender_name: Casa
+  sender: casa-assistant@example.com     # the assistant's own Gmail address
+  send_hour: 7          # the morning brief goes out at this hour, local time
+  weekly_day: 6         # the Sunday letter: Monday = 0 ... Sunday = 6
+  weekly_hour: 17
+  monthly_hour: 8       # the monthly look-back, on the 1st
+  recipients:
+    - sam@example.com
+    - alex@example.com
+  # Replies are only acted on from these addresses, and only with a passing DKIM signature.
+  trusted_senders:
+    - sam@example.com
+    - alex@example.com
+
+household:
+  # The adults the emails are for. `emails` maps a reply's sender to a name.
+  adults:
+    - name: Sam
+      emails: [sam@example.com]
+    - name: Alex
+      emails: [alex@example.com]
+  place: Lisbon         # used in the news prompt ("traffic and works in Lisbon")
+  notes_file: data/household_notes.md
+  # Context for Claude. Keep it to facts that help it pick news and flag what to prepare for.
+  # Never put ID numbers, account numbers or passwords here: this text is sent to Claude.
+  about: >
+    Sam and Alex Rivera and their daughter Mia (4) live in Lisbon, Portugal. Sam works
+    remotely for a US company and is paid in USD; Alex is studying Portuguese. Spending is
+    mostly in EUR. Pat is Mia's nanny three afternoons a week, paid in cash on Fridays.
+
+calendar:
+  # Calendars in the brief, by title as they appear in macOS Calendar.
+  include:
+    - Rivera Family
+    - Sam Work
+    - Alex
+  # Holiday calendars: shown as a one-line note on the day.
+  holidays:
+    - Holidays in Portugal
+  lookahead_days: 7
+  # Where replies add events ("dentist Thursday at 10").
+  write_to: Rivera Family
+
+# Who each event belongs to. An event goes to everyone whose name (or alias) appears as a
+# word in its title; failing that, to the owner of its calendar; failing that, to the family.
+# Colors are used in the emails and the portal; Google Calendar color ids are optional and
+# used by apps-script/casa-calendar.gs.
+people:
+  - name: Sam
+    aliases: [Sam]
+    calendars: [Sam Work]
+    color: "#3f51b5"          # Google "Blueberry"
+    color_dark: "#8c9eff"
+    google_color_id: "9"
+  - name: Alex
+    aliases: [Alex]
+    calendars: [Alex]
+    color: "#e67c73"          # Google "Flamingo"
+    color_dark: "#f4a199"
+    google_color_id: "4"
+  - name: Mia
+    aliases: [Mia, Pat]
+    calendars: []
+    color: "#0b8043"          # Google "Basil"
+    color_dark: "#4caf50"
+    google_color_id: "10"
+
+projects:
+  in_brief: true        # "Next up" in the morning brief
+
+reminders:              # Apple Reminders lists (created if missing)
+  todo_list: Casa
+  shopping_list: Shopping
+
+news:
+  max_age_hours: 30
+  stories_per_region: 4
+  language: English     # summaries are written in this language
+  regions:
+    # Add a local region with your town's paper first, for example:
+    # - key: local
+    #   label: Lisbon
+    #   feeds:
+    #     - name: Your local paper
+    #       url: https://example.com/rss
+    - key: europe
+      label: Europe
+      feeds:
+        - name: BBC Europe
+          url: https://feeds.bbci.co.uk/news/world/europe/rss.xml
+    - key: us
+      label: United States
+      feeds:
+        - name: NPR
+          url: https://feeds.npr.org/1001/rss.xml
+    - key: world
+      label: World
+      feeds:
+        - name: BBC
+          url: https://feeds.bbci.co.uk/news/world/rss.xml
+        - name: The Guardian
+          url: https://www.theguardian.com/world/rss
+
+llm:
+  model: claude-opus-5
+  effort: medium
+  # Set this only if your API key isn't scoped to a workspace (Console > Workspaces).
+  workspace_id:
+
+# Optional. One line of weather at the top of the brief (Open-Meteo, no key needed).
+weather:
+  place: Lisbon
+  latitude: 38.72
+  longitude: -9.14
+  unit: celsius         # or fahrenheit
+
+# Optional. A phrase of the day for someone learning the local language, tied to the calendar.
+language_learning:
+  learner: Alex
+  language: Portuguese
+  level: A2
+
+# Optional. Track one person's practice-test scores toward a pass mark (logged by reply: "27/30").
+score_tracker:
+  person: Alex
+  name: driving-theory practice test
+  pass_score: 27
+  out_of: 30
+
+# Web portal: listens on 127.0.0.1 only. Tailscale puts HTTPS in front of it for your tailnet.
+portal:
+  port: 8787
+  url: https://your-mac.your-tailnet.ts.net   # or your own domain (see docs/PORTAL.md)
+  # Tailscale logins allowed in.
+  allowed_logins:
+    - sam@example.com
+    - alex@example.com
+  # Who each login is, for "who did this" in project updates.
+  people:
+    sam@example.com: Sam
+    alex@example.com: Alex
+
+budget:
+  fee_label: Management fee   # what Assumptions!C6 in the budget workbook is (e.g. a property manager's cut)
+
+# Net worth line in the brief: explained when the change is at least this big (primary currency).
+networth:
+  notable_daily: 2500
+  notable_weekly: 5000
+  # Known reasons for big moves; they override what transactions suggest. Remove when stale.
+  reasons: {}
+  # Shorter names for accounts, as Lunch Money names them.
+  labels:
+    Example Bank Joint Savings: Savings

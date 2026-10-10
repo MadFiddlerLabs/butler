@@ -1,0 +1,31 @@
+# Casa keeps your household's data next to the code. Everything personal is ignored here, so
+# a fork or a pull request can't publish it by accident. Only the *.example.* files and the
+# invented examples/ are tracked.
+
+# Your configuration (the examples stay tracked)
+/config/*.yaml
+!/config/*.example.yaml
+
+# Your projects, reference file (IDs, phones) and household data
+/projects/
+/data/
+/reports/
+/out/
+/logs/
+
+# Your budget workbook and its history (the template stays tracked)
+/budget/*
+!/budget/budget.example.xlsx
+
+# Certificates and generated local config
+/certs/
+caddy/Caddyfile.local
+caddy/domain.env
+
+# Build and environment
+/bin/
+/.venv/
+__pycache__/
+*.pyc
+.env
+.DS_Store

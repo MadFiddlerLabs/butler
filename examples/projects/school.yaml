@@ -1,0 +1,33 @@
+name: "Mia: school"
+summary: >
+  Mia starts pre-school next September. Applications open in the spring; the visit and the
+  paperwork come first.
+
+steps:
+  - id: visit-schools
+    do: Visit the two shortlisted schools and note what each needs for the application
+    who: Both
+    priority: high
+
+  - id: vaccination-record
+    do: Get Mia's vaccination record translated and stamped by the paediatrician
+    short: "Vaccination record ready"
+    who: Sam
+
+  - id: apply
+    do: Submit the pre-school application
+    who: Sam
+    after: [visit-schools, vaccination-record]
+    not_before: 2027-03-01
+
+  - id: practice-tests
+    do: Do two driving-theory practice tests and reply with the scores
+    who: Alex
+    every: 1
+    until: theory-exam
+    notes: Logged by reply ("27/30"); the brief tracks the trend toward the pass mark.
+
+  - id: theory-exam
+    do: Book and pass the driving-theory exam (so school runs don't depend on taxis)
+    who: Alex
+    status: paused

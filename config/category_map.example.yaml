@@ -1,0 +1,127 @@
+# How Lunch Money transactions are counted. Copy to category_map.yaml and edit (or let
+# /casa-setup and /casa-tune do it). Everything here is for the invented example household.
+#
+# Three kinds of spending, never mixed:
+#   fixed monthly expenses  budget lines in categories NOT in rules.day_to_day (rent, insurance)
+#   daily spending          categories in rules.day_to_day; paced through the month
+#   one-offs                anything marked one_off; named in the brief, kept out of both
+
+# Lunch Money category -> budget category (the Category column of the budget workbook).
+# "EXCLUDE" means "not household spending". Unmapped categories land in "Other" and the
+# Sunday letter asks about them.
+map:
+  "Restaurants": Food
+  "Groceries": Food
+  "Rent, Mortgage": Housing
+  "Utilities": Utilities
+  "Transportation": Transport
+  "Childcare": Childcare
+  "Health": Health
+  "Insurance": Health
+  "Clothing": Personal
+  "Personal Care": Personal
+  "Entertainment": Lifestyle
+  "Subscriptions": Lifestyle
+  "Travel": Travel
+  "Household": Household
+  "Work Expenses": EXCLUDE
+
+# Per-payee fixes. Matched on payee (case-insensitive substring) and, if given, account.
+# These win over the map, over Lunch Money's "transfer" flag and over a delete_pending status.
+# Optional fields:
+#   label                 replaces the bank's payee name in the brief
+#   fixed: true           a fixed monthly cost even in a daily category; `line` = the budget line
+#   next_month_from_day   a payment on day N or later counts toward next month (rent paid early)
+#   one_off: true         counted, named, and kept out of fixed and daily; `note` says why
+# Replies like "Q-2026-41-1: that was the plumber, Household" append rules here.
+overrides:
+  - payee: Example Landlord
+    category: Housing
+    label: Rent
+    next_month_from_day: 25
+  - payee: Lisboa Energia
+    category: Utilities
+    label: Electricity
+  - payee: Swim School
+    category: Childcare
+    label: Mia swimming
+    fixed: true
+    line: Swimming lessons
+  - payee: IKEA
+    category: Household
+    one_off: true
+    note: furnishing the spare room
+
+# Optional. Side ledgers: money that flows through your accounts but isn't household spending,
+# like a side business or a shared cost with others. Each is kept out of the household numbers
+# and reported on its own, with an optional monthly budget. Matched by payee or Lunch Money
+# category. `reimbursement_payees` are money coming back (from `reimbursements_from`).
+ledgers:
+  - label: Sam's side project
+    monthly_budget: 150
+    payees: [Hosting Co, Domain Registrar]
+    categories: [Side Project]
+  - label: Shared roof repair
+    payees: [Roofing Co]
+    reimbursement_payees: [Venmo]
+    reimbursements_from: 2026-09-01
+
+# Optional. A cash drawer at home: cash withdrawals top it up, a recurring cash payment comes
+# out of it (a nanny, a cleaner). Withdrawals aren't spending; the recurring payment is booked
+# as spending on each payday. With a `count`, the brief estimates what's left and nudges
+# `topup_person` the day before payday when it's short.
+cash_drawer:
+  topup_payee: ATM WITHDRAWAL
+  account: Everyday Checking
+  topup_person: Alex
+  recurring:
+    label: Pat (nanny)
+    amount: 180
+    weekday: friday
+    category: Childcare
+    budget_line: Nanny
+    since: 2026-09-04
+  count: {date: 2026-10-09, amount: 40}
+
+# Optional. Transfers that fund a cash account. Not spending (the withdrawals are).
+cash_funding: []
+
+# Optional. Advisor fees taken from investment accounts: reported, not budgeted.
+managed_fees:
+  label: Advisor fees
+  payee: ADVISORY FEE
+  annual_rate: 0.008
+  managed_institution: Example Brokerage
+
+# Payees the weekly drift watch ignores (changes you planned).
+drift_ignore: []
+
+# Budget lines paid outside Lunch Money's accounts. Reported from the budget, labelled as such.
+off_book: []
+#  - item: Babysitter
+#    paid: in cash from a separate wallet
+
+rules:
+  # Daily categories: paced through the month and trended week to week.
+  day_to_day: [Food, Personal, Lifestyle, Transport, Household, Childcare]
+  # Accounts and institutions that never count as spending (investments, retirement).
+  # Matched as case-insensitive substrings.
+  ignore_accounts: [401(k), IRA]
+  ignore_institutions: [Example Brokerage]
+  ignore_statuses: [delete_pending]
+  # Budget lines taken out of rental income before the payout (not a household payment).
+  netted_from_rent: []
+  # Daily categories whose budget you set on purpose: no suggestions in the monthly look-back.
+  no_suggestions: []
+  # Budget lines that are fixed monthly costs although their category is daily.
+  fixed_lines: [Nanny, Swimming lessons]
+  # Credits on this account are rental income, whatever their category says.
+  rental_income_account:
+  # Annual budget lines and the account that pays them, shown next to "Due this month".
+  lump_funding: {}
+  # Your savings account (as Lunch Money names it) and the payee of transfers out of it that
+  # fund everyday spending. Used for the savings draw and the runway estimate.
+  savings_account: Joint Savings
+  savings_draw_payee: Transfer to Everyday
+  # Transfers to these payees are your own money moving, never asked about.
+  own_transfer_payees: [Transfer to, Transfer from]

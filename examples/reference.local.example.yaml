@@ -1,0 +1,31 @@
+# Useful information for the portal's Info page. Copy to projects/reference.local.yaml, which
+# git ignores. This file is never read into emails or Claude requests: the brief only uses
+# document names and expiry dates (for "Heads up"). Everything below is invented.
+
+people:
+  - name: Sam
+    phone: "+351 900 000 001"
+    email: sam@example.com
+    ids:
+      Passport: X0000000
+  - name: Alex
+    phone: "+351 900 000 002"
+    email: alex@example.com
+    ids:
+      Passport: Y0000000
+      Residence card: R-000000
+  - name: Mia
+    ids:
+      Passport: Z0000000
+
+contacts:
+  - {name: Pat (nanny), phone: "+351 900 000 010", notes: Mon/Wed/Fri afternoons}
+  - {name: Paediatrician, phone: "+351 210 000 000", notes: Clínica Exemplo}
+
+addresses:
+  - {label: Home, value: "Rua Exemplo 1, 1000-000 Lisboa"}
+
+documents:
+  - {holder: Alex, document: Residence card, expires: 2027-03-15, kept: Desk drawer}
+  - {holder: Sam, document: Passport, expires: 2031-06-01, kept: Safe}
+  - {holder: Mia, document: Passport, expires: 2027-01-10, kept: Safe}

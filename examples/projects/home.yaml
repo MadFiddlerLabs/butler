@@ -1,0 +1,21 @@
+name: Home
+summary: >
+  Small jobs around the flat, plus the boiler service that the lease requires every year.
+
+steps:
+  - id: boiler-service
+    do: Book the yearly boiler service and send the certificate to the landlord
+    who: Sam
+    every: 365
+    last_done: 2025-11-02
+
+  - id: smoke-alarm
+    do: Test the smoke alarms
+    who: Both
+    every: 90
+    last_done: 2026-08-01
+
+  - id: spare-room
+    do: Finish the spare room (shelves, curtains) before the grandparents visit
+    who: Alex
+    not_before: 2026-10-15

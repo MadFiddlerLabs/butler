@@ -1,0 +1,39 @@
+# Optional: the portal over HTTPS for the tailnet under your own domain as well as the .ts.net
+# name. launchd/install.sh --domain ... fills in the placeholders. Nothing listens on the network:
+# Caddy listens on 127.0.0.1:8443, and `tailscale serve --tcp 443 ... --proxy-protocol 2`
+# forwards tailnet connections to it, telling Caddy (PROXY protocol) which peer connected.
+{
+	auto_https off
+	admin localhost:2019
+	servers 127.0.0.1:8443 {
+		listener_wrappers {
+			proxy_protocol {
+				allow 127.0.0.1/32
+			}
+			tls
+		}
+	}
+}
+
+(portal) {
+	bind 127.0.0.1
+	reverse_proxy 127.0.0.1:8787 {
+		# The tailnet peer's address; the portal looks it up with `tailscale whois`.
+		# Overwrites anything a client sends under the same name.
+		header_up X-Casa-Peer {remote_host}
+	}
+}
+
+# Let's Encrypt certificate, renewed by launchd/renew-cert.sh.
+https://__DOMAIN__:8443 {
+	import portal
+	tls __ROOT__/certs/certificates/__DOMAIN__.crt __ROOT__/certs/certificates/__DOMAIN__.key
+}
+
+# The tailnet name, with its certificate from Tailscale itself.
+https://__TAILNET_HOST__:8443 {
+	import portal
+	tls {
+		get_certificate tailscale
+	}
+}

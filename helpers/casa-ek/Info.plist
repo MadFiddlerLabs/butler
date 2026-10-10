@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.casa.casa-ek</string>
+    <key>CFBundleName</key>
+    <string>casa-ek</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Casa reads your calendars for the morning brief.</string>
+    <key>NSRemindersFullAccessUsageDescription</key>
+    <string>Casa adds shopping items and TODOs to Reminders.</string>
+</dict>
+</plist>

@@ -1,0 +1,30 @@
+name: Residency
+summary: >
+  Alex's residence card renewal, and getting both adults registered with the local health
+  centre. The renewal can't be filed before the card's last 60 days.
+
+steps:
+  - id: gather-renewal-docs
+    do: Gather the renewal documents (passport, current card, proof of address, proof of income)
+    short: "Renewal documents ready"
+    who: Alex
+    priority: high
+    notes: The immigration office checklist is in the shared Drive folder "Residency".
+
+  - id: book-renewal
+    do: Book the renewal appointment online
+    who: Alex
+    after: [gather-renewal-docs]
+    not_before: 2027-01-15
+
+  - id: renewal-appointment
+    do: Go to the renewal appointment; bring the originals and copies
+    who: Alex
+    after: [book-renewal]
+
+  - id: health-registration
+    do: Register with the local health centre (bring passports and proof of address)
+    who: Both
+    status: waiting
+    waiting_on: the health centre to confirm the paperwork
+    chase_after: 2026-10-20

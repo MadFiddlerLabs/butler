@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.casa.caddy</string>
+    <!-- HTTPS for your own domain, reached over the tailnet only (see docs/PORTAL.md). -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/caddy</string>
+        <string>run</string>
+        <string>--config</string>
+        <string>__ROOT__/caddy/Caddyfile.local</string>
+        <string>--adapter</string>
+        <string>caddyfile</string>
+    </array>
+    <key>KeepAlive</key>
+    <true/>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>__ROOT__/logs/caddy.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__ROOT__/logs/caddy.err.log</string>
+</dict>
+</plist>

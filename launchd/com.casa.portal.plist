@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.casa.portal</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>__ROOT__/run.sh</string>
+        <string>portal</string>
+    </array>
+    <!-- Always on; listens on 127.0.0.1 only. `tailscale serve` exposes it to the tailnet. -->
+    <key>KeepAlive</key>
+    <true/>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>__ROOT__/logs/portal.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__ROOT__/logs/portal.err.log</string>
+</dict>
+</plist>

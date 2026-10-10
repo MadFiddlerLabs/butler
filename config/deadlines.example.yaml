@@ -1,0 +1,22 @@
+# Recurring deadlines, shown in "Heads up": in the daily brief from 14 days before and in the
+# Sunday letter from 60 days before. Copy to deadlines.yaml and keep the ones that apply.
+# These are reminders to check with your advisers, not tax advice.
+#
+# Each: name, date (MM-DD, every year), who, and a short note. `from_year` skips earlier years.
+
+deadlines:
+  - name: US federal tax return (April deadline)
+    date: "04-15"
+    who: Sam
+    note: US citizens abroad get an automatic extension to 15 June, but any tax owed is still due 15 April.
+
+  - name: FBAR (FinCEN 114, foreign bank accounts)
+    date: "04-15"
+    who: Sam
+    note: Required if non-US accounts together exceeded $10,000 at any point in the year. Automatic extension to 15 October.
+
+  - name: Portuguese income tax (IRS) filing window closes
+    date: "06-30"
+    who: Both
+    note: The window opens on 1 April. Ask your accountant whether you're tax resident for the year.
+    from_year: 2027
