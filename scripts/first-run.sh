@@ -27,8 +27,25 @@ bold=""; dim=""; green=""; reset=""
 if [ -t 1 ]; then
   bold="$(printf '\033[1m')"; dim="$(printf '\033[2m')"; green="$(printf '\033[32m')"; reset="$(printf '\033[0m')"
 fi
-say() { printf '%s\n' "$*"; }
-ok() { printf '%s✓%s %s\n' "$green" "$reset" "$*"; }
+# Prose wraps to the window (at most 80 columns, a new Terminal's width), never mid-word, and a
+# `butler <command>` mentioned in a sentence stays on one line so it can be copied whole.
+# BUTLER_COLUMNS overrides the width (tests use it).
+columns="${BUTLER_COLUMNS:-$(tput cols 2>/dev/null || echo 80)}"
+case "$columns" in ''|*[!0-9]*) columns=80 ;; esac
+[ "$columns" -gt 80 ] && [ -z "${BUTLER_COLUMNS:-}" ] && columns=80
+wrap_width=$((columns - 4))
+wrap() {
+  awk '{ out = ""; s = $0
+         while (match(s, /butler [a-z]/)) { out = out substr(s, 1, RSTART + 5) "\037"; s = substr(s, RSTART + 7) }
+         print out s }' | fold -s -w "$1" | tr '\037' ' ' | sed 's/ *$//'
+}
+say() { printf '%s\n' "$*" | wrap "$wrap_width"; }
+ok() {
+  printf '%s\n' "$*" | wrap "$((wrap_width - 2))" | {
+    IFS= read -r first; printf '%s✓%s %s\n' "$green" "$reset" "$first"
+    while IFS= read -r rest; do printf '  %s\n' "$rest"; done
+  }
+}
 heading() { printf '\n%s%s%s\n' "$bold" "$*" "$reset"; }
 lesson_line() { printf '\n    %s%s%s\n\n' "$bold" "$*" "$reset"; }
 
@@ -98,8 +115,7 @@ if [ "$(json_value terms_version "$(cat "$terms_file" 2>/dev/null)")" != "$terms
 fi
 terms_accepted_at="$(json_value terms_accepted_at "$(cat "$terms_file")")"
 
-say "I'll email you a link to sign in. It keeps your place in the course. Nothing from your"
-say "household ever leaves this Mac."
+say "I'll email you a link to sign in. It keeps your place in the course. Nothing from your household ever leaves this Mac."
 token=""
 email=""
 while :; do
@@ -222,8 +238,7 @@ lesson() {
 }
 
 heading "Step 2 of 4 · Where you live"
-say "Every lesson is one line you copy and paste. Here's your first. Paste it below, change"
-say "the town to yours, and press Enter."
+say "Every lesson is one line you copy and paste. Here's your first. Paste it below, change the town to yours, and press Enter."
 lesson town 'butler town "Lisbon"' || exit 1
 
 heading "Step 3 of 4 · Who I work for"
@@ -237,9 +252,7 @@ lesson brief 'butler brief' || exit 1
 # ---------- 4. into Claude Code ----------
 
 heading "What's next"
-say "That's your butler, running on your Mac. Next, I move into Claude Code, an AI helper that"
-say "teaches me your calendar, your email and more, one lesson at a time. Paste this when you're"
-say "ready, or press Enter to stop here for today."
+say "That's your butler, running on your Mac. Next, I move into Claude Code, an AI helper that teaches me your calendar, your email and more, one lesson at a time. Paste this when you're ready, or press Enter to stop here for today."
 if lesson claude 'butler claude' optional; then
   exit 0
 fi

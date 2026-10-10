@@ -10,8 +10,10 @@ a terminal before.
 import argparse
 import os
 import shutil
+import re
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 from . import account, setup_settings as ss
@@ -30,8 +32,23 @@ NEXT_CLAUDE_PROMPT = "/butler-setup"
 CLAUDE_WELCOMED = ROOT / "data" / "claude-welcomed"
 
 
+def _width() -> int:
+    """Prose fits a new Terminal window: at most 80 columns, less if the window is narrower.
+    BUTLER_COLUMNS overrides it (tests use it)."""
+    if os.environ.get("BUTLER_COLUMNS", "").isdigit():
+        return int(os.environ["BUTLER_COLUMNS"]) - 4
+    return min(shutil.get_terminal_size((80, 24)).columns, 80) - 4
+
+
 def say(line: str = "") -> None:
-    print(line, flush=True)
+    """Prints wrapped prose. A `butler <command>` mentioned in a sentence stays on one line, so it
+    can be copied whole; lines that start with spaces (commands to paste) are never wrapped."""
+    if not line or line.startswith(" "):
+        print(line, flush=True)
+        return
+    glued = re.sub(r'butler [a-z][\w-]*(?: "[^"]*")?', lambda m: m.group(0).replace(" ", "\x1f"), line)
+    wrapped = textwrap.fill(glued, _width(), break_on_hyphens=False, break_long_words=False)
+    print(wrapped.replace("\x1f", " "), flush=True)
 
 
 def _butler(s: dict) -> str:
