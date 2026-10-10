@@ -14,6 +14,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -30,6 +31,7 @@ jobs:
   dates:
     # libfaketime moves the clock for the tests and the flows they run.
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -47,6 +49,13 @@ jobs:
           cache: pip
       - run: sudo apt-get install -y faketime
       - run: pip install -r requirements-dev.txt
+      - name: The clock really moved, in child processes too
+        run: |
+          want="$(echo "$WHEN" | cut -c1-10)"
+          got="$(faketime -f "@$WHEN" python -c 'import subprocess, sys; print(subprocess.run([sys.executable, "-c", "import datetime; print(datetime.date.today())"], capture_output=True, text=True).stdout.strip())')"
+          echo "want $want, got $got"; [ "$got" = "$want" ]
+        env:
+          WHEN: ${{ matrix.when }}
       - run: faketime -f "@${{ matrix.when }}" python -m unittest discover tests
         env:
           PYTHONPATH: src

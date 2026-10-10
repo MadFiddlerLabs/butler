@@ -54,6 +54,11 @@ class HelperContractTest(unittest.TestCase):
     def test_stub_matches_the_real_helper(self):
         self.assertEqual(ek_stub.COMMANDS, self.swift_commands())
 
+    def test_helper_checks_commands_before_asking_for_access(self):
+        listed = set(re.findall(r'"([a-z-]+)"', SWIFT.split("let commands: Set<String> = [")[1].split("]")[0]))
+        self.assertEqual(listed, self.swift_commands())
+        self.assertLess(SWIFT.index("guard commands.contains(command)"), SWIFT.index("\nrequestAccess()"))
+
     def test_python_calls_only_real_commands(self):
         called = set()
         for text in SRC.values():

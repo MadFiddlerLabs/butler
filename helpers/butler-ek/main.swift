@@ -87,8 +87,13 @@ func declined(_ e: EKEvent) -> Bool {
     e.attendees?.first(where: { $0.isCurrentUser })?.participantStatus == .declined
 }
 
+// Every command, checked before asking for access, so a wrong one fails at once instead of
+// waiting on a permission prompt.
+let commands: Set<String> = ["calendars", "events", "reminder-lists", "reminders", "ensure-list",
+                             "add-reminder", "complete-reminder", "completed", "add-event"]
 let args = Array(CommandLine.arguments.dropFirst())
-guard let command = args.first else { fail("usage: butler-ek <calendars|events|reminder-lists|reminders|ensure-list|add-reminder> [options]") }
+guard let command = args.first else { fail("usage: butler-ek <\(commands.sorted().joined(separator: "|"))> [options]") }
+guard commands.contains(command) else { fail("butler-ek: unknown command '\(command)'") }
 requestAccess()
 
 switch command {

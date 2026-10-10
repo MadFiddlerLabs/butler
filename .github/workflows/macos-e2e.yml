@@ -18,6 +18,7 @@ permissions:
 jobs:
   e2e:
     runs-on: macos-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - run: tests/e2e/macos.sh
@@ -39,6 +40,7 @@ jobs:
   hosted-installer:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - run: tests/e2e/macos.sh --hosted
