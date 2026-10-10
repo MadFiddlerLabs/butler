@@ -126,12 +126,22 @@ scripts/bootstrap.sh
 ./run.sh portal                       # http://127.0.0.1:8787
 ```
 
+## Staying up to date
+
+Butler updates itself. Every night it checks for a new version, and it installs patches and
+minor versions on its own. It installs only packages signed and notarized by Butler's
+publisher, keeps the previous version, and goes back to it if anything doesn't check out. A
+major version waits for you to reply "update". The next morning's brief says what happened.
+`butler update` installs a new version straight away, and `updates: notify` or `off` in your
+settings changes the behaviour. [docs/UPDATES.md](docs/UPDATES.md) has the details.
+
 ## Documentation
 
 - [docs/SETUP.md](docs/SETUP.md): manual setup, step by step
 - [docs/CONFIG.md](docs/CONFIG.md): every setting and money rule
 - [docs/PROJECTS.md](docs/PROJECTS.md): family projects with steps, dependencies and dates
 - [docs/PORTAL.md](docs/PORTAL.md): the portal over Tailscale, and under your own domain
+- [docs/UPDATES.md](docs/UPDATES.md): over-the-air updates, rollback and the kill switch
 - [docs/TESTING.md](docs/TESTING.md): how Butler is tested, all automated
 - [SECURITY.md](SECURITY.md): how to report a vulnerability
 
