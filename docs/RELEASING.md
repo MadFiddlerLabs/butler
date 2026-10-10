@@ -19,6 +19,12 @@ git push origin v0.1.0
 3. Notarizes the package with Apple and staples the ticket.
 4. Publishes the release.
 
+Installed copies pick the release up on their own: the website rebuilds its update manifest
+(`/updates/stable.json`) from the latest release, and each Butler checks it overnight (see
+docs/UPDATES.md). Write the release notes for households: the first sentences show up in the
+brief. Use a major version only for a change the household should agree to first. To stop a bad
+release, hold it in the website's `updates/hold.json`.
+
 Without the signing secrets it still builds, as `Butler-unsigned.pkg` on a prerelease. The job
 summary says which secrets are missing. `/releases/latest` ignores prereleases, so students never
 get an unsigned package.

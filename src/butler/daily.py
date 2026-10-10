@@ -17,7 +17,7 @@ from datetime import date, datetime, time, timedelta
 
 import anthropic
 
-from . import charts, finance, headsup, llm, mailer, networth, practice, projects, weather
+from . import charts, finance, headsup, llm, mailer, networth, practice, projects, updates, weather
 from .agenda import load_agenda
 from .config import ROOT, NotSetUp, brand, butler_ek, load_settings, tz
 from .fmt import primary_code
@@ -156,6 +156,11 @@ def build(settings: dict, day: date, use_llm: bool, preview_projects: bool = Fal
     except Exception:
         log.exception("weather failed")
     heads = [headsup.line(i) for i in headsup.items(day, 14)]
+    try:
+        update_lines = updates.brief_lines(brand(settings))
+    except Exception:
+        log.exception("update line failed")
+        update_lines = []
 
     return Brief(day=day, agenda=agenda, prep=prep, news=news, region_labels=labels,
                  headsup=heads, weather=weather_line, phrase=phrase,
@@ -164,7 +169,7 @@ def build(settings: dict, day: date, use_llm: bool, preview_projects: bool = Fal
                  people=settings.get("people", []), money=money, next_up=next_up,
                  charts=chart_pngs, networth=nw_line, todos=todos,
                  portal_url=settings.get("portal", {}).get("url", ""),
-                 problems=problems, not_set_up=not_set_up)
+                 problems=problems, not_set_up=not_set_up, updates=update_lines)
 
 
 def _last_brief_time(day: date, zone) -> datetime:
@@ -241,6 +246,8 @@ def main() -> None:
             return
         mailer.send(settings, brief.subject, text, html, images=brief.charts)
         sent_marker.touch()
+        if brief.updates:
+            updates.mark_announced()
         llm.record_news(day, [n for n in brief.news if n.get("summary") is not None])
         log.info("sent to %s", ", ".join(settings["email"]["recipients"]))
     except Exception:

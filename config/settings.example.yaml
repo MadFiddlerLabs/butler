@@ -11,6 +11,12 @@ name: Bento
 
 timezone: Europe/Lisbon
 
+# Updates: auto installs new versions overnight (a major version still asks first), notify
+# always asks ("Reply 'update'" in the brief), off never checks. update_hour is when, in your
+# timezone. See docs/UPDATES.md.
+updates: auto
+update_hour: 3
+
 currency:
   primary: EUR     # what Lunch Money reports in (its "primary currency")
   second: USD      # optional: budget lines priced in another currency; leave as is if unused

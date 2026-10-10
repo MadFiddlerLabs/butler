@@ -85,6 +85,15 @@ jobs:
           [ "$(cat "$b/data/household_notes.md")" = "- a note" ]
           [ "$(cat "$b/.butler-name")" = "Bento" ]
 
+  updates:
+    # Over-the-air updates with the real Installer: v0.0.1 → v0.0.2 keeps the household's files
+    # and runs the migration; a broken v0.0.3 rolls back; an unsigned v0.0.4 is refused.
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - run: tests/e2e/update.sh
+
   hosted-installer:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: macos-latest

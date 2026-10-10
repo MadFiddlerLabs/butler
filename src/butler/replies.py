@@ -33,7 +33,7 @@ ACTION_SCHEMA = {
                     "type": {"type": "string", "enum": [
                         "add_todo", "add_shopping", "add_event", "step_done", "step_checked",
                         "step_status", "step_note", "categorize", "household_note", "feedback",
-                        "practice_score", "question", "unclear"]},
+                        "practice_score", "question", "update", "unclear"]},
                     "text": {"type": "string"},
                     "step_id": _NULLABLE,
                     "status": _NULLABLE,  # todo | waiting | paused; checked in perform()
@@ -106,6 +106,8 @@ Action types:
 {f'- practice_score: a {tracker["name"]} score for {tracker["person"]}; text = "N/M" (one action per test).' + chr(10) if tracker else ""}- question: they're asking something (about plans, money, calendar, projects); text = the question.
 - household_note: a fact worth remembering (who someone is, a preference, a change).
 - feedback: an opinion about the morning brief itself (what to show, change or drop).
+- update: they want the butler to install the new version the brief said is ready ("update",
+  "yes, update"). text = their words.
 - unclear: anything you can't map confidently; text = what was unclear.
 
 Steps that depend on others are unblocked automatically when those are marked done, so
@@ -218,6 +220,9 @@ def perform(settings: dict, action: dict, who: str, today: date) -> str:
     if kind == "household_note":
         _append(NOTES, f"- {today} ({who}, by reply): {text}")
         return f"Noted: {text}"
+    if kind == "update":
+        from . import updates
+        return updates.approve()
     if kind == "feedback":
         _append(FEEDBACK, f"- {today} ({who}): {text}")
         return f"Feedback saved for tuning the brief: {text}"

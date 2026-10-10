@@ -36,7 +36,7 @@ someone developing Butler itself. The hard rules apply to both.
 
 | Path | What it is |
 |---|---|
-| `src/butler/tick.py` | What launchd runs every 5 minutes: replies, then each email if due |
+| `src/butler/tick.py` | What launchd runs every 5 minutes: replies, the daily update check, then each email if due |
 | `src/butler/daily.py` | Builds and sends the morning brief; each section fails on its own |
 | `src/butler/weekly.py`, `monthly.py` | The Sunday letter and the monthly look-back |
 | `src/butler/render.py` | Email HTML and text; `money_lines()` and `split_lines()` are shared |
@@ -54,6 +54,7 @@ someone developing Butler itself. The hard rules apply to both.
 | `scripts/first-run.sh` | The guided first run the package opens: sign-in, lessons, then Claude Code |
 | `src/butler/setup_settings.py`, `account.py` | Settings written one answer at a time; the course account |
 | `packaging/macos/` | The installer package and the universal Calendar helper (docs/RELEASING.md) |
+| `src/butler/updates.py`, `migrations.py` | Over-the-air updates: the manifest, signature checks, rollback; settings migrations (docs/UPDATES.md) |
 | `scripts/install.sh`, `bootstrap.sh` | Download to `~/Butler`; Python through uv, no Xcode tools |
 | `scripts/store-secret.sh` | A Mac dialog that puts a secret straight into Keychain |
 | `.claude/skills/` | `/butler-setup <step>`, `/butler-tune` and `/butler-doctor` |
