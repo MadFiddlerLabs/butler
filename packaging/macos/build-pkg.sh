@@ -32,6 +32,9 @@ mkdir -p "$stage" "$work/scripts" "$out"
 git -C "$repo" archive HEAD | tar -x -C "$stage"
 rm -rf "$stage/.github" "$stage/packaging"
 printf '%s\n' "$version" > "$stage/.butler-version"
+# Unsigned test builds name their version in a marker. Only then can a test relax the updater's
+# signature check (see src/butler/updates.py); signed packages never carry it.
+[ -n "$sign" ] || printf '%s\n' "$version" > "$stage/.butler-unsigned-build"
 if [ -n "$helper" ]; then
   install -m 755 "$helper" "$stage/bin/butler-ek"
 fi

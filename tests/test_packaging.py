@@ -135,6 +135,15 @@ class BuildPackageTest(unittest.TestCase):
             # Never the household's own files.
             self.assertNotRegex(path, r"^\./Butler/(config/(?!.*\.example\.)[^/]+\.yaml|data/|projects/|budget/budget\.xlsx)")
 
+    def test_unsigned_build_names_its_version_for_the_updater(self):
+        files = subprocess.run(["pkgutil", "--payload-files", str(self.pkg)], capture_output=True,
+                               text=True, check=True).stdout.splitlines()
+        self.assertIn("./Butler/.butler-unsigned-build", files)
+
+    def test_signed_builds_never_carry_the_marker(self):
+        script = (REPO / "packaging" / "macos" / "build-pkg.sh").read_text()
+        self.assertIn('[ -n "$sign" ] || printf', script, "the marker is written only without --sign")
+
     def test_scripts(self):
         scripts = self.expanded / "Butler-component.pkg" / "Scripts"   # pkgutil --expand unpacks it
         self.assertTrue(os.access(scripts / "postinstall", os.X_OK))
