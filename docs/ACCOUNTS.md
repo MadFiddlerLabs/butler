@@ -36,6 +36,7 @@ All bodies are JSON. Return clear `error` strings. Rate-limit by email and IP.
 | `POST /api/auth/poll` | `{request_id, poll_secret}` | `{status:"pending"|"verified"|"expired"}`, plus `session_token` once verified (returned once) |
 | `GET /api/me` | header `Authorization: Bearer <session>` | `{email, butler_name, progress:[{lesson, status, at}]}` |
 | `POST /api/progress` | Bearer + `{lesson, status:"started"|"done"}` | `{ok:true}` |
+| `POST /api/prefs` | Bearer + `{nudges: true|false}` | `{ok:true}`; the weekly lesson email, asked once after sign-in, off unless the student says yes |
 | `POST /api/auth/logout` | Bearer | `{ok:true}`; revokes the session |
 
 - Tokens are 32 random bytes, base64url. Store only their SHA-256. Magic links expire in 15

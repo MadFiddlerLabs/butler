@@ -18,7 +18,16 @@ from . import account, setup_settings as ss
 from .config import ROOT
 
 CLAUDE_INSTALL = "curl -fsSL https://claude.ai/install.sh | bash"
-NEXT_AFTER_CLAUDE = "/butler-setup calendar"
+# The first time, Claude Code opens on Module 1 (Meet Claude Code): a welcome, nothing changed.
+# After that, /butler-setup on its own works out where the student is in the course.
+FIRST_CLAUDE_PROMPT = (
+    "Hi! I've just set up my butler and I'm starting Module 1 of the Build Your Butler course, "
+    "Meet Claude Code. Please welcome me in plain words: say what you are, what you can do in this "
+    "Butler folder, and that you'll always ask before changing anything. Don't change any files yet. "
+    "Then suggest one simple first question I could ask you."
+)
+NEXT_CLAUDE_PROMPT = "/butler-setup"
+CLAUDE_WELCOMED = ROOT / "data" / "claude-welcomed"
 
 
 def say(line: str = "") -> None:
@@ -145,13 +154,17 @@ def cmd_claude(args) -> int:
                     "and type: butler claude")
                 return 1
     account.record("setup.claude", "started")
+    first = not CLAUDE_WELCOMED.exists()
+    prompt = FIRST_CLAUDE_PROMPT if first else NEXT_CLAUDE_PROMPT
     say("Opening Claude Code in your Butler folder. If it asks you to sign in, follow the link it shows.")
-    say(f"It starts on the next lesson for you: {NEXT_AFTER_CLAUDE}")
+    say("It starts with Module 1: Meet Claude Code." if first else "It picks up where you left off in the course.")
     if dry:
-        say(f"(dry run) would run: {exe} \"{NEXT_AFTER_CLAUDE}\" in {ROOT}")
+        say(f"(dry run) would run: {exe} \"{prompt}\" in {ROOT}")
         return 0
+    CLAUDE_WELCOMED.parent.mkdir(exist_ok=True)
+    CLAUDE_WELCOMED.touch()
     os.chdir(ROOT)
-    os.execv(exe, [exe, NEXT_AFTER_CLAUDE])
+    os.execv(exe, [exe, prompt])
     return 0  # not reached
 
 
