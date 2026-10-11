@@ -70,7 +70,7 @@ def build(settings: dict, day: date, use_llm: bool, preview_projects: bool = Fal
         stories, feed_problems = fetch_stories(settings, now)
         problems += feed_problems
         log.info("news: %d candidate stories", len(stories))
-        if use_llm:
+        if use_llm and stories:
             try:
                 news = llm.pick_news(settings, stories, day)
             except Exception as e:

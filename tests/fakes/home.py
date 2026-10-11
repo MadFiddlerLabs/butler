@@ -93,6 +93,13 @@ class Home:
             fixtures.reply_message(sender, subject, body, message_id, signed_by))
         return message_id
 
+    def edit_settings(self, change) -> None:
+        """Calls change(settings) on this home's settings.yaml and saves the result."""
+        path = self.root / "config" / "settings.yaml"
+        settings = yaml.safe_load(path.read_text())
+        change(settings)
+        path.write_text(yaml.safe_dump(settings, sort_keys=False, allow_unicode=True))
+
     def set_actions(self, by_subject: dict[str, list[dict]]) -> None:
         """Canned Claude plans for replies, by subject. Unused fields are filled with None."""
         fields = ("step_id", "status", "date", "start_time", "end_time", "location", "category", "waiting_on",
@@ -108,7 +115,9 @@ class Home:
                 "PATH": f"{self.root / 'fakebin'}{os.pathsep}{os.environ.get('PATH', '')}",
                 "BUTLER_FAKE_SECRETS": str(self.root / "fakes" / "secrets.json"), "MPLBACKEND": "Agg"}
 
-    def run(self, flow: str, env: dict[str, str] | None = None) -> dict:
+    def run(self, flow: str, env: dict[str, str] | None = None, down: tuple[str, ...] = ()) -> dict:
+        """Runs a flow. `down` names services that fail (harness.py, BUTLER_FAKE_DOWN)."""
+        env = {**(env or {}), **({"BUTLER_FAKE_DOWN": ",".join(down)} if down else {})}
         record = self.root / "fakes" / f"record-{flow}.json"
         proc = subprocess.run([sys.executable, str(FAKES / "harness.py"), flow, str(record)],
                               cwd=self.root, env={**self.env(), **(env or {})}, capture_output=True, text=True,
