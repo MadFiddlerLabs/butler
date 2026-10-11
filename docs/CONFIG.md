@@ -77,7 +77,7 @@ Plus the budget workbook, `budget/budget.xlsx`, and the household notes Claude r
 | `rules.no_suggestions` | Daily categories the monthly look-back leaves alone |
 | `rules.rental_income_account` | Credits here are rental income |
 | `rules.lump_funding` | Annual lines and the account that pays them |
-| `rules.savings_account`, `savings_draw_payee` | The savings draw and runway |
+| `rules.savings_account`, `savings_draw_payee` | The savings draw and runway. Without `savings_draw_payee`, any money leaving the savings account counts as a draw |
 | `rules.own_transfer_payees` | Transfers that are your own money moving, never asked about |
 
 Replies keep this file current: when the weekly letter asks about a charge and you answer,

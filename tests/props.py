@@ -13,11 +13,13 @@ import os
 
 from hypothesis import HealthCheck, settings
 
-settings.register_profile("default", deadline=None, max_examples=100,
-                          suppress_health_check=[HealthCheck.too_slow])
+# The tests are unittest methods; under pytest (the mutation run) each one is called through a
+# fresh TestCase, which Hypothesis notices as "differing executors". They hold no state, so it's safe.
+QUIET = [HealthCheck.too_slow, HealthCheck.differing_executors]
+settings.register_profile("default", deadline=None, max_examples=100, suppress_health_check=QUIET)
 settings.register_profile("ci", deadline=None, max_examples=200, derandomize=True, database=None,
-                          print_blob=True, suppress_health_check=[HealthCheck.too_slow])
+                          print_blob=True, suppress_health_check=QUIET)
 settings.register_profile("mutation", deadline=None, max_examples=40, derandomize=True, database=None,
-                          suppress_health_check=[HealthCheck.too_slow])
+                          suppress_health_check=QUIET)
 PROFILE = os.environ.get("HYPOTHESIS_PROFILE", "default")
 settings.load_profile(PROFILE)

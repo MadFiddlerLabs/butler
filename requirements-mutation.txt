@@ -1,0 +1,3 @@
+# Mutation testing only (the weekly mutation workflow), on top of requirements-dev.txt.
+mutmut==3.8.0
+pytest>=8.3
