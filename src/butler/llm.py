@@ -10,6 +10,7 @@ import json
 
 import anthropic
 
+from . import privacy
 from .agenda import Agenda
 from .config import KEYCHAIN_ANTHROPIC, ROOT, keychain
 from .news import Story
@@ -41,6 +42,13 @@ def _client(settings: dict) -> anthropic.Anthropic:
 
 
 def _ask_json(settings: dict, system: str, prompt: str, schema: dict) -> dict:
+    """Every Claude call goes through here. ID numbers are withheld first (privacy.py)."""
+    system, prompt = privacy.withhold(system, prompt)
+    return _request(settings, system, prompt, schema)
+
+
+def _request(settings: dict, system: str, prompt: str, schema: dict) -> dict:
+    """The API call itself: structured output, no tools."""
     response = _client(settings).beta.messages.create(
         model=settings["llm"]["model"],
         max_tokens=16000,

@@ -5,7 +5,7 @@ went out: emails, Claude prompts, helper calls, URLs and portal responses.
 
 Flows: daily, daily-dry, replies, weekly, monthly, portal. The fakes:
 
-- Claude: `llm._ask_json` answers from canned responses. Each schema is checked to be a valid,
+- Claude: `llm._request` (the API call, after ID numbers are withheld) answers from canned responses. Each schema is checked to be a valid,
   strict JSON schema, and each canned answer is validated against it, so schema drift fails.
 - Gmail: smtplib.SMTP_SSL records messages; imaplib.IMAP4_SSL serves fakes/imap/*.eml.
 - Lunch Money, Open-Meteo: urllib.request.urlopen answers from fixtures.py. Loopback addresses
@@ -229,7 +229,7 @@ def _schema_name(schema: dict) -> str:
     return "unknown:" + ",".join(sorted(props))
 
 
-def fake_ask_json(settings, system, prompt, schema):
+def fake_request(settings, system, prompt, schema):
     import jsonschema
     name = _schema_name(schema)
     RECORD["prompts"].append({"schema": name, "system": system, "prompt": prompt})
@@ -255,7 +255,7 @@ def install_fakes() -> None:
     urllib.request.urlopen = fake_urlopen
     feedparser.parse = fake_feedparse
     from butler import llm
-    llm._ask_json = fake_ask_json
+    llm._request = fake_request
 
 
 def run(flow: str) -> None:

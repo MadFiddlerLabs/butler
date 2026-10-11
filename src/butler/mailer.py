@@ -4,6 +4,7 @@ import smtplib
 from email.message import EmailMessage
 from email.utils import formataddr, make_msgid
 
+from . import privacy
 from .config import KEYCHAIN_GMAIL, keychain
 
 
@@ -11,12 +12,13 @@ def send(settings: dict, subject: str, text: str, html: str | None = None,
          to: list[str] | None = None, in_reply_to: str = "",
          images: dict[str, bytes] | None = None) -> None:
     """Sends to the configured recipients, or to `to` (used for replies). `images` are PNGs
-    the HTML references as cid:<name>."""
+    the HTML references as cid:<name>. ID numbers are withheld from every part (privacy.py)."""
     cfg = settings["email"]
     password = keychain(KEYCHAIN_GMAIL)
     if not password:
         raise RuntimeError(f"no Gmail app password in Keychain (service '{KEYCHAIN_GMAIL}')")
 
+    subject, text, html = privacy.withhold(subject, text, html)
     msg = EmailMessage()
     msg["From"] = formataddr((cfg["sender_name"], cfg["sender"]))
     msg["To"] = ", ".join(to or cfg["recipients"])
