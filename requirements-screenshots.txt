@@ -1,0 +1,7 @@
+# Only for scripts/screenshots.py, which makes the README's images (docs/TESTING.md, "README screenshots").
+# Pinned, so the images change when Butler's rendering does, not when a library moves.
+-r requirements-dev.txt
+matplotlib==3.11.2
+pillow==12.3.0
+playwright==1.63.0
+time-machine==3.5.1
