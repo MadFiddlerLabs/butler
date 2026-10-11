@@ -21,7 +21,11 @@ TIMEOUT = 8
 
 
 class AccountError(RuntimeError):
-    pass
+    """A call that didn't work. `status` is the HTTP status when the server answered, else None."""
+
+    def __init__(self, message: str, status: int | None = None):
+        super().__init__(message)
+        self.status = status
 
 
 def _call(method: str, path: str, body: dict | None = None, token: str | None = None) -> dict:
@@ -40,7 +44,7 @@ def _call(method: str, path: str, body: dict | None = None, token: str | None = 
             message = e.reason
         finally:
             e.close()
-        raise AccountError(str(message)) from None
+        raise AccountError(str(message), e.code) from None
     except (urllib.error.URLError, OSError, ValueError) as e:
         raise AccountError(f"couldn't reach buildyourbutler.com ({e})") from None
 
@@ -80,6 +84,11 @@ def me() -> dict | None:
         return _call("GET", "/me", token=token)
     except AccountError:
         return None
+
+
+def send_progress(token: str, lesson: str, status: str, at: str | None = None) -> None:
+    """One lesson's progress, with when it happened (ISO 8601). Raises AccountError."""
+    _call("POST", "/progress", {"lesson": lesson, "status": status, **({"at": at} if at else {})}, token=token)
 
 
 def record(lesson: str, status: str = "done") -> bool:

@@ -108,10 +108,10 @@ class Home:
                 "PATH": f"{self.root / 'fakebin'}{os.pathsep}{os.environ.get('PATH', '')}",
                 "BUTLER_FAKE_SECRETS": str(self.root / "fakes" / "secrets.json"), "MPLBACKEND": "Agg"}
 
-    def run(self, flow: str) -> dict:
+    def run(self, flow: str, env: dict[str, str] | None = None) -> dict:
         record = self.root / "fakes" / f"record-{flow}.json"
         proc = subprocess.run([sys.executable, str(FAKES / "harness.py"), flow, str(record)],
-                              cwd=self.root, env=self.env(), capture_output=True, text=True,
+                              cwd=self.root, env={**self.env(), **(env or {})}, capture_output=True, text=True,
                               timeout=timeout(300))
         if not record.exists():
             raise AssertionError(f"harness crashed:\n{proc.stdout}\n{proc.stderr}")

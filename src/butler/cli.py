@@ -8,6 +8,7 @@ a terminal before.
 """
 
 import argparse
+import logging
 import os
 import shutil
 import re
@@ -16,7 +17,7 @@ import sys
 import textwrap
 from pathlib import Path
 
-from . import account, setup_settings as ss, updates
+from . import progress, setup_settings as ss, updates
 from .config import ROOT
 
 CLAUDE_INSTALL = "curl -fsSL https://claude.ai/install.sh | bash"
@@ -67,7 +68,7 @@ def cmd_name(args) -> int:
     s = ss.load()
     ss.set_name(s, name)
     ss.save(s)
-    account.record("setup.name")
+    progress.report("setup.name")
     say(f"Lovely. I'm {name} from now on.")
     return 0
 
@@ -88,7 +89,7 @@ def cmd_town(args) -> int:
     s = ss.load()
     ss.set_town(s, place)
     ss.save(s)
-    account.record("setup.town")
+    progress.report("setup.town")
     unit = "Fahrenheit" if s["weather"]["unit"] == "fahrenheit" else "Celsius"
     where = f"{place.name}, {place.country}" if place.country else place.name
     say(f"Got it: {where}. Your timezone is {place.timezone}, and weather comes in {unit}.")
@@ -130,7 +131,7 @@ def cmd_brief(args) -> int:
         (ROOT / "logs" / "brief-errors.log").write_text(proc.stdout + proc.stderr)
         say("Something went wrong writing your brief. Run: butler doctor")
         return 1
-    account.record("setup.first-brief")
+    progress.report("setup.first-brief")
     if os.environ.get("BUTLER_NO_OPEN"):
         say(f"Your brief is ready: {brief}")
     else:
@@ -170,7 +171,7 @@ def cmd_claude(args) -> int:
                 say("Claude Code is installed, but I can't find it yet. Close this window, open Terminal again, "
                     "and type: butler claude")
                 return 1
-    account.record("setup.claude", "started")
+    progress.report("setup.claude", "started")
     first = not CLAUDE_WELCOMED.exists()
     prompt = FIRST_CLAUDE_PROMPT if first else NEXT_CLAUDE_PROMPT
     say("Opening Claude Code in your Butler folder. If it asks you to sign in, follow the link it shows.")
@@ -226,6 +227,19 @@ def cmd_status(args) -> int:
     return 0
 
 
+def cmd_progress(args) -> int:
+    """What the course knows: each setup step, done or not, and whether it reached the account."""
+    state, problem = progress.sync(force=True)
+    say(f"Course progress {_butler(ss.load())} reports to your Build Your Butler account:")
+    say()
+    for line in progress.lines(state, problem):
+        say(line)
+    say()
+    say("A step counts once its check passes. Your butler sends only lesson names and dates, "
+        "nothing from your household.")
+    return 0
+
+
 def cmd_doctor(args) -> int:
     problems = []
     if sys.version_info < (3, 12):
@@ -269,6 +283,7 @@ HELP = """The butler command. Each course lesson gives you one line to paste.
   butler adults Sam Alex        who the emails are for
   butler brief                  write a brief now and open it
   butler status                 what's set up, and what's next
+  butler progress               what your butler has told the course
   butler claude                 continue in Claude Code
   butler doctor                 check for problems
   butler update                 install a new version, if there is one
@@ -286,6 +301,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("names", nargs="*")
     sub.add_parser("brief")
     sub.add_parser("status")
+    sub.add_parser("progress")
     p = sub.add_parser("claude")
     p.add_argument("--yes", action="store_true")
     p.add_argument("--dry-run", action="store_true")
@@ -300,10 +316,16 @@ def main(argv: list[str] | None = None) -> int:
         say(HELP)
         return 1
     handlers = {"name": cmd_name, "town": cmd_town, "adults": cmd_adults, "brief": cmd_brief,
-                "status": cmd_status, "claude": cmd_claude, "doctor": cmd_doctor, "update": cmd_update}
+                "status": cmd_status, "progress": cmd_progress, "claude": cmd_claude, "doctor": cmd_doctor,
+                "update": cmd_update}
     if args.cmd not in handlers:
         say(HELP)
         return 0
+    # Progress that couldn't be sent before (offline, or not signed in yet) goes now, and a step
+    # finished since the last tick is noticed. Quietly: it never blocks or fails a command.
+    logging.getLogger("butler").addHandler(logging.NullHandler())
+    if args.cmd != "progress":
+        progress.sync(force=True)
     return handlers[args.cmd](args)
 
 
