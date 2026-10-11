@@ -271,8 +271,16 @@ def drawer_lines(m: Summary) -> list[str]:
     rec = drawer.get("recurring") or {}
     if m.drawer is not None:
         less = f", less {rec['label']}" if rec else ""
-        line = (f"Cash drawer: about {money(m.drawer)} at most (counted {m.drawer_counted:%-d %b}, "
-                f"plus top-ups{less}).")
+        if m.drawer < 0:
+            # More went out than the count plus the withdrawals Butler saw: a withdrawal it
+            # didn't recognise, or a stale count. A negative "at most" would read as a bug.
+            paid = rec["label"] if rec else "cash payments"
+            line = (f"Cash drawer: needs a count. More went to {paid} since {m.drawer_counted:%-d %b} than "
+                    f"that count plus the withdrawals I saw, so one may be missing. Count the drawer and "
+                    f"update cash_drawer in category_map.yaml, or ask Claude Code to.")
+        else:
+            line = (f"Cash drawer: about {money(m.drawer)} at most (counted {m.drawer_counted:%-d %b}, "
+                    f"plus top-ups{less}).")
         if rec:
             payday = WEEKDAYS[rec.get("weekday", "friday").lower()]
             days = (payday - m.today.weekday()) % 7
