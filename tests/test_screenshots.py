@@ -87,5 +87,34 @@ class ScreenshotsTest(unittest.TestCase):
             self.assertEqual((self.runs[0] / name).read_bytes(), (self.runs[1] / name).read_bytes(), name)
 
 
+@unittest.skipIf(NOT_READY and not REQUIRED, NOT_READY)
+class PortalLayoutTest(unittest.TestCase):
+    """The emails' event rows inside the portal, where tables are full width: the time column stays
+    as narrow as its text, so a short title sits right after its time at every width."""
+
+    def test_titles_follow_their_times(self):
+        from datetime import datetime
+        from types import SimpleNamespace
+
+        from playwright.sync_api import sync_playwright
+
+        from butler import portal, render
+        event = SimpleNamespace(start=datetime(2026, 10, 19, 10), location="", title="Standup",
+                                time_label=lambda: "10:00–11:00")
+        html = (f"<style>{portal.CSS}</style><main><div class='brief'><div style='max-width:640px'>"
+                f"<table style='border-collapse:collapse'>{render._event_row(event)}</table></div></div></main>")
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            for width in (390, 1100):
+                page = browser.new_page(viewport={"width": width, "height": 600})
+                page.set_content(html)
+                cell = page.eval_on_selector("td", "e => e.getBoundingClientRect().width")
+                text = page.eval_on_selector("td", "e => { const r = document.createRange(); "
+                                                   "r.selectNodeContents(e); return r.getBoundingClientRect().width; }")
+                self.assertLess(cell, text + 30, f"{width}px wide: the time column is {cell:.0f}px")
+                page.close()
+            browser.close()
+
+
 if __name__ == "__main__":
     unittest.main()

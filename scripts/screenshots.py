@@ -11,8 +11,9 @@ Nothing is sent and nothing leaves the machine.
 Pinned, so the images change only when Butler's rendering does:
 - the clock: the letter on Sunday 18 October 2026 at 17:00, the brief and the portal on Monday
   19 October at 07:00, Lisbon time (time-machine, inside the Butler processes only);
-- the data: the test fixtures (calendar, Reminders, Lunch Money, weather), invented news from
-  invented outlets, and a fixed Sunday-letter text written from the letter's own numbers;
+- the data: the test fixtures (calendar, Reminders, Lunch Money, weather) with a money overlay
+  (cash withdrawals, a café, daily balances), invented news from invented outlets, and a fixed
+  Sunday-letter text written from the letter's own numbers;
 - the fonts: Inter (scripts/fonts, OFL), with DejaVu Sans from matplotlib for other symbols;
 - the browser: light mode, fixed viewports, Playwright's Chromium at the pinned version.
 
@@ -21,6 +22,7 @@ Pinned, so the images change only when Butler's rendering does:
 
 import argparse
 import base64
+import copy
 import io
 import json
 import os
@@ -30,7 +32,7 @@ import socket
 import subprocess
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
@@ -76,6 +78,49 @@ NEWS = {
          "The survey found hundreds of species, several of them thought to be new to science."),
     ]),
 }
+
+
+# The test fixtures' money, with three changes so the pictures read like a real month: Thursday
+# cash withdrawals that cover Pat's Friday pay (the fixtures have none, so the drawer estimate
+# goes negative), an ordinary café in place of the fixtures' unexplained payee, and account
+# balances that move a little from day to day.
+CAFE = ("Pastelaria Exemplo", 14.60, "Restaurants")
+ATM = ("ATM WITHDRAWAL", 200.00, "", "Everyday Checking")     # the example cash_drawer's top-up
+WEEK_BEFORE = date(2026, 10, 11)                               # an older net worth snapshot
+BALANCES = {   # day: (Everyday Checking in EUR, Brokerage in USD, EUR per USD)
+    WEEK_BEFORE: (4630.10, 51400.00, 0.8590),
+    LETTER_AT.date(): (4268.35, 52000.00, 0.8600),
+    BRIEF_AT.date(): (4253.75, 52000.00, 0.8600),
+}
+
+
+def _money_overlay(fixtures) -> None:
+    """Serves the transactions above, dated from the brief's day whatever window is asked for."""
+    day = BRIEF_AT.date()
+    rows = [(day - timedelta(days=back), *(CAFE if payee.startswith("Mystery") else (payee, amount, category)),
+             account) for back, payee, amount, category, account in fixtures.TRANSACTIONS]
+    thursday = date(2026, 9, 3)       # the week before Pat's first Friday (cash_drawer.recurring.since)
+    while thursday < day:
+        rows.append((thursday, *ATM))
+        thursday += timedelta(days=7)
+    serve = fixtures.transactions
+
+    def transactions(start: date, end: date) -> list[dict]:
+        fixtures.TRANSACTIONS = [((end - d).days, payee, amount, category, account)
+                                 for d, payee, amount, category, account in rows]
+        return serve(start, end)
+    fixtures.transactions = transactions
+
+
+def _balances(fixtures, day: date) -> None:
+    checking, usd, rate = BALANCES[day]
+    accounts = copy.deepcopy(fixtures.PLAID_ACCOUNTS)
+    for a in accounts:
+        if a["name"] == "Everyday Checking":
+            a["balance"], a["to_base"] = f"{checking:.2f}", checking
+        elif a["currency"] == "usd":
+            a["balance"], a["to_base"] = f"{usd:.2f}", round(usd * rate, 2)
+    fixtures.PLAID_ACCOUNTS = accounts
 
 
 # ---------- inside the throwaway install ----------
@@ -127,7 +172,15 @@ def stage(name: str, port: int) -> None:
     feedparser.parse = _feed
     canned = harness._canned
     harness._canned = lambda kind, prompt: _letter_words(prompt) if kind == "weekly" else canned(kind, prompt)
-    time_machine.travel(LETTER_AT if name == "letter" else BRIEF_AT, tick=False).start()
+    import fixtures        # the same module the fakes answer from
+    _money_overlay(fixtures)
+    if name == "letter":
+        from butler import networth
+        _balances(fixtures, WEEK_BEFORE)
+        networth.snapshot(WEEK_BEFORE)
+    at = LETTER_AT if name == "letter" else BRIEF_AT
+    _balances(fixtures, at.date())
+    time_machine.travel(at, tick=False).start()
     if name == "letter":
         from butler import weekly
         sys.argv = ["weekly", "--dry-run"]

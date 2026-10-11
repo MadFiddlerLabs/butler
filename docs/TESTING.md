@@ -13,7 +13,7 @@ fails, it opens a GitHub issue.
 | Privacy | `tests/test_privacy.py` | Every push | An ID number, phone or secret reaching an email, a prompt, a log or a file; household details reaching the news call |
 | Contracts | `tests/test_contracts.py` | Every push | Claude schemas that aren't strict, a reply action that could delete, the test stub drifting from the Swift helper, renamed course steps or scripts |
 | Dates | `tests.yml`, `dates` job | Every push | Failures on the 1st, at month and year ends, and on DST changes (libfaketime) |
-| Screenshots | `tests/test_screenshots.py` | Every push (Linux) | The README images failing to build, coming out blank or the wrong size, or changing between two identical runs |
+| Screenshots | `tests/test_screenshots.py` | Every push (Linux) | The README images failing to build, coming out blank or the wrong size, or changing between two identical runs; event titles drifting away from their times in the portal |
 | macOS end to end | `tests/e2e/macos.sh` | Every push; weekly with the hosted installer | The installer, uv's Python, the first preview, the helper build and signature, launchd plists, shell scripts |
 | Skill evals | `tests/evals/run_evals.py` | Weekly and on demand (paid) | `/butler-setup install` and `/butler-doctor` not doing their job; Claude repeating or storing a pasted secret; Claude sending email |
 | Live contract | `tests/live/live_contract.py` | Weekly and on demand (paid) | The Claude API no longer accepting Butler's request shape (model, beta, fallbacks, thinking, effort, JSON schema) |
@@ -60,7 +60,7 @@ Everything that could make an image change between runs is pinned:
 | What | How |
 |---|---|
 | The clock | time-machine freezes the Butler processes at Sunday 18 October 2026, 17:00 (the letter) and Monday 19 October, 07:00 (the brief and the portal), Lisbon time |
-| The data | The test fixtures for the calendar, Reminders, Lunch Money and the weather. The news comes from invented stories by invented outlets, so no real outlet is quoted. The Sunday letter's Claude-written parts are fixed text built from the letter's own numbers |
+| The data | The test fixtures for the calendar, Reminders, Lunch Money and the weather. On top of them, for the pictures only: weekly cash withdrawals that cover the nanny's pay, an ordinary café in place of the fixtures' unexplained payee, and account balances that move a little from day to day. The tests' fixtures stay as they are. The news comes from invented stories by invented outlets, so no real outlet is quoted. The Sunday letter's Claude-written parts are fixed text built from the letter's own numbers |
 | The fonts | Inter (`scripts/fonts/`, SIL Open Font License), with DejaVu Sans from matplotlib for other symbols. No glyph comes from the operating system |
 | The browser | Chromium from the pinned Playwright version, light mode, fixed viewports. Requests outside 127.0.0.1 are blocked |
 | The files | 256-color PNGs without dithering, cropped between blocks of text, from pinned Pillow and matplotlib |

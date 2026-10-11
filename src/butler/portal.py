@@ -146,6 +146,9 @@ details.step>summary{color:var(--ink)}
 .flash{background:var(--chip);border-radius:8px;padding:10px 12px;margin:10px 0;white-space:pre-line}
 .log{font-size:13px;color:var(--ink2);margin-top:2px}
 .brief img{max-width:100%;height:auto;border-radius:8px}a{color:var(--blue)}
+/* Tables here are full width; keep the emails' time column as narrow as its text, so each
+   event's title starts right after its time instead of drifting toward the middle. */
+.brief td[style*="white-space:nowrap"]{width:1%}
 /* The emails use fixed inline colors (render.py); map them onto this page's light/dark tokens. */
 .brief>div{background:transparent!important;padding:0!important}
 .brief [style*="color:#1f2328"]{color:var(--ink)!important}
