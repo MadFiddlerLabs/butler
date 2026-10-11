@@ -1,0 +1,7 @@
+# Kept out of installs and updates. The package (packaging/macos/build-pkg.sh) and
+# scripts/install.sh take the repository through git archive or GitHub's archive tarball,
+# and both leave out export-ignore paths. Over-the-air updates install that same package.
+docs/images export-ignore
+docs/images/** export-ignore
+scripts/fonts export-ignore
+scripts/fonts/** export-ignore

@@ -1,0 +1,65 @@
+# The README's screenshots (docs/images), remade from the invented example household whenever
+# code or example data that shows in them changes on main, and on demand. When an image changes,
+# it opens (or updates) a pull request on the chore/screenshots branch. Free: Linux, no secrets.
+# See docs/TESTING.md, "README screenshots".
+name: screenshots
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/butler/**"
+      - "config/*.example.yaml"
+      - "budget/budget.example.xlsx"
+      - "examples/**"
+      - "scripts/screenshots.py"
+      - "scripts/fonts/**"
+      - "tests/fakes/**"
+      - "requirements*.txt"
+      - ".github/workflows/screenshots.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: screenshots
+  cancel-in-progress: true
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-screenshots.txt
+      - run: python -m playwright install --with-deps chromium
+      - run: python scripts/screenshots.py
+      - name: Open a pull request when an image changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: chore/screenshots
+        run: |
+          if [ -z "$(git status --porcelain -- docs/images)" ]; then
+            echo "The screenshots are up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -C "$BRANCH"
+          git add docs/images
+          git commit -m "Screenshots follow the latest rendering" -m "Made by .github/workflows/screenshots.yml from ${GITHUB_SHA}."
+          git push --force origin "$BRANCH"
+          if [ -n "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
+            echo "Updated the open pull request on $BRANCH."
+            exit 0
+          fi
+          body="The README screenshots changed after ${GITHUB_SHA}. They are made by scripts/screenshots.py from the invented example household. Look at each image before merging. A pull request opened by this workflow doesn't start the tests; close and reopen it to run them."
+          if ! gh pr create --base main --head "$BRANCH" --title "Screenshots follow the latest rendering" --body "$body"; then
+            echo "::warning::Couldn't open a pull request. Allow it under Settings > Actions > General > Workflow permissions, or open one from the $BRANCH branch by hand."
+          fi

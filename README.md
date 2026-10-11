@@ -14,6 +14,37 @@ sum, and every change goes through a fixed list of actions.
 course for people who've never used a terminal. You finish with a working butler, and you
 learn how AI works along the way.
 
+## What it looks like
+
+Every picture below shows an invented household: Sam and Alex Johnson, their daughter Mia and
+their nanny Pat, in Lisbon. Their butler is called Bento. A fresh copy of Butler runs on them
+until you add your own details. The pictures are made by a script
+([docs/TESTING.md](docs/TESTING.md#readme-screenshots)), so they always show the current version.
+
+<table>
+<tr>
+<td width="50%" valign="top"><img src="docs/images/brief.png" alt="The morning brief: weather, heads-up, to-dos, each person's day, the week, next steps on projects, and money with charts"></td>
+<td width="50%" valign="top"><img src="docs/images/weekly-letter.png" alt="The Sunday letter: the week in numbers, money against plan with charts, what's coming up, spending that's creeping up, and the week ahead"></td>
+</tr>
+<tr>
+<td><b>The morning brief.</b> Each person's day, the week ahead, the next step on each project, and where the money stands.</td>
+<td><b>The Sunday letter.</b> The week in numbers, spending that's creeping up, and what to get done next week.</td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td width="40%" valign="top"><img src="docs/images/portal-projects.png" alt="The portal's Projects page: steps to do now, later, waiting and paused, by person"></td>
+<td width="40%" valign="top"><img src="docs/images/portal-money.png" alt="The portal's Money page: fixed monthly expenses, daily spending against pace, one-offs and a month-to-date chart"></td>
+<td width="20%" valign="top"><img src="docs/images/portal-phone.png" alt="The portal on a phone, showing this morning's brief"></td>
+</tr>
+<tr>
+<td><b>Projects in the portal.</b> What to do now, what's waiting, and what each step unlocks.</td>
+<td><b>Money in the portal.</b> Fixed monthly expenses, daily spending and one-offs, kept apart.</td>
+<td><b>On a phone.</b> The same portal, over Tailscale.</td>
+</tr>
+</table>
+
 ## What you get
 
 | Email | When | What's in it |

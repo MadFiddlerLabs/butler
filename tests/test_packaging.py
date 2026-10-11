@@ -97,6 +97,19 @@ class PostinstallTest(unittest.TestCase):
         self.assertFalse(self.opened.exists())
 
 
+@unittest.skipUnless((REPO / ".git").exists(), "needs a git checkout")
+class ArchiveTest(unittest.TestCase):
+    """The package and scripts/install.sh copy the repository with git archive (or GitHub's archive
+    tarball, which follows the same rules). The README's images and the screenshot font stay out."""
+
+    def test_readme_images_and_fonts_stay_out_of_installs(self):
+        files = subprocess.run("git archive --worktree-attributes HEAD | tar -t", shell=True, cwd=REPO,
+                               capture_output=True, text=True, check=True).stdout.splitlines()
+        self.assertIn("README.md", files)
+        self.assertIn("scripts/install.sh", files)
+        self.assertEqual([f for f in files if f.startswith(("docs/images", "scripts/fonts"))], [])
+
+
 @unittest.skipUnless(shutil.which("pkgbuild") and shutil.which("productbuild"), "needs macOS packaging tools")
 class BuildPackageTest(unittest.TestCase):
     @classmethod
@@ -132,6 +145,7 @@ class BuildPackageTest(unittest.TestCase):
         for path in files:
             self.assertFalse(path.startswith("./Butler/.github"), path)
             self.assertFalse(path.startswith("./Butler/packaging"), path)
+            self.assertFalse(path.startswith(("./Butler/docs/images", "./Butler/scripts/fonts")), path)
             # Never the household's own files.
             self.assertNotRegex(path, r"^\./Butler/(config/(?!.*\.example\.)[^/]+\.yaml|data/|projects/|budget/budget\.xlsx)")
 

@@ -1,6 +1,7 @@
 # Every push and pull request: pyflakes, shellcheck, and the unit, integration, privacy and
 # contract tests (tests/), on Linux with every outside service faked. No secrets needed.
-# A second job reruns the suite at awkward dates (month and year ends, DST changes).
+# A second job reruns the suite at awkward dates (month and year ends, DST changes). A third makes
+# the README screenshots twice and checks they match (tests/test_screenshots.py).
 name: tests
 
 on:
@@ -27,6 +28,30 @@ jobs:
       - run: python -m unittest discover tests -v
         env:
           PYTHONPATH: src
+
+  screenshots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-screenshots.txt
+      - run: python -m playwright install --with-deps chromium
+      - run: python -m unittest discover -v -s tests -p test_screenshots.py
+        env:
+          PYTHONPATH: src
+          BUTLER_SCREENSHOTS_REQUIRED: "1"
+          BUTLER_SCREENSHOTS_KEEP: ${{ runner.temp }}/screenshots
+      - name: Keep the images, to compare with docs/images
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: ${{ runner.temp }}/screenshots
+          if-no-files-found: ignore
 
   dates:
     # libfaketime moves the clock for the tests and the flows they run.

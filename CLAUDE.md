@@ -58,6 +58,7 @@ someone developing Butler itself. The hard rules apply to both.
 | `src/butler/updates.py`, `migrations.py` | Over-the-air updates: the manifest, signature checks, rollback; settings migrations (docs/UPDATES.md) |
 | `scripts/install.sh`, `bootstrap.sh` | Download to `~/Butler`; Python through uv, no Xcode tools |
 | `scripts/store-secret.sh` | A Mac dialog that puts a secret straight into Keychain |
+| `scripts/screenshots.py` | The README images, from the example household (docs/TESTING.md) |
 | `.claude/skills/` | `/butler-setup <step>`, `/butler-tune` and `/butler-doctor` |
 
 Each config file falls back to its `.example` twin until the real one exists, so a fresh
