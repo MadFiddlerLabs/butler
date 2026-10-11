@@ -9,6 +9,7 @@ read back what the setup sent.
 
 import hashlib
 import json
+import re
 import secrets
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -29,8 +30,13 @@ def _hash(token: str) -> str:
 
 
 class FakeAccountAPI:
-    def __init__(self, auto_verify: bool = False, expire: bool = False, unavailable: bool = False):
+    LESSON = re.compile(r"^[a-z0-9][a-z0-9.-]{0,63}$")
+
+    def __init__(self, auto_verify: bool = False, expire: bool = False, unavailable: bool = False,
+                 known_lessons: set[str] | None = None):
         self.auto_verify = auto_verify
+        self.known_lessons = known_lessons   # when set, other lesson ids get 400 bad_lesson, like the real API
+        self.progress_down = False           # /progress answers 503, like a server having a bad minute
         self.unavailable = unavailable   # sign-in down: /auth/start answers 503, like the real API without Resend
         self.expire = expire
         self.requests: dict[str, dict] = {}      # request_id -> {email, butler_name, poll_hash, token, status}
@@ -139,7 +145,15 @@ class FakeAccountAPI:
                     email = self._session()
                     if not email:
                         return self._send(401, {"error": "not signed in"})
-                    api.progress.append({"email": email, "lesson": body.get("lesson"), "status": body.get("status")})
+                    if api.progress_down:
+                        return self._send(503, {"error": "server", "code": "server"})
+                    lesson, status = body.get("lesson"), body.get("status")
+                    if not isinstance(lesson, str) or not api.LESSON.match(lesson) or (
+                            api.known_lessons is not None and lesson not in api.known_lessons):
+                        return self._send(400, {"error": "Unknown lesson id.", "code": "bad_lesson"})
+                    if status not in ("started", "done"):
+                        return self._send(400, {"error": "bad status", "code": "bad_status"})
+                    api.progress.append({"email": email, "lesson": lesson, "status": status, "at": body.get("at")})
                     return self._send(200, {"ok": True})
                 if url.path == "/api/prefs":
                     email = self._session()

@@ -8,7 +8,8 @@ Flows: daily, daily-dry, replies, weekly, monthly, portal. The fakes:
 - Claude: `llm._ask_json` answers from canned responses. Each schema is checked to be a valid,
   strict JSON schema, and each canned answer is validated against it, so schema drift fails.
 - Gmail: smtplib.SMTP_SSL records messages; imaplib.IMAP4_SSL serves fakes/imap/*.eml.
-- Lunch Money, Open-Meteo: urllib.request.urlopen answers from fixtures.py.
+- Lunch Money, Open-Meteo: urllib.request.urlopen answers from fixtures.py. Loopback addresses
+  (the fake account API a test started) go through.
 - News: feedparser.parse returns invented stories, one carrying a prompt injection.
 - Keychain: a fake `security` on PATH (installed by the test home).
 - Anything else that tries the network fails loudly.
@@ -127,10 +128,16 @@ class FakeIMAP:
 
 # ---------- Lunch Money, weather ----------
 
+_real_urlopen = urllib.request.urlopen
+
+
 def fake_urlopen(req, timeout=None, **kwargs):
     url = req.full_url if isinstance(req, urllib.request.Request) else str(req)
     RECORD["urls"].append(re.sub(r"\?.*", "", url))
     parsed = urllib.parse.urlparse(url)
+    if parsed.hostname in ("127.0.0.1", "localhost"):
+        # A fake server a test started on this machine (tests/fakes/account_api.py).
+        return _real_urlopen(req, timeout=timeout, **kwargs)
     query = dict(urllib.parse.parse_qsl(parsed.query))
     if parsed.netloc == "dev.lunchmoney.app":
         auth = req.headers.get("Authorization") if isinstance(req, urllib.request.Request) else None
@@ -294,6 +301,10 @@ def run(flow: str) -> None:
         r = client.post("/lists/add", data={"list": "Shopping", "title": "x"},
                         headers={**host, "Origin": "https://attacker.example.test"})
         RECORD["portal"]["POST /lists/add cross-site"] = {"status": r.status_code, "cache_control": "", "body": ""}
+    elif flow == "progress":
+        from butler import progress
+        state, problem = progress.sync(force=True)
+        RECORD["progress"] = {"state": state, "problem": problem}
     else:
         raise SystemExit(f"unknown flow {flow}")
 

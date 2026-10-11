@@ -12,6 +12,7 @@ fails, it opens a GitHub issue.
 | Integration | `tests/test_flows.py` | Every push | Any email flow breaking end to end: the brief, replies, the weekly letter, the monthly look-back, every portal page |
 | Privacy | `tests/test_privacy.py` | Every push | An ID number, phone or secret reaching an email, a prompt, a log or a file; household details reaching the news call |
 | Contracts | `tests/test_contracts.py` | Every push | Claude schemas that aren't strict, a reply action that could delete, the test stub drifting from the Swift helper, renamed course steps or scripts |
+| Course progress | `tests/test_progress.py` | Every push | A setup step counting before its check passes (each check, step by step); the step-to-lesson map drifting from the skill's steps and modules; lessons queued twice, `started` beating `done`, or something sent twice; the queue losing anything offline, signed out, on a revoked session or a server error; a refused lesson blocking the rest; anything but lesson ids, statuses and times leaving the Mac; `sync()` raising; the tick skipping it. An integration run of the Johnsons' whole household against the fake account API. The website's contract check holds the other end of the map |
 | Dates | `tests.yml`, `dates` job | Every push | Failures on the 1st, at month and year ends, and on DST changes (libfaketime) |
 | Screenshots | `tests/test_screenshots.py` | Every push (Linux) | The README images failing to build, coming out blank or the wrong size, or changing between two identical runs; event titles drifting away from their times in the portal |
 | macOS end to end | `tests/e2e/macos.sh` | Every push; weekly with the hosted installer | The installer, uv's Python, the first preview, the helper build and signature, launchd plists, shell scripts |
@@ -36,6 +37,9 @@ repo is never touched. Inside it:
 - **Calendar and Reminders:** a stub `butler-ek` that logs every call and refuses any command
   the real helper doesn't have.
 - **Keychain:** a fake `security` command on `PATH`.
+- **The course account:** `tests/fakes/account_api.py`, a local HTTP server with the website's
+  contract (sign-in, `/me`, `/progress` refusing unknown lessons, `/prefs`). The harness lets
+  loopback addresses through, so a flow can report progress to it.
 - **Network:** any other connection fails the test.
 
 All data is invented. The ID numbers, phones and secrets in the fixtures exist so the privacy

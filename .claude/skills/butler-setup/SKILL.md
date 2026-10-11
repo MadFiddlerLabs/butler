@@ -24,6 +24,11 @@ one sentence, and offer the next step.
   name the win ("Bento just made its first brief.").
 - When something fails, explain it simply, fix what you can, and say what you need from them.
   `/butler-doctor` runs a full health check.
+- When a step's check passes, run `bin/butler progress`. It runs that step's own check from
+  the Butler folder and, when it passes, marks the module done on their course account, so the
+  website and the weekly email know. It sends only lesson names and dates. Tell them in one
+  line ("Module 3 is ticked off on buildyourbutler.com."). If it still says "not done yet",
+  something the check needs is missing: compare with the "Where am I?" table and fix it.
 
 ### Three rules that never bend
 
@@ -65,8 +70,9 @@ If they never ran the first run, do the whole step below.
    3. **Everyone else** whose events matter: children, a nanny, a carer. First names only.
    4. **Town.** Work out the timezone and the weather coordinates. State them and let them
       correct you. Celsius or Fahrenheit.
-   5. **News.** The language for summaries, and whether to keep the example regions for now.
-      Their local paper can come later with `/butler-tune`.
+   5. **News.** Their local paper first: find its feed and check it returns headlines. Then
+      the wider world, and the language for summaries. Swap out the example regions they
+      don't want.
 4. Write `config/settings.yaml` from `config/settings.example.yaml`. Keep its comments.
    - Set `name`, `email.sender_name` (the butler's name), `timezone`, `weather`,
      `household.place` and `reminders.todo_list` (the butler's name).
@@ -235,18 +241,20 @@ The win: the portal on their phone, for their household only.
 
 ## Where am I?
 
-When no step was given, check these in order. The first that isn't done is the next step.
+When no step was given, run `bin/butler progress`. It lists each step as done or not, from the
+same checks that mark the course (`src/butler/progress.py`), in this order. The first that isn't
+done is the next step.
 
 | Done when | Step |
 |---|---|
-| `.venv/bin/python` and `config/settings.yaml` exist | install |
+| `config/settings.yaml` has a real name, the adults, the town and their own news regions (not the example's), and a preview brief exists | install |
 | `bin/butler-ek` exists and `calendar.include` isn't empty | calendar |
-| Keychain has `butler-anthropic` | brain |
-| Keychain has `butler-gmail` and `launchctl list` shows `com.buildyourbutler.butler` | inbox |
-| `data/processed_replies.txt` exists | replies |
-| Keychain has `butler-lunchmoney` and `config/category_map.yaml` exists | money |
-| `projects/` has a project | projects |
-| An `out/weekly-sent-*` marker exists, or they say they've previewed the letters | letters |
+| Keychain has `butler-anthropic` and `household.about` isn't empty | brain |
+| Keychain has `butler-gmail`, `email.sender` and `email.recipients` are set, a real brief was built in `out/`, and `launchctl list` shows `com.buildyourbutler.butler` | inbox |
+| `data/processed_replies.txt` isn't empty | replies |
+| Keychain has `butler-lunchmoney`, and `config/category_map.yaml` and `budget/budget.xlsx` exist | money |
+| `projects/` has a project (`reference.local.yaml` doesn't count) | projects |
+| A weekly letter (`out/weekly-*.html` or `out/preview/weekly-*.html`) and a monthly look-back (`out/monthly-*.html`) exist | letters |
 | `portal.url` is set | phone |
 
 Module 10 is `/butler-tune`, and Module 12 is graduation. When everything's done, say so.

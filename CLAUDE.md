@@ -54,6 +54,7 @@ someone developing Butler itself. The hard rules apply to both.
 | `bin/butler`, `src/butler/cli.py` | The `butler` command: one pasted line per early lesson |
 | `scripts/first-run.sh` | The guided first run the package opens: sign-in, lessons, then Claude Code |
 | `src/butler/setup_settings.py`, `account.py` | Settings written one answer at a time; the course account |
+| `src/butler/progress.py`, `course_progress.json` | Progress that marks itself: each setup step's check, the step-to-lesson map, the offline queue (`data/progress.json`), `butler progress` |
 | `packaging/macos/` | The installer package and the universal Calendar helper (docs/RELEASING.md) |
 | `src/butler/updates.py`, `migrations.py` | Over-the-air updates: the manifest, signature checks, rollback; settings migrations (docs/UPDATES.md) |
 | `scripts/install.sh`, `bootstrap.sh` | Download to `~/Butler`; Python through uv, no Xcode tools |
@@ -106,6 +107,9 @@ the portal's test client.
 - The course links to `/butler-setup` step names, the `butler` subcommands, `scripts/install.sh`
   and `./run.sh preview`. Changing any of them means changing the course too. The account API is
   a contract with the website: `docs/ACCOUNTS.md`.
+- `src/butler/course_progress.json` maps each setup step to its module's lesson ids. The
+  website's engine contract check reads it, so a step's module or lessons can't drift. A step
+  counts only when its check in `progress.py` passes; keep each check the module's real win.
 - The session token lives in Keychain (`butler-account`), never in a file. The account holds
   the email, the butler's name and lesson progress, nothing from the household.
 - Before committing, grep the diff for real names, addresses, account names and numbers.

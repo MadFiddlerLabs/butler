@@ -1,5 +1,6 @@
 """What launchd runs every 5 minutes: handle replies, check for updates once a day (see
-updates.py), send the weekly letter if it's due, then send the daily brief if it's due.
+updates.py), report finished setup steps to the course (progress.py), send the weekly letter if
+it's due, then send the daily brief if it's due.
 Calendar copying and colors live in Apps Script (apps-script/butler-calendar.gs)."""
 
 import logging
@@ -7,7 +8,7 @@ import sys
 
 from datetime import datetime
 
-from . import daily, mailer, monthly, replies, updates, weekly
+from . import daily, mailer, monthly, progress, replies, updates, weekly
 from .config import ROOT, brand, load_settings, tz
 
 log = logging.getLogger("butler")
@@ -26,6 +27,7 @@ def main() -> None:
         updates.tick(settings, datetime.now(tz(settings)))
     except Exception:
         log.exception("update check failed")  # never let updates block the brief
+    progress.sync()  # never raises; queues whatever can't be sent yet
     _weekly_if_due()
     _monthly_if_due()
     sys.argv = [sys.argv[0], "--scheduled"]

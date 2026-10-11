@@ -128,6 +128,30 @@ class CliTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 0)
         self.assertIn("When you're ready, type: butler claude", proc.stdout)
 
+    def test_progress_waits_while_signed_out_then_goes_with_the_next_command(self):
+        self.home.butler("town", "Lisbon")
+        self.assertEqual(self.api.progress, [], "not signed in: nothing sent")
+        out = self.home.butler("progress").stdout
+        self.assertIn("· Module 3 · /butler-setup calendar: not done yet", out)
+        self.assertIn("Also waiting: setup.town", out)
+        self.assertIn("You're not signed in", out)
+        self.assertIn("nothing from your household", out)
+
+        # The calendar step's check passes: the helper is there and a calendar is chosen.
+        (self.home.root / "bin" / "butler-ek").write_text("#!/bin/sh\n")
+        settings = self.home.root / "config" / "settings.yaml"
+        settings.write_text(settings.read_text().replace("include: []", "include:\n  - Johnson Family"))
+        self.assertIn("… Module 3 · /butler-setup calendar: done, waiting to send", self.home.butler("progress").stdout)
+
+        self.sign_in()
+        self.home.butler("status")
+        lessons = [p["lesson"] for p in self.api.progress]
+        self.assertEqual(lessons[0], "setup.town")
+        self.assertEqual(lessons[1:], [l for l in lessons[1:] if l.startswith("m3-")])
+        self.assertEqual(len(lessons), 6, lessons)
+        self.assertIn("✓ Module 3 · /butler-setup calendar: sent", self.home.butler("progress").stdout)
+        self.assertEqual(len(self.api.progress), 6, "nothing goes twice")
+
     def test_doctor_on_a_fresh_install(self):
         proc = self.home.butler("doctor")
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)

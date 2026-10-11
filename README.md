@@ -122,7 +122,9 @@ butler brief
 
 Then `butler claude` moves into [Claude Code](https://claude.com/claude-code), where the rest of
 the setup happens one step at a time. `butler status` says where you are, and `butler help`
-lists the rest.
+lists the rest. When a step's check passes, Butler ticks that module off on your course account
+by itself (lesson names and dates, nothing from the household); `butler progress` shows what it
+sent.
 
 Prefer a terminal? The same install, without the package:
 
