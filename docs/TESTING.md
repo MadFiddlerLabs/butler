@@ -15,6 +15,7 @@ fails, it opens a GitHub issue.
 | Dates | `tests.yml`, `dates` job | Every push | Failures on the 1st, at month and year ends, and on DST changes (libfaketime) |
 | Screenshots | `tests/test_screenshots.py` | Every push (Linux) | The README images failing to build, coming out blank or the wrong size, or changing between two identical runs; event titles drifting away from their times in the portal |
 | macOS end to end | `tests/e2e/macos.sh` | Every push; weekly with the hosted installer | The installer, uv's Python, the first preview, the helper build and signature, launchd plists, shell scripts |
+| Signed update | `tests/e2e/signed-update.sh` | Before every release is published (release.yml), and by hand for a candidate | A signed, notarized release that the published one refuses or breaks on: the household's files, the version, the health check, tampered packages |
 | Skill evals | `tests/evals/run_evals.py` | Weekly and on demand (paid) | `/butler-setup install` and `/butler-doctor` not doing their job; Claude repeating or storing a pasted secret; Claude sending email |
 | Live contract | `tests/live/live_contract.py` | Weekly and on demand (paid) | The Claude API no longer accepting Butler's request shape (model, beta, fallbacks, thinking, effort, JSON schema) |
 

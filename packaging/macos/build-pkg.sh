@@ -29,7 +29,10 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 stage="$work/root/Butler"
 mkdir -p "$stage" "$work/scripts" "$out"
-git -C "$repo" archive HEAD | tar -x -C "$stage"
+# Through a file, not a pipe: macOS tar can stop reading at the archive's end marker while git
+# still writes padding, and git then dies of SIGPIPE (exit 141) and fails the build at random.
+git -C "$repo" archive --format=tar -o "$work/source.tar" HEAD
+tar -x -f "$work/source.tar" -C "$stage"
 rm -rf "$stage/.github" "$stage/packaging"
 printf '%s\n' "$version" > "$stage/.butler-version"
 # Unsigned test builds name their version in a marker. Only then can a test relax the updater's

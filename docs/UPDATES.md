@@ -78,3 +78,6 @@ version out gradually, set `rollout_percent` there too. See the website's DEPLOY
   - v0.0.1 → v0.0.2 keeps the household's files byte for byte and runs the migration.
   - A broken v0.0.3 rolls back.
   - An unsigned v0.0.4 is refused without the test flag.
+- `tests/e2e/signed-update.sh`, run in release.yml before every release is published: the
+  published release, signed and notarized, updates itself to the signed, notarized candidate with
+  no check relaxed. Tampered copies are refused first. See docs/RELEASING.md.

@@ -21,12 +21,14 @@ if [ -d "$home/.git" ]; then
 fi
 
 tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
+trap 'rm -rf "$tmp" "$tmp.tar"' EXIT
 if [ -n "${BUTLER_SOURCE:-}" ]; then
   # A local checkout: its committed files, exactly what a release download contains.
   version="local"
   echo "Installing Butler from $BUTLER_SOURCE to $home"
-  git -C "$BUTLER_SOURCE" archive HEAD | tar -x -C "$tmp"
+  # Through a file, not a pipe: macOS tar can stop reading early and git then dies of SIGPIPE.
+  git -C "$BUTLER_SOURCE" archive --format=tar -o "$tmp.tar" HEAD
+  tar -x -f "$tmp.tar" -C "$tmp"
 else
   # The newest release, or main until the first release exists.
   tag="$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" 2>/dev/null \

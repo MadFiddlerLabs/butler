@@ -5,25 +5,59 @@ The website serves the latest one from
 `https://github.com/nerolabs/butler/releases/latest/download/Butler.pkg` under each student's
 chosen name (`<Name>.pkg`).
 
-To release, tag and push:
+The version lives only in the tag. The package writes it to `~/Butler/.butler-version`, so
+there is no version file to bump in the repository.
 
-```
-git tag v0.1.0
-git push origin v0.1.0
-```
+## Release checklist
 
-`.github/workflows/release.yml` then:
+1. **Main is green**: the `tests` and `macos-e2e` workflows, including the `package` and
+   `updates` jobs.
+2. **Settings need no surprise.** A new setting must default to the old behaviour when it's
+   absent. Add a migration in `src/butler/migrations.py` only when a household's file has to
+   change (docs/UPDATES.md).
+3. **Pick the version.** Patches and minors install overnight on their own. Use a major version
+   only for a change the household should agree to first: the brief then asks for an "update"
+   reply.
+4. **Prove the candidate, signed to signed.** Run the release workflow by hand with the new
+   version:
+
+   ```
+   gh workflow run release.yml -f version=v0.2.0
+   ```
+
+   It builds, signs and notarizes the candidate. Then job `signed-update` installs the release
+   students have now, from GitHub Releases, and lets its own updater install the candidate. It
+   publishes nothing.
+5. **Tag with the release notes and push.** The annotated tag's message becomes the release
+   notes. Write it for households, two or three plain sentences. The first ones show up in the
+   brief ("What's new: …"), so lead with what changes for them.
+
+   ```
+   git tag -a v0.2.0 -F notes.txt
+   git push origin v0.2.0
+   ```
+
+6. **Check the published package** once the workflow finishes:
+
+   ```
+   gh release download v0.2.0 -p Butler.pkg
+   pkgutil --check-signature Butler.pkg
+   spctl -a -vv -t install Butler.pkg
+   xcrun stapler validate Butler.pkg
+   ```
+
+On a tag, `.github/workflows/release.yml`:
 
 1. Builds the universal Calendar helper.
 2. Builds the package and signs it.
 3. Notarizes the package with Apple and staples the ticket.
-4. Publishes the release.
+4. Runs the signed update from the current release to this package (`signed-update`).
+5. Publishes the release, only if step 4 passed.
 
 Installed copies pick the release up on their own: the website rebuilds its update manifest
-(`/updates/stable.json`) from the latest release, and each Butler checks it overnight (see
-docs/UPDATES.md). Write the release notes for households: the first sentences show up in the
-brief. Use a major version only for a change the household should agree to first. To stop a bad
-release, hold it in the website's `updates/hold.json`.
+(`/updates/stable.json`) from the latest release on its next deploy, and each Butler checks it
+overnight (see docs/UPDATES.md). To stop a bad release, hold it in the website's
+`updates/hold.json`.
 
 Without the signing secrets it still builds, as `Butler-unsigned.pkg` on a prerelease. The job
 summary says which secrets are missing. `/releases/latest` ignores prereleases, so students never
@@ -111,5 +145,14 @@ notarized". A run by hand only uploads the package as a build artifact. It publi
 - `.github/workflows/macos-e2e.yml`, job `package`: builds the package and installs it into the
   runner's home folder with `installer`, then upgrades it and checks nothing personal changed.
 
+- `tests/e2e/signed-update.sh`, run in release.yml as job `signed-update`: the update students
+  really get, signed to signed. It installs the published release from GitHub Releases, then
+  that release's own updater installs the new signed, notarized package, with no check relaxed.
+  First it must refuse three tampered copies: a checksum mismatch, a changed byte and a repacked,
+  unsigned package. Afterwards the household's files are byte for byte the same, `butler update
+  --check` reports the new version, the health check passes, and the Calendar helper is signed by
+  the team.
+
 Apple's notarization can only run with the real secrets, so it is checked by the release workflow
-itself: `stapler validate`, `pkgutil --check-signature` and `spctl --assess` must all pass.
+itself: `stapler validate`, `pkgutil --check-signature` and `spctl --assess` must all pass. For
+the same reason `signed-update` runs only there, never on a pull request.
