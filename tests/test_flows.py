@@ -117,10 +117,12 @@ class FullHouseholdTest(unittest.TestCase):
 
     # ---------- letters ----------
 
-    def test_sunday_letter(self):
+    def test_weekly_letter_on_the_default_sunday(self):
         mails = self.weekly["mails"]
         self.assertEqual(len(mails), 1)
         self.assertTrue(mails[0]["subject"].startswith("Bento · your week ahead"), mails[0]["subject"])
+        self.assertIn("Week ending Sunday", mails[0]["text"])
+        self.assertIn("Bento, Sunday letter.", mails[0]["html"])
         self.assertIn("An invented, calm week.", mails[0]["text"])
         self.assertIn("Mystery Payee Lda", mails[0]["text"], "unmapped spending should be asked about")
 
@@ -238,6 +240,43 @@ class BudgetByReplyTest(unittest.TestCase):
         self.assertEqual(sorted(unclear["to"]), ["alex@example.com", "sam@example.com"])
         self.assertIn("I didn't change the budget.", unclear["text"])
         self.assertIn("Groceries, Restaurants", unclear["text"])
+
+
+class WeeklyOnFridayTest(unittest.TestCase):
+    """A household that moved the weekly letter to Friday morning: its wording says Friday."""
+
+    @classmethod
+    def setUpClass(cls):
+        import yaml
+        cls.home = h = Home()
+        path = h.root / "config" / "settings.yaml"
+        settings = yaml.safe_load(path.read_text())
+        settings["email"]["weekly_day"], settings["email"]["weekly_hour"] = 4, 9
+        path.write_text(yaml.safe_dump(settings, sort_keys=False, allow_unicode=True))
+        cls.portal = h.run("portal")      # before any letter exists
+        cls.weekly = h.run("weekly")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.home.close()
+
+    def test_letter_names_friday_and_never_sunday(self):
+        self.assertIsNone(self.weekly["error"], self.weekly["error"])
+        m = self.weekly["mails"][0]
+        friday = date.today() + timedelta(days=(4 - date.today().weekday()) % 7)
+        self.assertEqual(m["subject"], f"Bento · your week ahead, {friday + timedelta(days=1):%-d %B}")
+        self.assertIn(f"Week ending Friday {friday.day} {friday:%B %Y}", m["text"])
+        self.assertIn("Bento, Friday letter.", m["html"])
+        for part in ("subject", "text", "html"):
+            self.assertNotIn("Sunday", m[part], part)
+
+    def test_claude_is_told_the_day(self):
+        prompt = next(p for p in self.weekly["prompts"] if p["schema"] == "weekly")
+        self.assertIn("It goes out on Friday morning.", prompt["system"])
+        self.assertNotIn("Sunday", prompt["system"] + prompt["prompt"])
+
+    def test_empty_week_page_says_friday(self):
+        self.assertIn("The first weekly letter arrives Friday at 9:00.", self.portal["portal"]["GET /week"]["body"])
 
 
 class MidCourseTest(unittest.TestCase):

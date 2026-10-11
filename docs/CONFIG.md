@@ -25,7 +25,7 @@ Plus the budget workbook, `budget/budget.xlsx`, and the household notes Claude r
 | `email.sender`, `sender_name` | The assistant's Gmail account |
 | `email.recipients` | Who gets the emails |
 | `email.trusted_senders` | Addresses whose replies are acted on (DKIM must pass) |
-| `email.send_hour`, `weekly_day`, `weekly_hour`, `monthly_hour` | When each email goes out |
+| `email.send_hour`, `weekly_day`, `weekly_hour`, `monthly_hour` | When each email goes out. `weekly_day` is Monday = 0 ... Sunday = 6 (default 6); the weekly letter names that day ("Week ending Friday 16 October") |
 | `household.adults` | The adults, with the addresses they reply from |
 | `household.place` | Your town, for the news prompt |
 | `news.interests` | What you want from the news, in a sentence. With `household.place`, the only household detail the news call sees, so keep names out of it |
@@ -80,7 +80,7 @@ Plus the budget workbook, `budget/budget.xlsx`, and the household notes Claude r
 | `rules.savings_account`, `savings_draw_payee` | The savings draw and runway |
 | `rules.own_transfer_payees` | Transfers that are your own money moving, never asked about |
 
-Replies keep this file current: when the Sunday letter asks about a charge and you answer,
+Replies keep this file current: when the weekly letter asks about a charge and you answer,
 an override is appended with the date and who answered.
 
 ## The budget workbook
@@ -95,7 +95,7 @@ Butler reads only input cells, so you can add sheets and formatting of your own.
 | Expenses | A–F and I from row 5 | Category, item, currency, amount, frequency (`Monthly`, `Annual`, `5-Year`), due month, note |
 
 Annual lines appear in "Due this month" in their month. Annual and five-year lines are
-smoothed into a monthly set-aside in the Sunday letter. Before Butler updates the exchange rate,
+smoothed into a monthly set-aside in the weekly letter. Before Butler updates the exchange rate,
 it saves a dated copy of the workbook in `budget/history/`.
 
 ### Applying a budget suggestion by reply
@@ -134,5 +134,5 @@ You can always change the workbook yourself, or ask `/butler-tune`.
 ## deadlines.yaml
 
 Each deadline has `name`, `date` (`MM-DD`, every year), `who`, `note` and optionally
-`from_year`. They appear in the morning brief from 14 days before and in the Sunday letter
+`from_year`. They appear in the morning brief from 14 days before and in the weekly letter
 from 60 days before.

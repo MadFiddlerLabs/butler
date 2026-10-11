@@ -19,7 +19,7 @@ learn how AI works along the way.
 | Email | When | What's in it |
 |---|---|---|
 | Morning brief | Daily, at the hour you choose | Weather, heads-up on deadlines and expiring documents, to-dos, today and this week per person, what to prepare for, next project steps, money, news |
-| Sunday letter | Weekly | The week in numbers with charts, bills due in the next 60 days, spending that's creeping up, the week ahead, ideas to save or earn, questions about unexplained transactions, where each project stands |
+| Weekly letter | Sunday, or the day you choose | The week in numbers with charts, bills due in the next 60 days, spending that's creeping up, the week ahead, ideas to save or earn, questions about unexplained transactions, where each project stands |
 | Monthly look-back | The 1st | What got done, where the time went (from the calendar), where the money went, budget suggestions from your trend |
 
 Reply to any of them: "add milk to shopping", "dentist for Mia Thursday at 10", "done: school
@@ -110,7 +110,7 @@ In Claude Code, the steps are:
 | `/butler-setup replies` | Reply by email or Siri to change things |
 | `/butler-setup money` | Connect Lunch Money and draft your budget |
 | `/butler-setup projects` | Family projects and paperwork |
-| `/butler-setup letters` | The Sunday letter and the monthly look-back |
+| `/butler-setup letters` | The weekly letter and the monthly look-back |
 | `/butler-setup phone` | The portal on your phones, with Tailscale |
 
 `/butler-setup` on its own says where you are. You type secrets into a Mac dialog, so they

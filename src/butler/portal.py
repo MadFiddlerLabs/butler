@@ -248,9 +248,12 @@ def brief(day: str):
 def week():
     letters = sorted(OUT.glob("weekly-*.html"), reverse=True)
     if not letters:
-        hour = load_settings()["email"].get("weekly_hour", 17)
-        return page("Week", "<h1>Your week</h1><p class=sub>The first Sunday letter arrives "
-                    f"Sunday at {hour}:00.</p>", "/week")
+        from .weekly import letter_day_name
+        settings = load_settings()
+        hour = settings["email"].get("weekly_hour", 17)
+        day = letter_day_name(settings)
+        return page("Week", "<h1>Your week</h1><p class=sub>The first weekly letter arrives "
+                    f"{day} at {hour}:00.</p>", "/week")
     stem = request.args.get("w", letters[0].stem)
     path = OUT / f"{stem}.html"
     if not re.fullmatch(r"weekly-\d{4}-\d{2}", stem) or not path.exists():

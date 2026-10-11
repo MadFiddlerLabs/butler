@@ -104,7 +104,7 @@ Action types:
   (YYYY-MM-DD), or null.
 - step_note: news about a step worth keeping that doesn't change its state. step_id; text.
 - categorize: how a payee's spending should be counted from now on (often an answer to a
-  "Q-..." question in the Sunday letter). text = the payee exactly as written in the
+  "Q-..." question in the weekly letter). text = the payee exactly as written in the
   question; category = one of {json.dumps(categories)}, or "EXCLUDE" for spending that isn't the household's.
 {f'- practice_score: a {tracker["name"]} score for {tracker["person"]}; text = "N/M" (one action per test).' + chr(10) if tracker else ""}{_budget_change_help(suggestions)}- question: they're asking something (about plans, money, calendar, projects); text = the question.
 - household_note: a fact worth remembering (who someone is, a preference, a change).
@@ -116,7 +116,7 @@ Action types:
 Steps that depend on others are unblocked automatically when those are marked done, so
 don't add TODOs for them. Fill unused fields with null.
 
-Questions asked in Sunday letters (id -> payee). For categorize, use the payee, not the id:
+Questions asked in weekly letters (id -> payee). For categorize, use the payee, not the id:
 {json.dumps({k: v["payee"] for k, v in _questions().items()}, ensure_ascii=False)}
 
 Project steps:

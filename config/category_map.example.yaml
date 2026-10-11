@@ -8,7 +8,7 @@
 
 # Lunch Money category -> budget category (the Category column of the budget workbook).
 # "EXCLUDE" means "not household spending". Unmapped categories land in "Other" and the
-# Sunday letter asks about them.
+# weekly letter asks about them.
 map:
   "Restaurants": Food
   "Groceries": Food

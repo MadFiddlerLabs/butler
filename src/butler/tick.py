@@ -1,5 +1,5 @@
 """What launchd runs every 5 minutes: handle replies, check for updates once a day (see
-updates.py), send the Sunday letter if it's due, then send the daily brief if it's due.
+updates.py), send the weekly letter if it's due, then send the daily brief if it's due.
 Calendar copying and colors live in Apps Script (apps-script/butler-calendar.gs)."""
 
 import logging
@@ -46,7 +46,7 @@ def _weekly_if_due() -> None:
         weekly.run(settings, now.date(), dry_run=False)
     except Exception as e:
         log.exception("weekly failed")
-        mailer.send(settings, f"{brand(settings)} · Sunday letter failed {now:%-d %B}",
+        mailer.send(settings, f"{brand(settings)} · {now:%A} letter failed {now:%-d %B}",
                     f"This week's letter failed to build or send ({e}). Details are in logs/butler.log.")
     marker.touch()
 

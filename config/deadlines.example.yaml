@@ -1,5 +1,5 @@
 # Recurring deadlines, shown in "Heads up": in the daily brief from 14 days before and in the
-# Sunday letter from 60 days before. Copy to deadlines.yaml and keep the ones that apply.
+# weekly letter from 60 days before. Copy to deadlines.yaml and keep the ones that apply.
 # These are reminders to check with your advisers, not tax advice.
 #
 # Each: name, date (MM-DD, every year), who, and a short note. `from_year` skips earlier years.
