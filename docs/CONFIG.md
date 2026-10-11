@@ -36,6 +36,7 @@ Plus the budget workbook, `budget/budget.xlsx`, and the household notes Claude r
 | `calendar.write_to` | Where replies add events |
 | `people` | Everyone events can belong to (children too), with aliases, owned calendars and a color |
 | `projects.in_brief` | Show "Next up" in the morning brief |
+| `projects.appointment_keywords` | Optional: words that mark a project step as an appointment or document note. Those steps go to Claude when it flags what to prepare. Write them in your steps' language. Default: `bring, appointment, document, passport, visa, permit, office`. An empty list sends none |
 | `reminders.todo_list`, `shopping_list` | Apple Reminders lists |
 | `news.regions` | Regions in order, each with RSS feeds |
 | `news.language` | The language summaries are written in |
