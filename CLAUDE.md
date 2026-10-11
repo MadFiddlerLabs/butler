@@ -13,7 +13,7 @@ someone developing Butler itself. The hard rules apply to both.
 
 - **No real household data in the repo.** Config, projects, budget, notes, the email archive
   and the reference file are git-ignored. Never commit them, never paste them into issues,
-  tests, examples or docs. Examples use invented people (the Riveras: Sam, Alex, Mia and the
+  tests, examples or docs. Examples use invented people (the Johnsons: Sam, Alex, Mia and the
   nanny Pat, in Lisbon) and invented amounts. Label any example as invented.
 - **Secrets live in the macOS Keychain** (`butler-gmail`, `butler-anthropic`, `butler-lunchmoney`).
   Never put them in files, logs or chat. When a secret is needed, give the user the

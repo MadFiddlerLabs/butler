@@ -2,11 +2,11 @@
 # Code, which writes it for you). Until settings.yaml exists, the app runs on this example.
 #
 # Secrets are never stored here. They live in the macOS login Keychain (see docs/SETUP.md).
-# Everything below is an invented example household: Sam and Alex Rivera, their daughter Mia
+# Everything below is an invented example household: Sam and Alex Johnson, their daughter Mia
 # and their nanny Pat, in Lisbon.
 
 # Your butler's name. It signs the emails ("Bento · Monday 12 October"), titles the portal and
-# answers to it in Siri. The Riveras named theirs Bento.
+# answers to it in Siri. The Johnsons named theirs Bento.
 name: Bento
 
 timezone: Europe/Lisbon
@@ -23,7 +23,7 @@ currency:
 
 email:
   sender_name: Bento
-  sender: bento.rivera.butler@example.com     # the assistant's own Gmail address
+  sender: bento.johnson.butler@example.com     # the assistant's own Gmail address
   send_hour: 7          # the morning brief goes out at this hour, local time
   weekly_day: 6         # the Sunday letter: Monday = 0 ... Sunday = 6
   weekly_hour: 17
@@ -48,14 +48,14 @@ household:
   # Context for Claude. Keep it to facts that help it pick news and flag what to prepare for.
   # Never put ID numbers, account numbers or passwords here: this text is sent to Claude.
   about: >
-    Sam and Alex Rivera and their daughter Mia (4) live in Lisbon, Portugal. Sam works
+    Sam and Alex Johnson and their daughter Mia (4) live in Lisbon, Portugal. Sam works
     remotely for a US company and is paid in USD; Alex is studying Portuguese. Spending is
     mostly in EUR. Pat is Mia's nanny three afternoons a week, paid in cash on Fridays.
 
 calendar:
   # Calendars in the brief, by title as they appear in macOS Calendar.
   include:
-    - Rivera Family
+    - Johnson Family
     - Sam Work
     - Alex
   # Holiday calendars: shown as a one-line note on the day.
@@ -63,7 +63,7 @@ calendar:
     - Holidays in Portugal
   lookahead_days: 7
   # Where replies add events ("dentist Thursday at 10").
-  write_to: Rivera Family
+  write_to: Johnson Family
 
 # Who each event belongs to. An event goes to everyone whose name (or alias) appears as a
 # word in its title; failing that, to the owner of its calendar; failing that, to the family.

@@ -51,7 +51,7 @@ def mac_timezone() -> str:
 
 
 def fresh() -> dict:
-    """New settings from the example, with the invented Riveras' details taken out."""
+    """New settings from the example, with the invented Johnsons' details taken out."""
     s = yaml.safe_load(EXAMPLE.read_text())
     s["name"] = PLACEHOLDER_NAME
     s["timezone"] = mac_timezone()

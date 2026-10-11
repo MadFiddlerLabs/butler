@@ -94,7 +94,7 @@ class CliTest(unittest.TestCase):
         html = next((self.home.root / "out" / "preview").glob("brief-*.html")).read_text()
         self.assertIn("Bento", html)
         self.assertIn("Not connected yet", html)
-        self.assertNotIn("Rivera", html)
+        self.assertNotIn("Johnson", html)
         self.assertEqual([p["lesson"] for p in self.api.progress],
                          ["setup.name", "setup.town", "setup.first-brief"])
 

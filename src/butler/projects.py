@@ -1,7 +1,7 @@
 """Loads projects/*.yaml and works out what's actionable today. See docs/PROJECTS.md.
 
 While the app runs on the example household, the examples in examples/projects/ stand in
-until projects/ has a project of your own. A real household never sees the Riveras' projects."""
+until projects/ has a project of your own. A real household never sees the Johnsons' projects."""
 
 from dataclasses import dataclass, field
 from datetime import date, timedelta

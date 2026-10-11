@@ -1,4 +1,4 @@
-"""A throwaway Butler install for integration tests: a copy of the code with the invented Riveras'
+"""A throwaway Butler install for integration tests: a copy of the code with the invented Johnsons'
 settings, projects, budget and reference file, a stub butler-ek and a fake Keychain.
 
     home = Home()                  # everything connected

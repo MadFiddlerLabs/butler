@@ -53,7 +53,7 @@ steps:
 
 
 class ExampleFallbackTest(unittest.TestCase):
-    """The Riveras' projects stand in only while the app runs on the example settings."""
+    """The Johnsons' projects stand in only while the app runs on the example settings."""
 
     def setUp(self):
         self._orig = projects.PROJECTS_DIR

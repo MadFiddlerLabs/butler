@@ -37,7 +37,7 @@ one sentence, and offer the next step.
    `replies` email real people. `./run.sh preview` and the dry runs send nothing.
 
 Never overwrite a real config file without a yes. Copy it to `<name>.yaml.bak` first.
-Examples you show are invented (the Riveras and their butler Bento), and you say so.
+Examples you show are invented (the Johnsons and their butler Bento), and you say so.
 
 ## install (course Module 2: Hire your butler properly)
 
