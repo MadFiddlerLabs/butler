@@ -15,7 +15,6 @@ import stat
 import subprocess
 import sys
 import tempfile
-from datetime import date
 from pathlib import Path
 
 import yaml
@@ -73,7 +72,7 @@ class Home:
                 shutil.copy(f, r / "projects" / f.name)
         if reference:
             (r / "projects").mkdir(exist_ok=True)
-            (r / "projects" / "reference.local.yaml").write_text(fixtures.reference_yaml(date.today()))
+            (r / "projects" / "reference.local.yaml").write_text(fixtures.reference_yaml(fixtures.today()))
         (r / "data" / "feedback.md").write_text(f"- 2026-10-01 (Sam): {fixtures.FEEDBACK_MARKER}\n")
         (r / "data" / "household_notes.md").write_text("- Pat picks Mia up on Fridays.\n")
 

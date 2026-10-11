@@ -50,6 +50,13 @@ ABOUT_MARKER = "They keep chickens on the balcony"
 FEEDBACK_MARKER = "Fewer football stories, more about the metro works"
 
 
+def today() -> date:
+    """Today where the Johnsons live. The flows run on Lisbon time (Home.env sets TZ), so a test
+    that works out dates must too, or it disagrees with them for an hour or more around midnight,
+    depending on where it runs."""
+    return datetime.now(ZONE).date()
+
+
 def reference_yaml(today: date) -> str:
     return REFERENCE_YAML.replace("{EXPIRES}", (today + timedelta(days=40)).isoformat())
 
