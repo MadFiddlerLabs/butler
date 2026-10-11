@@ -40,6 +40,13 @@ class NoDeleteTest(unittest.TestCase):
             if kind != "unclear":    # falls through to "I wasn't sure what to do with"
                 self.assertIn(f'"{kind}"', perform, f"perform() doesn't handle {kind}")
 
+    def test_budget_figures_reach_python_as_written(self):
+        """Claude copies a budget figure as text; budget_changes.py parses and bounds it."""
+        item = replies.ACTION_SCHEMA["properties"]["actions"]["items"]["properties"]
+        self.assertEqual(item["amount"], {"type": ["string", "null"]})
+        perform = SRC["replies.py"].split("def perform(")[1].split("\ndef ")[0]
+        self.assertIn("budget_changes.apply(settings, action, said, today)", perform)
+
     def test_helper_has_no_delete_or_edit(self):
         self.assertNotIn("store.remove(", SWIFT)
         self.assertNotIn("removeCalendar", SWIFT)

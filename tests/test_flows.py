@@ -2,7 +2,9 @@
 Money, the news, the weather and the Calendar helper faked (tests/fakes). No network.
 Run with: PYTHONPATH=src .venv/bin/python -m unittest discover tests"""
 
+import json
 import unittest
+from datetime import date, timedelta
 
 from fakes.home import Home
 
@@ -115,10 +117,12 @@ class FullHouseholdTest(unittest.TestCase):
 
     # ---------- letters ----------
 
-    def test_sunday_letter(self):
+    def test_weekly_letter_on_the_default_sunday(self):
         mails = self.weekly["mails"]
         self.assertEqual(len(mails), 1)
         self.assertTrue(mails[0]["subject"].startswith("Bento · your week ahead"), mails[0]["subject"])
+        self.assertIn("Week ending Sunday", mails[0]["text"])
+        self.assertIn("Bento, Sunday letter.", mails[0]["html"])
         self.assertIn("An invented, calm week.", mails[0]["text"])
         self.assertIn("Mystery Payee Lda", mails[0]["text"], "unmapped spending should be asked about")
 
@@ -145,6 +149,134 @@ class FullHouseholdTest(unittest.TestCase):
         calls = [(c["command"], c["args"]) for c in self.home.ek_calls()]
         self.assertIn(("add-reminder", ["--list", "Shopping", "--title", "Bread"]), calls)
         self.assertNotIn(("add-reminder", ["--list", "Shopping", "--title", "x"]), calls)
+
+
+class BudgetByReplyTest(unittest.TestCase):
+    """The look-back suggests budget changes; a trusted, signed reply applies one to the household's
+    own workbook (a copy of the example, in the test home) after a backup. Strangers and failing
+    signatures change nothing."""
+
+    APPLY, UNCLEAR, FORGED = "Re: Bento · September looking back", "Re: Bento · food", "Re: Bento · budget"
+
+    @classmethod
+    def setUpClass(cls):
+        cls.home = h = Home()
+        cls.book = h.root / "budget" / "budget.xlsx"
+        cls.monthly = h.run("monthly")
+        # The look-back saved its own suggestions; these invented ones replace them so the test
+        # doesn't depend on which month the fixtures fall in.
+        saved = h.root / "data" / "budget_suggestions.json"
+        cls.saved = json.loads(saved.read_text())
+        saved.write_text(json.dumps({"month": cls.saved["month"], "sent": str(date.today() - timedelta(days=1)),
+                                     "suggestions": {"Lifestyle": {"budget": 120, "trend": 13, "suggested": 25},
+                                                     "Food": {"budget": 950, "trend": 1100, "suggested": 1100}}}))
+        h.set_actions({
+            cls.APPLY: [{"type": "budget_change", "text": "apply the Lifestyle suggestion", "category": "Lifestyle"}],
+            cls.UNCLEAR: [{"type": "budget_change", "text": "Food 900", "category": "Food", "amount": "900"}],
+            cls.FORGED: [{"type": "budget_change", "text": "Lifestyle 200", "category": "Lifestyle", "amount": "200"}],
+        })
+        h.add_reply("stranger@attacker.test", cls.FORGED, "Lifestyle 200", "attacker.test")
+        h.add_reply("alex@example.com", cls.FORGED, "Lifestyle 200", None)
+        h.add_reply("alex@example.com", cls.FORGED, "Lifestyle 200", "example.com.attacker.test")
+        cls.before = cls.book.read_bytes()
+        cls.untrusted = h.run("replies")
+        cls.after_untrusted = cls.book.read_bytes()
+        cls.history_after_untrusted = cls.history()
+        h.add_reply("sam@example.com", cls.APPLY, "Yes, please apply the Lifestyle suggestion.", "example.com")
+        h.add_reply("alex@example.com", cls.UNCLEAR, "Food 900", "example.com")
+        cls.trusted = h.run("replies")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.home.close()
+
+    @classmethod
+    def history(cls) -> list:
+        folder = cls.home.root / "budget" / "history"
+        return sorted(folder.iterdir()) if folder.exists() else []
+
+    @staticmethod
+    def amount(path, item):
+        import openpyxl
+        ws = openpyxl.load_workbook(path)["Expenses"]
+        return next(ws[f"D{r}"].value for r in range(5, 61) if ws[f"B{r}"].value == item)
+
+    def test_no_flow_crashed(self):
+        for record in (self.monthly, self.untrusted, self.trusted):
+            self.assertIsNone(record["error"], record["error"])
+            self.assertEqual(record["schema_errors"], [])
+
+    def test_the_sent_look_back_keeps_its_suggestions_for_replies(self):
+        last_month = (date.today().replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+        self.assertIn(self.saved["month"], (last_month, date.today().strftime("%Y-%m")))
+        text = self.monthly["mails"][0]["text"]
+        for category in self.saved["suggestions"]:
+            self.assertIn(f"  {category}: budget", text)
+        if self.saved["suggestions"]:
+            self.assertIn("BUDGET SUGGESTIONS (REPLY TO APPLY ONE)", text)
+
+    def test_untrusted_or_unsigned_replies_change_nothing(self):
+        self.assertEqual(self.untrusted["prompts"], [])
+        self.assertEqual(self.untrusted["mails"], [])
+        self.assertEqual(self.after_untrusted, self.before)
+        self.assertEqual(self.history_after_untrusted, [])
+
+    def test_a_trusted_reply_changes_the_line_after_a_backup(self):
+        self.assertIn("budget_change", self.trusted["prompts"][0]["prompt"])
+        self.assertEqual(self.amount(self.book, "Subscriptions and outings"), 25)
+        backups = self.history()
+        self.assertEqual(len(backups), 1, backups)
+        self.assertRegex(backups[0].name, r"^budget_\d{4}-\d{2}-\d{2}_reply\.xlsx$")
+        self.assertEqual(backups[0].read_bytes(), self.before)
+        self.assertEqual(self.amount(self.book, "Groceries"), 700, "the unclear reply changed Food")
+
+    def test_confirmation_to_everyone_says_what_changed_and_where_the_backup_is(self):
+        mails = {m["subject"]: m for m in self.trusted["mails"]}
+        applied = mails[self.APPLY]
+        self.assertEqual(sorted(applied["to"]), ["alex@example.com", "sam@example.com"])
+        self.assertIn("Subscriptions and outings (Lifestyle) from €120 to €25 a month", applied["text"])
+        self.assertIn(f"saved as budget/history/{self.history()[0].name}", applied["text"])
+        unclear = mails[self.UNCLEAR]
+        self.assertEqual(sorted(unclear["to"]), ["alex@example.com", "sam@example.com"])
+        self.assertIn("I didn't change the budget.", unclear["text"])
+        self.assertIn("Groceries, Restaurants", unclear["text"])
+
+
+class WeeklyOnFridayTest(unittest.TestCase):
+    """A household that moved the weekly letter to Friday morning: its wording says Friday."""
+
+    @classmethod
+    def setUpClass(cls):
+        import yaml
+        cls.home = h = Home()
+        path = h.root / "config" / "settings.yaml"
+        settings = yaml.safe_load(path.read_text())
+        settings["email"]["weekly_day"], settings["email"]["weekly_hour"] = 4, 9
+        path.write_text(yaml.safe_dump(settings, sort_keys=False, allow_unicode=True))
+        cls.portal = h.run("portal")      # before any letter exists
+        cls.weekly = h.run("weekly")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.home.close()
+
+    def test_letter_names_friday_and_never_sunday(self):
+        self.assertIsNone(self.weekly["error"], self.weekly["error"])
+        m = self.weekly["mails"][0]
+        friday = date.today() + timedelta(days=(4 - date.today().weekday()) % 7)
+        self.assertEqual(m["subject"], f"Bento · your week ahead, {friday + timedelta(days=1):%-d %B}")
+        self.assertIn(f"Week ending Friday {friday.day} {friday:%B %Y}", m["text"])
+        self.assertIn("Bento, Friday letter.", m["html"])
+        for part in ("subject", "text", "html"):
+            self.assertNotIn("Sunday", m[part], part)
+
+    def test_claude_is_told_the_day(self):
+        prompt = next(p for p in self.weekly["prompts"] if p["schema"] == "weekly")
+        self.assertIn("It goes out on Friday morning.", prompt["system"])
+        self.assertNotIn("Sunday", prompt["system"] + prompt["prompt"])
+
+    def test_empty_week_page_says_friday(self):
+        self.assertIn("The first weekly letter arrives Friday at 9:00.", self.portal["portal"]["GET /week"]["body"])
 
 
 class MidCourseTest(unittest.TestCase):

@@ -20,9 +20,9 @@ Read, and summarize for yourself:
 - `data/household_notes.md`: recent facts; look for ones that should change config (a new
   person, a new calendar, a nanny's new pay).
 - `logs/butler.log` (the last few days): failures, dead feeds, skipped sends.
-- `data/questions.json`: questions from Sunday letters, and whether replies answered them
+- `data/questions.json`: questions from weekly letters, and whether replies answered them
   (answered ones appear as overrides in `config/category_map.yaml` with a date).
-- The latest brief and Sunday letter in `out/` (text versions): problems listed in the
+- The latest brief and weekly letter in `out/` (text versions): problems listed in the
   footer, "Other" spending, "No budget line yet", drift.
 - Money, through the code (read-only):
   ```

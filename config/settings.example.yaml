@@ -25,7 +25,7 @@ email:
   sender_name: Bento
   sender: bento.johnson.butler@example.com     # the assistant's own Gmail address
   send_hour: 7          # the morning brief goes out at this hour, local time
-  weekly_day: 6         # the Sunday letter: Monday = 0 ... Sunday = 6
+  weekly_day: 6         # the weekly letter goes out this day: Monday = 0 ... Sunday = 6
   weekly_hour: 17
   monthly_hour: 8       # the monthly look-back, on the 1st
   recipients:
@@ -91,6 +91,10 @@ people:
 
 projects:
   in_brief: true        # "Next up" in the morning brief
+  # Project steps whose text has one of these words are handed to Claude when it flags what to
+  # prepare (what to bring to an appointment). Use the language your project steps are in.
+  # Leave it out for this English list; an empty list hands over none.
+  appointment_keywords: [bring, appointment, document, passport, visa, permit, office]
 
 reminders:              # Apple Reminders lists (created if missing)
   todo_list: Bento

@@ -33,6 +33,11 @@ class Suggestion:
     trend: float          # trend-weighted monthly spend
     months: dict[str, float]
 
+    @property
+    def suggested(self) -> int:
+        """The trend, rounded to the nearest 25: the figure the look-back suggests."""
+        return int(round(self.trend / 25) * 25)
+
 
 @dataclass
 class Month:
@@ -227,7 +232,9 @@ Reminders completed: {json.dumps(mo.done_reminders, ensure_ascii=False)} (+{mo.s
 
 
 
-def sections(mo: Month, words: dict) -> list[tuple[str, list[str]]]:
+def sections(mo: Month, words: dict, by_reply: bool = False) -> list[tuple[str, list[str]]]:
+    """The look-back as (heading, paragraphs). With `by_reply`, the budget suggestions say how
+    to apply one by replying (budget_changes.usable)."""
     from .render import split_lines
     m = mo.money
     out = [(f"{mo.start:%B} in a nutshell", [words["headline"]]),
@@ -264,9 +271,25 @@ def sections(mo: Month, words: dict) -> list[tuple[str, list[str]]]:
                     f"{mo.runway_months:.0f} months at the last three months' draw.")
     out.append(("Where the money went", para))
     if mo.suggestions:
-        out.append(("Budget suggestions (edit the budget workbook to apply any)", [
-            f"{s.category}: budget {money(s.budget)}, trend {money(s.trend)} → suggest {money(round(s.trend / 25) * 25)}"
-            f" (" + ", ".join(f"{k[5:]}: {money(v)}" for k, v in s.months.items()) + ")." for s in mo.suggestions]))
+        lines = [f"{s.category}: budget {money(s.budget)}, trend {money(s.trend)} → suggest {money(s.suggested)}"
+                 f" (" + ", ".join(f"{k[5:]}: {money(v)}" for k, v in s.months.items()) + ")."
+                 for s in mo.suggestions]
+        if by_reply:
+            from .budget_changes import daily_lines
+            single = []
+            for i, s in enumerate(mo.suggestions):
+                items = [l.item for l in daily_lines(s.category)]
+                if len(items) > 1:
+                    lines[i] += (f" {s.category} has {len(items)} lines ({', '.join(items)}): name the one "
+                                 "to change, and any figure you give is for that line.")
+                else:
+                    single.append(s)
+            how = f"To apply one, reply with its category, like \u201c{mo.suggestions[0].category}\u201d"
+            if single:
+                how += f", or give your own monthly figure, like \u201c{single[0].category} {single[0].suggested}\u201d"
+            lines.append(how + ". I save a copy of the budget workbook before changing it.")
+        out.append(("Budget suggestions (reply to apply one)" if by_reply else
+                    "Budget suggestions (edit the budget workbook to apply any)", lines))
     out.append((f"For {(mo.end + timedelta(days=1)):%B}", [f"{n['who']}: {n['what']}" for n in words["next_month"]]))
     return out
 
@@ -309,8 +332,9 @@ def to_text(mo: Month, secs) -> str:
 
 
 def run(settings: dict, start: date, preview: bool) -> str:
+    from . import budget_changes
     mo = build_month(settings, start)
-    secs = sections(mo, write(settings, mo))
+    secs = sections(mo, write(settings, mo), by_reply=budget_changes.usable(settings))
     stem = f"monthly-{start:%Y-%m}"
     imgs = {"mtd": charts.month_to_date(mo.money)}
     cats = charts.categories(mo.money, finance.load_rules()["rules"]["day_to_day"])
@@ -325,6 +349,7 @@ def run(settings: dict, start: date, preview: bool) -> str:
     (ROOT / "out" / f"{stem}.txt").write_text(text)
     if not preview:
         mailer.send(settings, f"{brand(settings)} · {start:%B} looking back", text, to_html(mo, secs), images=imgs)
+        budget_changes.save(start, mo.suggestions, datetime.now(tz(settings)).date())
         log.info("monthly: sent %s", stem)
     return stem
 

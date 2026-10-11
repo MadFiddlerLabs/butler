@@ -125,6 +125,14 @@ class ProjectsTest(unittest.TestCase):
         s = self.steps()["eye"]
         self.assertEqual((s.status, s.waiting_on, s.chase_after), ("waiting", 'clinic "Example"', date(2026, 11, 1)))
 
+    def test_appointment_keywords_follow_the_setting(self):
+        from butler import llm
+        self.assertEqual(llm._appointment_notes({}), ["Eye appointment."], "English by default")
+        self.assertEqual(llm._appointment_notes({"projects": {"appointment_keywords": None}}), ["Eye appointment."])
+        self.assertEqual(llm._appointment_notes({"projects": {"appointment_keywords": ["Doctor", "consulta"]}}),
+                         ["Meet the doctor."])
+        self.assertEqual(llm._appointment_notes({"projects": {"appointment_keywords": []}}), [])
+
     def test_unknown_step(self):
         with self.assertRaises(KeyError):
             projects.update_step("nope", status="done")

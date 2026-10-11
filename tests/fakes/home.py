@@ -20,7 +20,7 @@ from pathlib import Path
 
 import yaml
 
-from . import fixtures
+from . import fixtures, timeout
 
 REPO = Path(__file__).resolve().parents[2]
 FAKES = Path(__file__).resolve().parent
@@ -95,7 +95,8 @@ class Home:
 
     def set_actions(self, by_subject: dict[str, list[dict]]) -> None:
         """Canned Claude plans for replies, by subject. Unused fields are filled with None."""
-        fields = ("step_id", "status", "date", "start_time", "end_time", "location", "category", "waiting_on")
+        fields = ("step_id", "status", "date", "start_time", "end_time", "location", "category", "waiting_on",
+                  "amount")
         full = {s: [{**{f: None for f in fields}, **a} for a in actions] for s, actions in by_subject.items()}
         (self.root / "fakes" / "actions.json").write_text(json.dumps(full))
 
@@ -107,7 +108,7 @@ class Home:
                "PATH": f"{self.root / 'fakebin'}{os.pathsep}{os.environ.get('PATH', '')}",
                "BUTLER_FAKE_SECRETS": str(self.root / "fakes" / "secrets.json"), "MPLBACKEND": "Agg"}
         proc = subprocess.run([sys.executable, str(FAKES / "harness.py"), flow, str(record)],
-                              cwd=self.root, env=env, capture_output=True, text=True, timeout=300)
+                              cwd=self.root, env=env, capture_output=True, text=True, timeout=timeout(300))
         if not record.exists():
             raise AssertionError(f"harness crashed:\n{proc.stdout}\n{proc.stderr}")
         result = json.loads(record.read_text())

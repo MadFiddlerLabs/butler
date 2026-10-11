@@ -264,7 +264,7 @@ def run(flow: str) -> None:
         replies.process(settings)
     elif flow == "weekly":
         from butler import weekly
-        weekly.run(settings, today + timedelta(days=(6 - today.weekday()) % 7), dry_run=False)
+        weekly.run(settings, weekly.next_letter_day(settings, today), dry_run=False)
     elif flow == "monthly":
         from butler import monthly
         monthly.run(settings, (today.replace(day=1) - timedelta(days=1)).replace(day=1), preview=False)

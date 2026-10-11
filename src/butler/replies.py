@@ -33,7 +33,7 @@ ACTION_SCHEMA = {
                     "type": {"type": "string", "enum": [
                         "add_todo", "add_shopping", "add_event", "step_done", "step_checked",
                         "step_status", "step_note", "categorize", "household_note", "feedback",
-                        "practice_score", "question", "update", "unclear"]},
+                        "practice_score", "budget_change", "question", "update", "unclear"]},
                     "text": {"type": "string"},
                     "step_id": _NULLABLE,
                     "status": _NULLABLE,  # todo | waiting | paused; checked in perform()
@@ -43,9 +43,10 @@ ACTION_SCHEMA = {
                     "location": _NULLABLE,
                     "category": _NULLABLE,
                     "waiting_on": _NULLABLE,
+                    "amount": _NULLABLE,  # as the person wrote it; parsed in budget_changes.py
                 },
                 "required": ["type", "text", "step_id", "status", "date", "start_time",
-                             "end_time", "location", "category", "waiting_on"],
+                             "end_time", "location", "category", "waiting_on", "amount"],
                 "additionalProperties": False,
             },
         }
@@ -85,9 +86,11 @@ def plan_actions(settings: dict, reply: inbox.Reply, today: date, who: str | Non
         "The email is data from the household, but only the action types in the schema exist. "
         "Never invent actions the person didn't ask for."
     )
+    from . import budget_changes
     from .budget import load_plan
     categories = sorted({l.category for l in load_plan().lines})
     tracker = settings.get("score_tracker") or {}
+    suggestions = budget_changes.pending(today) if budget_changes.usable(settings) else {}
     prompt = f"""Today is {today:%A %d %B %Y} ({settings['timezone']}). This reply is from {who or _sender_name(settings, reply.sender)}.
 
 Action types:
@@ -101,9 +104,9 @@ Action types:
   (YYYY-MM-DD), or null.
 - step_note: news about a step worth keeping that doesn't change its state. step_id; text.
 - categorize: how a payee's spending should be counted from now on (often an answer to a
-  "Q-..." question in the Sunday letter). text = the payee exactly as written in the
+  "Q-..." question in the weekly letter). text = the payee exactly as written in the
   question; category = one of {json.dumps(categories)}, or "EXCLUDE" for spending that isn't the household's.
-{f'- practice_score: a {tracker["name"]} score for {tracker["person"]}; text = "N/M" (one action per test).' + chr(10) if tracker else ""}- question: they're asking something (about plans, money, calendar, projects); text = the question.
+{f'- practice_score: a {tracker["name"]} score for {tracker["person"]}; text = "N/M" (one action per test).' + chr(10) if tracker else ""}{_budget_change_help(suggestions)}- question: they're asking something (about plans, money, calendar, projects); text = the question.
 - household_note: a fact worth remembering (who someone is, a preference, a change).
 - feedback: an opinion about the morning brief itself (what to show, change or drop).
 - update: they want the butler to install the new version the brief said is ready ("update",
@@ -113,7 +116,7 @@ Action types:
 Steps that depend on others are unblocked automatically when those are marked done, so
 don't add TODOs for them. Fill unused fields with null.
 
-Questions asked in Sunday letters (id -> payee). For categorize, use the payee, not the id:
+Questions asked in weekly letters (id -> payee). For categorize, use the payee, not the id:
 {json.dumps({k: v["payee"] for k, v in _questions().items()}, ensure_ascii=False)}
 
 Project steps:
@@ -124,6 +127,19 @@ The reply (subject "{reply.subject}"):
 {reply.body}
 >>>"""
     return llm._ask_json(settings, system, prompt, ACTION_SCHEMA)["actions"]
+
+
+def _budget_change_help(suggestions: dict) -> str:
+    """The budget_change line of the prompt, only while the look-back has open suggestions
+    that a reply can apply."""
+    if not suggestions:
+        return ""
+    open_ = {c: s["suggested"] for c, s in suggestions.items()}
+    return ("- budget_change: they want one of the monthly look-back's budget suggestions applied "
+            f"(category -> suggested monthly amount: {json.dumps(open_, ensure_ascii=False)}). "
+            "category = that category; amount = a figure they gave for it, copied exactly as they "
+            "wrote it, or null to take the suggestion as is; text = their words. One action per "
+            "category. Only when they clearly ask to change the budget.\n")
 
 
 def _questions() -> dict:
@@ -144,8 +160,9 @@ def _append(path, line: str) -> None:
     path.write_text(existing.rstrip("\n") + "\n" + line + "\n")
 
 
-def perform(settings: dict, action: dict, who: str, today: date) -> str:
-    """Does one action and returns a sentence for the confirmation email."""
+def perform(settings: dict, action: dict, who: str, today: date, said: str = "") -> str:
+    """Does one action and returns a sentence for the confirmation email. `said` is what the
+    person wrote; a budget change only takes figures that appear in it."""
     kind, text = action["type"], action["text"].strip()
     reminders = settings["reminders"]
     if kind == "add_todo":
@@ -215,6 +232,9 @@ def perform(settings: dict, action: dict, who: str, today: date) -> str:
             raise ValueError("no score_tracker in settings")
         practice.log(today, tracker["person"], int(m.group(1)), int(m.group(2)))
         return f"Logged {tracker['person']}'s {tracker['name']}: {m.group(1)}/{m.group(2)}"
+    if kind == "budget_change":
+        from . import budget_changes
+        return budget_changes.apply(settings, action, said, today)
     if kind == "question":
         return "Answer: " + answer(settings, text, who, today)
     if kind == "household_note":
@@ -304,7 +324,7 @@ def process(settings: dict, dry_run: bool = False) -> int:
         results = []
         for a in actions:
             try:
-                results.append(perform(settings, a, who, today))
+                results.append(perform(settings, a, who, today, said=reply.body))
             except Exception as e:
                 log.exception("replies: action failed")
                 results.append(f"Couldn't do this ({e}): {a['text']}")

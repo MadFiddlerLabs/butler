@@ -233,7 +233,7 @@ def flag_prep(settings: dict, agenda: Agenda) -> tuple[list[dict], dict | None]:
            if lang.get("language") and lang.get("learner") else "")
         + "Events: " + json.dumps(listing, ensure_ascii=False)
         + "\n\nProject notes about documents and appointments: "
-        + json.dumps(_appointment_notes(), ensure_ascii=False)
+        + json.dumps(_appointment_notes(settings), ensure_ascii=False)
     )
     with_phrase = bool(lang.get("language") and lang.get("learner"))
     answer = _ask_json(settings, system, prompt, _prep_schema(with_phrase))
@@ -242,9 +242,14 @@ def flag_prep(settings: dict, agenda: Agenda) -> tuple[list[dict], dict | None]:
     return prep, answer.get("phrase")
 
 
-def _appointment_notes() -> list[str]:
-    """Project steps that describe appointments or documents (no ID numbers live there)."""
+APPOINTMENT_KEYWORDS = ("bring", "appointment", "document", "passport", "visa", "permit", "office")
+
+
+def _appointment_notes(settings: dict) -> list[str]:
+    """Project steps that describe appointments or documents (no ID numbers live there): those
+    whose text holds one of projects.appointment_keywords, English ones when it isn't set."""
     from . import projects
-    keys = ("bring", "appointment", "document", "passport", "visa", "permit", "office")
+    keys = (settings.get("projects") or {}).get("appointment_keywords")
+    keys = [str(k).lower() for k in (APPOINTMENT_KEYWORDS if keys is None else keys)]
     return [f"{s.do}. {s.notes}".strip() for p in projects.load() for s in p.steps
             if s.status != "done" and any(k in f"{s.do} {s.notes}".lower() for k in keys)][:15]

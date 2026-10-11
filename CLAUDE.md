@@ -1,6 +1,6 @@
 # Butler
 
-An open-source household butler that runs on a Mac: a morning brief, a Sunday letter and a
+An open-source household butler that runs on a Mac: a morning brief, a weekly letter and a
 monthly look-back by email, replies that update things, and a tailnet-only portal. Each
 household names its own butler (`name` in settings). Setup and operations are in `README.md`
 and `docs/`. The Build Your Butler course (buildyourbutler.com, a separate private repo)
@@ -38,10 +38,11 @@ someone developing Butler itself. The hard rules apply to both.
 |---|---|
 | `src/butler/tick.py` | What launchd runs every 5 minutes: replies, the daily update check, then each email if due |
 | `src/butler/daily.py` | Builds and sends the morning brief; each section fails on its own |
-| `src/butler/weekly.py`, `monthly.py` | The Sunday letter and the monthly look-back |
+| `src/butler/weekly.py`, `monthly.py` | The weekly letter and the monthly look-back |
 | `src/butler/render.py` | Email HTML and text; `money_lines()` and `split_lines()` are shared |
 | `src/butler/finance.py` | Lunch Money transactions to numbers. Pure arithmetic, tested |
 | `src/butler/budget.py` | Reads the budget workbook's input cells |
+| `src/butler/budget_changes.py` | Applies a look-back's budget suggestion by reply: Python parses and bounds the figure, backs up, changes one cell |
 | `src/butler/networth.py` | Daily snapshots; exchange-rate moves split from real ones |
 | `src/butler/llm.py` | The Claude calls: news, prep notes and phrase of the day |
 | `src/butler/replies.py` | Reply to allowlisted actions; confirmation to all recipients |

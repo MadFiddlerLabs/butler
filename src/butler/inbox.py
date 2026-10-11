@@ -5,6 +5,7 @@ domain is treated as a command. Everything else is reported, never acted on.
 """
 
 import email
+import email.message
 import imaplib
 import re
 from dataclasses import dataclass

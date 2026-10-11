@@ -49,5 +49,17 @@ class DkimTest(unittest.TestCase):
         self.assertFalse(_dkim_passes(message(""), "sam@example.com"))
 
 
+class StandaloneTest(unittest.TestCase):
+    def test_replies_imports_on_its_own(self):
+        """`./run.sh replies` starts a fresh Python, where nothing has imported email.message yet."""
+        import subprocess
+        import sys
+        from pathlib import Path
+        src = Path(__file__).resolve().parents[1] / "src"
+        out = subprocess.run([sys.executable, "-c", "import butler.replies"], capture_output=True, text=True,
+                             env={"PYTHONPATH": str(src), "PATH": "/usr/bin:/bin"})
+        self.assertEqual(out.returncode, 0, out.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

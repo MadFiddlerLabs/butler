@@ -6,7 +6,7 @@ invented examples in `examples/projects/`, and the first change you make from th
 reply copies them into `projects/`. Once you have your own `config/settings.yaml`, the examples
 never appear.
 
-The morning brief shows each person's next steps ("Next up"). The Sunday letter adds a line
+The morning brief shows each person's next steps ("Next up"). The weekly letter adds a line
 per project on where it stands. The portal's Projects page ranks projects by what can be done
 now and parks the rest.
 

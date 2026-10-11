@@ -25,7 +25,7 @@ Plus the budget workbook, `budget/budget.xlsx`, and the household notes Claude r
 | `email.sender`, `sender_name` | The assistant's Gmail account |
 | `email.recipients` | Who gets the emails |
 | `email.trusted_senders` | Addresses whose replies are acted on (DKIM must pass) |
-| `email.send_hour`, `weekly_day`, `weekly_hour`, `monthly_hour` | When each email goes out |
+| `email.send_hour`, `weekly_day`, `weekly_hour`, `monthly_hour` | When each email goes out. `weekly_day` is Monday = 0 ... Sunday = 6 (default 6); the weekly letter names that day ("Week ending Friday 16 October") |
 | `household.adults` | The adults, with the addresses they reply from |
 | `household.place` | Your town, for the news prompt |
 | `news.interests` | What you want from the news, in a sentence. With `household.place`, the only household detail the news call sees, so keep names out of it |
@@ -36,6 +36,7 @@ Plus the budget workbook, `budget/budget.xlsx`, and the household notes Claude r
 | `calendar.write_to` | Where replies add events |
 | `people` | Everyone events can belong to (children too), with aliases, owned calendars and a color |
 | `projects.in_brief` | Show "Next up" in the morning brief |
+| `projects.appointment_keywords` | Optional: words that mark a project step as an appointment or document note. Those steps go to Claude when it flags what to prepare. Write them in your steps' language. Default: `bring, appointment, document, passport, visa, permit, office`. An empty list sends none |
 | `reminders.todo_list`, `shopping_list` | Apple Reminders lists |
 | `news.regions` | Regions in order, each with RSS feeds |
 | `news.language` | The language summaries are written in |
@@ -79,7 +80,7 @@ Plus the budget workbook, `budget/budget.xlsx`, and the household notes Claude r
 | `rules.savings_account`, `savings_draw_payee` | The savings draw and runway |
 | `rules.own_transfer_payees` | Transfers that are your own money moving, never asked about |
 
-Replies keep this file current: when the Sunday letter asks about a charge and you answer,
+Replies keep this file current: when the weekly letter asks about a charge and you answer,
 an override is appended with the date and who answered.
 
 ## The budget workbook
@@ -94,12 +95,44 @@ Butler reads only input cells, so you can add sheets and formatting of your own.
 | Expenses | A–F and I from row 5 | Category, item, currency, amount, frequency (`Monthly`, `Annual`, `5-Year`), due month, note |
 
 Annual lines appear in "Due this month" in their month. Annual and five-year lines are
-smoothed into a monthly set-aside in the Sunday letter. Before Butler updates the exchange rate,
-it saves a dated copy of the workbook in `budget/history/`. Budget suggestions from the
-monthly look-back are suggestions only: change the workbook yourself, or ask `/butler-tune`.
+smoothed into a monthly set-aside in the weekly letter. Before Butler updates the exchange rate,
+it saves a dated copy of the workbook in `budget/history/`.
+
+### Applying a budget suggestion by reply
+
+The monthly look-back suggests a new daily-spending budget for categories whose trend is well
+off their budget. Reply to the look-back to apply one:
+
+| Reply | What changes |
+|---|---|
+| "Transport" or "apply the Transport suggestion" | The category's one Monthly line becomes the suggested amount |
+| "Transport 160" | That line becomes 160 |
+| "Food: Groceries" | In a category with several lines, Groceries changes so Food reaches the suggestion |
+| "Food: Groceries 800" | Groceries becomes 800 |
+
+What keeps it safe:
+
+- Only replies from `email.trusted_senders` with a passing DKIM signature count, as for every
+  reply.
+- Only the Amount cell (column D) of one Monthly line changes. Fixed lines, off-book lines and
+  the cash drawer's line are never touched. Nothing is deleted.
+- Before the change, Butler copies the workbook to
+  `budget/history/budget_<date>_reply.xlsx` (`_2`, `_3` for more the same day).
+- Python reads the figure, not Claude, and the figure must appear in the reply. Figures are in
+  the primary currency; a line priced in the second currency converts at Assumptions!C5.
+- The category's new budget must be between half the lower and double the higher of its
+  current budget and its trend.
+- Suggestions stay open for 40 days, until the next look-back replaces them.
+- Anything unclear or out of range changes nothing. The confirmation, sent to everyone, asks
+  for what's missing. When something changes, it says the line, old and new amounts, and where
+  the backup is.
+
+This works once the household has its own `budget/budget.xlsx` (the example is never edited)
+and at least one trusted sender. Until then the look-back says to edit the workbook instead.
+You can always change the workbook yourself, or ask `/butler-tune`.
 
 ## deadlines.yaml
 
 Each deadline has `name`, `date` (`MM-DD`, every year), `who`, `note` and optionally
-`from_year`. They appear in the morning brief from 14 days before and in the Sunday letter
+`from_year`. They appear in the morning brief from 14 days before and in the weekly letter
 from 60 days before.

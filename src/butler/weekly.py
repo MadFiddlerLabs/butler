@@ -1,4 +1,6 @@
-"""The Sunday letter: the week that was, the week ahead, money, drift, ideas, projects.
+"""The weekly letter: the week that was, the week ahead, money, drift, ideas, projects. It goes
+out on email.weekly_day (Sunday unless set) and covers the seven days ending that day; its
+wording names that day.
 
     python -m butler.weekly --dry-run   # writes out/weekly-YYYY-WW.html/.txt
     python -m butler.weekly             # also sends it and saves reports/YYYY-WW.md
@@ -27,6 +29,27 @@ REPORTS = ROOT / "reports"
 DRIFT_MIN = 15   # in the primary currency
 
 
+# ---------- the day ----------
+
+def letter_weekday(settings: dict) -> int:
+    """The day the letter goes out: Monday = 0 ... Sunday = 6 (the default)."""
+    return int(settings.get("email", {}).get("weekly_day", 6))
+
+
+def letter_day_name(settings: dict) -> str:
+    """'Sunday', or whichever day email.weekly_day names."""
+    return ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")[letter_weekday(settings)]
+
+
+def next_letter_day(settings: dict, today: date) -> date:
+    """The next day the letter goes out, today included."""
+    return today + timedelta(days=(letter_weekday(settings) - today.weekday()) % 7)
+
+
+def _part_of_day(hour: int) -> str:
+    return "morning" if hour < 12 else "afternoon" if hour < 18 else "evening"
+
+
 # ---------- numbers ----------
 
 @dataclass
@@ -48,8 +71,8 @@ class Drift:
 
 @dataclass
 class Week:
-    sunday: date
-    week_spend: float               # daily spending, Mon–Sun just ending
+    last_day: date                  # the letter's day, the last of the week it covers
+    week_spend: float               # daily spending, the seven days just ending
     typical_week: float             # daily spending, weekly average of the 8 weeks before
     rows: list[CategoryRow]
     on_track: list[str]
@@ -64,12 +87,12 @@ class Week:
     networth: str = ""
 
 
-def _week_numbers(m: Summary, rules: dict, sunday: date) -> tuple[float, float]:
+def _week_numbers(m: Summary, rules: dict, last_day: date) -> tuple[float, float]:
     daily = set(rules["rules"]["day_to_day"])
     spend = [t for t in m.txs if t.kind == SPEND and not t.one_off and t.category in daily]
-    monday = sunday - timedelta(days=6)
-    week = sum(t.amount for t in spend if monday <= t.day <= sunday)
-    prior = sum(t.amount for t in spend if monday - timedelta(days=56) <= t.day < monday)
+    first_day = last_day - timedelta(days=6)
+    week = sum(t.amount for t in spend if first_day <= t.day <= last_day)
+    prior = sum(t.amount for t in spend if first_day - timedelta(days=56) <= t.day < first_day)
     return week, prior / 8
 
 
@@ -88,15 +111,15 @@ def _category_rows(m: Summary, rules: dict) -> tuple[list[CategoryRow], list[str
     return rows, on_track
 
 
-def _drift(m: Summary, rules: dict, sunday: date) -> list[Drift]:
+def _drift(m: Summary, rules: dict, last_day: date) -> list[Drift]:
     ignore = {p.lower() for p in rules.get("drift_ignore", [])}
     spend = [t for t in m.txs if t.kind == SPEND and not t.one_off
              and not any(i in t.payee.lower() for i in ignore)]
-    start4 = sunday - timedelta(days=27)
+    start4 = last_day - timedelta(days=27)
     start16 = start4 - timedelta(days=84)
     by_payee: dict[str, list[float]] = {}
     for t in spend:
-        if start16 <= t.day <= sunday:
+        if start16 <= t.day <= last_day:
             slot = by_payee.setdefault(t.payee, [0.0, 0.0, 0])
             recent = t.day >= start4
             slot[0 if recent else 1] += t.amount
@@ -122,13 +145,13 @@ def _drift(m: Summary, rules: dict, sunday: date) -> list[Drift]:
     return out[:6]
 
 
-def _questions(m: Summary, rules: dict, sunday: date) -> list[tuple[str, str, str]]:
+def _questions(m: Summary, rules: dict, last_day: date) -> list[tuple[str, str, str]]:
     """(id, question, payee) for this week's unexplained transactions, at most three."""
-    week = sunday - timedelta(days=6)
+    week = last_day - timedelta(days=6)
     own = [p.lower() for p in rules["rules"].get("own_transfer_payees", [])]
-    year, wk, _ = sunday.isocalendar()
+    year, wk, _ = last_day.isocalendar()
     asks = []
-    for t in sorted((t for t in m.txs if week <= t.day <= sunday), key=lambda t: -t.amount):
+    for t in sorted((t for t in m.txs if week <= t.day <= last_day), key=lambda t: -t.amount):
         if t.kind == SPEND and t.unmapped and t.amount >= 20:
             asks.append((f"{t.payee} {money(t.amount)} on {t.day:%a %-d %b} has no category I know. "
                          "What was it?", t.payee))
@@ -151,22 +174,22 @@ def _routines(agenda: Agenda) -> list[str]:
     return [f"{who}: {title} ({', '.join(days)})" for (who, title), days in groups.items()]
 
 
-def build_week(settings: dict, sunday: date) -> Week:
+def build_week(settings: dict, last_day: date) -> Week:
     zone = tz(settings)
     rules = finance.load_rules()
-    since = datetime.combine(sunday - timedelta(days=7), datetime.min.time(), zone)
-    m = finance.build(sunday, since)
-    week_spend, typical = _week_numbers(m, rules, sunday)
+    since = datetime.combine(last_day - timedelta(days=7), datetime.min.time(), zone)
+    m = finance.build(last_day, since)
+    week_spend, typical = _week_numbers(m, rules, last_day)
     rows, on_track = _category_rows(m, rules)
     plan = finance.load_plan()
 
     lumps = []
     for k in range(3):
-        month = (sunday.month - 1 + k) % 12 + 1
-        year = sunday.year + (sunday.month - 1 + k) // 12
+        month = (last_day.month - 1 + k) % 12 + 1
+        year = last_day.year + (last_day.month - 1 + k) // 12
         for l in plan.lumps_due(month):
             due = date(year, month, 1)
-            if k > 0 or due.month == sunday.month:
+            if k > 0 or due.month == last_day.month:
                 lumps.append((l.item, due, l.amount_primary(plan.fx_rate), l.category))
     set_aside = sum(l.amount_primary(plan.fx_rate) / (12 if l.frequency == "Annual" else 60)
                     for l in plan.lines if l.frequency in ("Annual", "5-Year"))
@@ -175,30 +198,30 @@ def build_week(settings: dict, sunday: date) -> Week:
     try:
         s2 = copy.deepcopy(settings)
         s2["calendar"]["lookahead_days"] = 6
-        ahead = load_agenda(s2, sunday + timedelta(days=1), zone)
+        ahead = load_agenda(s2, last_day + timedelta(days=1), zone)
     except Exception:
         log.exception("weekly: calendar failed")
 
-    monday = sunday - timedelta(days=6)
+    first_day = last_day - timedelta(days=6)
     ledger_week: dict[str, dict[str, float]] = {}
     for t in m.txs:
-        if t.kind == finance.LEDGER and monday <= t.day <= sunday:
+        if t.kind == finance.LEDGER and first_day <= t.day <= last_day:
             by = ledger_week.setdefault(t.ledger, {})
             by[t.payee] = by.get(t.payee, 0.0) + t.amount
     nw_line = ""
-    if sunday == datetime.now(zone).date():
+    if last_day == datetime.now(zone).date():
         try:
             cfg = settings.get("networth", {})
-            now, ch = networth.change_since(sunday, 7)
-            reasons = networth.reasons_from(m.txs, ch.since, sunday) if ch else {}
+            now, ch = networth.change_since(last_day, 7)
+            reasons = networth.reasons_from(m.txs, ch.since, last_day) if ch else {}
             reasons.update(cfg.get("reasons") or {})
             nw_line = networth.line(now, ch, f"since {ch.since:%-d %B}" if ch else "", cfg.get(
                 "notable_weekly", 5000), cfg.get("labels"), reasons)
         except Exception:
             log.exception("weekly: net worth failed")
-    return Week(sunday=sunday, networth=nw_line, week_spend=week_spend, typical_week=typical, rows=rows,
+    return Week(last_day=last_day, networth=nw_line, week_spend=week_spend, typical_week=typical, rows=rows,
                 ledger_week={k: sorted(v.items(), key=lambda x: -x[1]) for k, v in ledger_week.items()},
-                on_track=on_track, drift=_drift(m, rules, sunday), questions=_questions(m, rules, sunday),
+                on_track=on_track, drift=_drift(m, rules, last_day), questions=_questions(m, rules, last_day),
                 lumps_60d=lumps, annual_set_aside=set_aside, money=m, ahead=ahead,
                 routines=_routines(ahead) if ahead else [])
 
@@ -229,22 +252,22 @@ WRITE_SCHEMA = {
 }
 
 
-def _recent_ideas(sunday: date) -> list[dict]:
+def _recent_ideas(last_day: date) -> list[dict]:
     if not IDEAS.exists():
         return []
-    cutoff = (sunday - timedelta(days=28)).isoformat()
+    cutoff = (last_day - timedelta(days=28)).isoformat()
     return [i for i in map(json.loads, IDEAS.read_text().splitlines()) if i["date"] >= cutoff]
 
 
 def write(settings: dict, w: Week, ps: list[projects.Project]) -> dict:
     m = w.money
-    view = projects.today_view(ps, w.sunday + timedelta(days=1))
+    view = projects.today_view(ps, w.last_day + timedelta(days=1))
     numbers = {
         "currency": primary_code(),
-        "week_ending": w.sunday.isoformat(),
+        "week_ending": w.last_day.isoformat(),
         "daily_spending_this_week": round(w.week_spend),
         "daily_spending_typical_week": round(w.typical_week),
-        "month": f"{w.sunday:%B}",
+        "month": f"{w.last_day:%B}",
         "month_spent": round(m.mtd_total),
         "fixed_monthly_spent": round(sum(e for _, e in m.fixed_paid)),
         "fixed_monthly_plan": round(sum(e for _, e in m.fixed_plan)),
@@ -293,7 +316,8 @@ def write(settings: dict, w: Week, ps: list[projects.Project]) -> dict:
                for s in view.actionable + view.checks_due]
     notes_path = ROOT / settings["household"].get("notes_file", "data/household_notes.md")
     system = (
-        f"You write the Sunday-afternoon household letter for {' and '.join(people(settings))}. "
+        f"You write the weekly household letter for {' and '.join(people(settings))}. It goes out "
+        f"on {w.last_day:%A} {_part_of_day(settings['email'].get('weekly_hour', 17))}. "
         f"About them: {settings['household']['about']}\n\n"
         f"Household notes:\n{notes_path.read_text() if notes_path.exists() else ''}"
         + llm._feedback()
@@ -304,7 +328,7 @@ def write(settings: dict, w: Week, ps: list[projects.Project]) -> dict:
           "(amounts, schedules, reasons) and never guess why something happened. Keep weekly "
           "and monthly figures apart: a pace figure is month-to-date, not a weekly amount."
     )
-    prompt = f"""Write these parts of tonight's letter.
+    prompt = f"""Write these parts of this {w.last_day:%A}'s letter.
 
 headline: two or three sentences. How the week's daily spending compares with a typical
 week, how fixed monthly expenses and daily spending each stand against plan (keep the two
@@ -336,7 +360,7 @@ Projects:
 {json.dumps(project_state, ensure_ascii=False)}
 
 Ideas suggested in the last four weeks:
-{json.dumps([i['title'] for i in _recent_ideas(w.sunday)], ensure_ascii=False)}"""
+{json.dumps([i['title'] for i in _recent_ideas(w.last_day)], ensure_ascii=False)}"""
     s2 = copy.deepcopy(settings)
     s2["llm"]["effort"] = "high"
     return llm._ask_json(s2, system, prompt, WRITE_SCHEMA)
@@ -387,13 +411,13 @@ def sections(w: Week, words: dict) -> list[tuple[str, list[str]]]:
                 else f"This week: a net {money(-week_total)} back") if week else "Nothing new this week"
         tail = (f"So far: {money(led.costs)} spent, {money(led.reimbursed)} reimbursed, "
                 f"net {money(led.costs - led.reimbursed)}." if led.reimbursed else
-                f"{w.sunday:%B} so far: {money(led.month)}"
+                f"{w.last_day:%B} so far: {money(led.month)}"
                 + (f" of the {money(led.budget)} monthly budget." if led.budget else "."))
         out.append((led.label, [head + (f" ({items})" if items else "") + ". " + tail
                                 + " Kept out of the household numbers."]))
 
     from . import headsup, practice
-    coming = [headsup.line(i) for i in headsup.items(w.sunday, 60)]
+    coming = [headsup.line(i) for i in headsup.items(w.last_day, 60)]
     coming += [f"{i}: {money(e)}, due {d:%B}." for i, d, e, _ in w.lumps_60d]
     coming.append(f"Annual and five-year costs, smoothed, call for setting aside "
                   f"{money(w.annual_set_aside)} a month.")
@@ -410,7 +434,7 @@ def sections(w: Week, words: dict) -> list[tuple[str, list[str]]]:
             + (f", up from {money(d.before)}" if d.before else "")
             + (f" ({d.note})" if d.note else "") + "." for d in w.drift]))
 
-    ahead = [f"{f['who']}: {f['what']}" for f in words["focus"]] + [x for x in [practice.summary(w.sunday)] if x]
+    ahead = [f"{f['who']}: {f['what']}" for f in words["focus"]] + [x for x in [practice.summary(w.last_day)] if x]
     if w.ahead:
         for e in w.ahead.today + w.ahead.upcoming:
             if not e.recurring:
@@ -442,7 +466,7 @@ def to_html(w: Week, secs: list[tuple[str, list[str]]], image_src=lambda n: f"ci
              f'color:{INK};background:{PAPER};max-width:640px;margin:0 auto;padding:16px;'
              f'font-size:15px;line-height:1.5">',
              '<h1 style="font-size:22px;margin:0 0 4px">Your week</h1>',
-             f'<div style="color:{MUTED}">Week ending Sunday {w.sunday.day} {w.sunday:%B %Y}</div>',
+             f'<div style="color:{MUTED}">Week ending {w.last_day:%A} {w.last_day.day} {w.last_day:%B %Y}</div>',
              portal_button(portal_url())]
     if banner:
         parts.append(f'<p style="margin:10px 0;padding:8px 12px;border-radius:8px;background:#fdf3e7;'
@@ -464,7 +488,7 @@ def to_html(w: Week, secs: list[tuple[str, list[str]]], image_src=lambda n: f"ci
             parts.append(f'<img src="{image_src("categories")}" alt="Chart: daily spending by category against budget" '
                          'width="600" style="display:block;width:100%;max-width:600px;height:auto;margin:6px 0 12px">')
     parts.append(f'<p style="margin-top:32px;color:{MUTED};font-size:12px;border-top:1px solid {RULE};'
-                 f'padding-top:10px">{escape(brand())}, Sunday letter. Reply to answer a question, add '
+                 f'padding-top:10px">{escape(brand())}, {w.last_day:%A} letter. Reply to answer a question, add '
                  'something to the week, or say what to change.</p></div>')
     parts.append(EMAIL_TAIL)
     return "\n".join(parts)
@@ -472,7 +496,7 @@ def to_html(w: Week, secs: list[tuple[str, list[str]]], image_src=lambda n: f"ci
 
 def to_text(w: Week, secs: list[tuple[str, list[str]]]) -> str:
     from .render import one_off_note
-    lines = [f"Your week. Week ending Sunday {w.sunday.day} {w.sunday:%B %Y}",
+    lines = [f"Your week. Week ending {w.last_day:%A} {w.last_day.day} {w.last_day:%B %Y}",
              f"Open {brand()}: {portal_url()}" if portal_url() else "", ""]
     for heading, paras in secs:
         lines += [heading.upper()] + [f"  {p}" for p in paras]
@@ -484,13 +508,13 @@ def to_text(w: Week, secs: list[tuple[str, list[str]]]) -> str:
 
 # ---------- run ----------
 
-def preview_to_portal(settings: dict, sunday: date) -> str:
-    """Builds the letter for `sunday` into out/ (where the portal's Week page reads it) with a
-    Preview banner. The real Sunday run writes the same file, replacing it."""
+def preview_to_portal(settings: dict, last_day: date) -> str:
+    """Builds the letter for `last_day` into out/ (where the portal's Week page reads it) with a
+    Preview banner. The real letter that day writes the same file, replacing it."""
     ps = projects.load()
-    w = build_week(settings, sunday)
+    w = build_week(settings, last_day)
     secs = sections(w, write(settings, w, ps))
-    year, wk, _ = sunday.isocalendar()
+    year, wk, _ = last_day.isocalendar()
     stem = f"weekly-{year}-{wk:02d}"
     imgs = {"mtd": charts.month_to_date(w.money)}
     cats = charts.categories(w.money, finance.load_rules()["rules"]["day_to_day"])
@@ -499,18 +523,19 @@ def preview_to_portal(settings: dict, sunday: date) -> str:
     for name, png in imgs.items():
         (ROOT / "out" / f"{stem}-{name}.png").write_bytes(png)
     banner = (f"Preview, built {datetime.now(tz(settings)):%a %-d %b %H:%M} from today's data. "
-              f"The real letter goes out Sunday {sunday:%-d %B} at 17:00 and replaces this page.")
+              f"The real letter goes out {last_day:%A %-d %B} at {settings['email'].get('weekly_hour', 17)}:00 "
+              "and replaces this page.")
     (ROOT / "out" / f"{stem}.html").write_text(to_html(w, secs, lambda n: f"{stem}-{n}.png", banner))
     (ROOT / "out" / f"{stem}.txt").write_text(to_text(w, secs))
     return stem
 
 
-def run(settings: dict, sunday: date, dry_run: bool) -> None:
+def run(settings: dict, last_day: date, dry_run: bool) -> None:
     ps = projects.load()
-    w = build_week(settings, sunday)
+    w = build_week(settings, last_day)
     words = write(settings, w, ps)
     secs = sections(w, words)
-    year, wk, _ = sunday.isocalendar()
+    year, wk, _ = last_day.isocalendar()
     imgs = {"mtd": charts.month_to_date(w.money)}
     cats = charts.categories(w.money, finance.load_rules()["rules"]["day_to_day"])
     if cats:
@@ -526,10 +551,10 @@ def run(settings: dict, sunday: date, dry_run: bool) -> None:
     if dry_run:
         log.info("weekly dry run: wrote out/preview/%s.html", stem)
         return
-    mailer.send(settings, f"{brand(settings)} · your week ahead, {sunday + timedelta(days=1):%-d %B}",
+    mailer.send(settings, f"{brand(settings)} · your week ahead, {last_day + timedelta(days=1):%-d %B}",
                 text, to_html(w, secs), images=imgs)
     asked = json.loads(QUESTIONS.read_text()) if QUESTIONS.exists() else {}
-    asked.update({qid: {"payee": payee, "text": q, "asked": sunday.isoformat()}
+    asked.update({qid: {"payee": payee, "text": q, "asked": last_day.isoformat()}
                   for qid, q, payee in w.questions})
     QUESTIONS.write_text(json.dumps(asked, indent=1, ensure_ascii=False))
     REPORTS.mkdir(exist_ok=True)
@@ -537,15 +562,15 @@ def run(settings: dict, sunday: date, dry_run: bool) -> None:
     IDEAS.parent.mkdir(exist_ok=True)
     with IDEAS.open("a") as f:
         for i in words["ideas"]:
-            f.write(json.dumps({"date": sunday.isoformat(), "title": i["title"], "kind": i["kind"],
+            f.write(json.dumps({"date": last_day.isoformat(), "title": i["title"], "kind": i["kind"],
                                 "per_month": i["per_month"], "acted": None}) + "\n")
     log.info("weekly: sent %s", stem)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="The Sunday letter")
+    parser = argparse.ArgumentParser(description="The weekly letter")
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--date", type=date.fromisoformat, help="the Sunday (YYYY-MM-DD)")
+    parser.add_argument("--date", type=date.fromisoformat, help="the letter's day (YYYY-MM-DD); default: the next email.weekly_day")
     args = parser.parse_args()
     (ROOT / "logs").mkdir(exist_ok=True)
     (ROOT / "out").mkdir(exist_ok=True)
@@ -554,8 +579,8 @@ def main() -> None:
     logging.getLogger().addHandler(logging.StreamHandler())
     settings = load_settings()
     today = datetime.now(tz(settings)).date()
-    sunday = args.date or today + timedelta(days=(6 - today.weekday()) % 7)
-    run(settings, sunday, args.dry_run)
+    last_day = args.date or next_letter_day(settings, today)
+    run(settings, last_day, args.dry_run)
 
 
 if __name__ == "__main__":
