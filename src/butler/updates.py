@@ -64,7 +64,9 @@ class UpdateError(RuntimeError):
 def parse_version(text: str | None) -> tuple[int, int, int, int] | None:
     """'v1.2.3' → (1, 2, 3, 1). A pre-release ('v1.2.3-rc1', 'v0.0.0-d78f91e') sorts below its
     release: (1, 2, 3, 0). Anything else → None."""
-    m = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?", (text or "").strip())
+    if not isinstance(text, str):
+        return None
+    m = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?", text.strip())
     if not m:
         return None
     return int(m[1]), int(m[2]), int(m[3]), 0 if m[4] else 1
@@ -144,6 +146,8 @@ def decide(settings: dict, manifest: dict, installed: str, ident: str) -> Decisi
     mode = settings.get("updates", "auto")
     if mode == "off":
         return Decision("none", "updates are off")
+    if not isinstance(manifest, dict):
+        return Decision("none", "the update list isn't readable")
     new = manifest.get("version")
     if not manifest.get("available", True) or not new:
         return Decision("none", "no update is available")
@@ -187,14 +191,16 @@ def unsigned_allowed() -> bool:
 
 
 def verify_signature(pkg: Path) -> None:
-    """Refuses a package not signed by our Developer ID, or one Gatekeeper wouldn't open."""
+    """Refuses a package not signed by our Developer ID, or one Gatekeeper wouldn't open. The
+    signing certificate (the chain's first line) must end in our Team ID: any Developer ID passes
+    Gatekeeper, so this line is what ties the package to Butler's publisher."""
     if unsigned_allowed():
         log.warning("update: signature checks relaxed for a test build")
         return
     sig = _run(["pkgutil", "--check-signature", str(pkg)])
     out = sig.stdout + sig.stderr
     if (sig.returncode != 0 or "signed by a developer certificate issued by Apple" not in out
-            or not re.search(rf"1\. Developer ID Installer: .*\({TEAM_ID}\)", out)):
+            or not re.search(rf"(?m)^\s*1\. Developer ID Installer: [^\n]*\({TEAM_ID}\)\s*$", out)):
         raise UpdateError("the new version isn't signed by Butler's publisher, so I didn't install it")
     gate = _run(["spctl", "--assess", "-vv", "--type", "install", str(pkg)])
     if gate.returncode != 0 or "accepted" not in (gate.stdout + gate.stderr):
