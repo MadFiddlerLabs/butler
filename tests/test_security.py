@@ -465,6 +465,12 @@ class IdNumberTest(unittest.TestCase):
         with mock.patch.object(privacy.reference, "load", return_value={}):
             self.assertEqual(privacy.withhold("PX7731904", None), ["PX7731904", None])
 
+    def test_document_numbers_are_withheld_too(self):
+        docs = {"documents": [{"name": "Mia's passport", "number": "PZ 9918 273"}, {"name": "Lease"}]}
+        with mock.patch.object(privacy.reference, "load", return_value=docs):
+            self.assertEqual(privacy.id_numbers(), ["PZ9918273"])
+            self.assertEqual(privacy.withhold("Renew pz-9918-273 by May"), ["Renew [ID number withheld] by May"])
+
 
 class NewsCallTest(unittest.TestCase):
     """The call that reads strangers' text gets no tools and nothing about the household."""
