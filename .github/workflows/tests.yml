@@ -25,9 +25,26 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: python -m pyflakes src tests scripts
       - run: git ls-files '*.sh' '*.command' bin/butler packaging/macos/scripts/postinstall | xargs shellcheck -S warning -x
-      - run: python -m unittest discover tests -v
+      - name: Tests, under coverage (the flows' subprocesses too)
+        run: python -m coverage run -m unittest discover tests -v
         env:
           PYTHONPATH: src
+          HYPOTHESIS_PROFILE: ci
+          BUTLER_COVERAGE_DIR: ${{ github.workspace }}
+      - name: Coverage floors (docs/TESTING.md)
+        if: success() || failure()
+        shell: bash   # with pipefail, so tee keeps the floors' exit code
+        env:
+          BUTLER_COVERAGE_DIR: ${{ github.workspace }}
+        run: |
+          python -m coverage combine -q
+          python -m coverage json -q
+          status=0
+          python scripts/check_coverage.py coverage.json | tee -a "$GITHUB_STEP_SUMMARY" || status=1
+          # The total floor is fail_under in .coveragerc.
+          python -m coverage report > report.txt || status=1
+          { echo; echo '```'; cat report.txt; echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"
+          exit $status
 
   screenshots:
     runs-on: ubuntu-latest

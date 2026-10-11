@@ -1,0 +1,18 @@
+[run]
+source_pkgs = butler
+branch = true
+parallel = true
+patch = subprocess
+data_file = ${BUTLER_COVERAGE_DIR-.}/.coverage
+
+[paths]
+butler =
+    src/butler
+    */src/butler
+
+[report]
+show_missing = false
+skip_empty = true
+precision = 1
+# The total floor; per-module floors are in scripts/check_coverage.py (docs/TESTING.md).
+fail_under = 87
