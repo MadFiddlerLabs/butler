@@ -164,5 +164,30 @@ class BuildPackageTest(unittest.TestCase):
         self.assertTrue((scripts / "names.sh").exists())
 
 
+class ReleaseWorkflowTest(unittest.TestCase):
+    """A signed release reaches students only after the published one updated itself to it, with
+    every check in place (.github/workflows/release.yml, tests/e2e/signed-update.sh)."""
+
+    def setUp(self):
+        import yaml
+        self.jobs = yaml.safe_load((REPO / ".github" / "workflows" / "release.yml").read_text())["jobs"]
+
+    def test_publishing_waits_for_the_signed_update(self):
+        publish = self.jobs["publish"]
+        self.assertIn("signed-update", publish["needs"])
+        self.assertIn("needs.signed-update.result == 'success'", publish["if"])
+        self.assertIn("github.ref_type == 'tag'", publish["if"])
+        steps = " ".join(s.get("run", "") for s in self.jobs["package"]["steps"])
+        self.assertNotIn("gh release create", steps, "the package job never publishes")
+
+    def test_signed_update_relaxes_nothing(self):
+        job = self.jobs["signed-update"]
+        steps = " ".join(s.get("run", "") for s in job["steps"])
+        self.assertIn("tests/e2e/signed-update.sh", steps)
+        test = (REPO / "tests" / "e2e" / "signed-update.sh").read_text()
+        for text in (str(job), test):
+            self.assertNotRegex(text, r"BUTLER_UPDATE_ALLOW_UNSIGNED=|BUTLER_RELEASES_URL")
+
+
 if __name__ == "__main__":
     unittest.main()
