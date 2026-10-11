@@ -18,6 +18,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from . import timeout
+
 REPO = Path(__file__).resolve().parents[2]
 
 SECURITY = """import json, os, sys
@@ -110,11 +112,11 @@ class SetupHome:
 
     def butler(self, *args: str, stdin: str = "") -> subprocess.CompletedProcess:
         return subprocess.run([str(self.root / "bin" / "butler"), *args], cwd=self.home, env=self.env,
-                              input=stdin, capture_output=True, text=True, timeout=300)
+                              input=stdin, capture_output=True, text=True, timeout=timeout(300))
 
     def first_run(self, lines: list[str]) -> subprocess.CompletedProcess:
         return subprocess.run([str(self.root / "scripts" / "first-run.sh")], cwd=self.home, env=self.env,
-                              input="\n".join(lines) + "\n", capture_output=True, text=True, timeout=600)
+                              input="\n".join(lines) + "\n", capture_output=True, text=True, timeout=timeout(600))
 
     def secrets(self) -> dict:
         return json.loads(self.keychain.read_text()) if self.keychain.exists() else {}

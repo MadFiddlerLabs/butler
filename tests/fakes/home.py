@@ -20,7 +20,7 @@ from pathlib import Path
 
 import yaml
 
-from . import fixtures
+from . import fixtures, timeout
 
 REPO = Path(__file__).resolve().parents[2]
 FAKES = Path(__file__).resolve().parent
@@ -108,7 +108,7 @@ class Home:
                "PATH": f"{self.root / 'fakebin'}{os.pathsep}{os.environ.get('PATH', '')}",
                "BUTLER_FAKE_SECRETS": str(self.root / "fakes" / "secrets.json"), "MPLBACKEND": "Agg"}
         proc = subprocess.run([sys.executable, str(FAKES / "harness.py"), flow, str(record)],
-                              cwd=self.root, env=env, capture_output=True, text=True, timeout=300)
+                              cwd=self.root, env=env, capture_output=True, text=True, timeout=timeout(300))
         if not record.exists():
             raise AssertionError(f"harness crashed:\n{proc.stdout}\n{proc.stderr}")
         result = json.loads(record.read_text())
