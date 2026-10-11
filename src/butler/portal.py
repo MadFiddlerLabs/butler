@@ -575,7 +575,7 @@ def project_update(step_id: str):
     results = []
     for a in replies.plan_step_update(settings, steps[step_id], text, who, today):
         try:
-            results.append(replies.perform(settings, a, who, today))
+            results.append(replies.perform(settings, a, who, today, said=text))
         except Exception as e:
             results.append(f"Couldn't do this ({e}): {a['text']}")
     msg = "\n".join(results) or "Thanks. Nothing to change."

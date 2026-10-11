@@ -42,6 +42,7 @@ someone developing Butler itself. The hard rules apply to both.
 | `src/butler/render.py` | Email HTML and text; `money_lines()` and `split_lines()` are shared |
 | `src/butler/finance.py` | Lunch Money transactions to numbers. Pure arithmetic, tested |
 | `src/butler/budget.py` | Reads the budget workbook's input cells |
+| `src/butler/budget_changes.py` | Applies a look-back's budget suggestion by reply: Python parses and bounds the figure, backs up, changes one cell |
 | `src/butler/networth.py` | Daily snapshots; exchange-rate moves split from real ones |
 | `src/butler/llm.py` | The Claude calls: news, prep notes and phrase of the day |
 | `src/butler/replies.py` | Reply to allowlisted actions; confirmation to all recipients |

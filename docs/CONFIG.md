@@ -95,8 +95,40 @@ Butler reads only input cells, so you can add sheets and formatting of your own.
 
 Annual lines appear in "Due this month" in their month. Annual and five-year lines are
 smoothed into a monthly set-aside in the Sunday letter. Before Butler updates the exchange rate,
-it saves a dated copy of the workbook in `budget/history/`. Budget suggestions from the
-monthly look-back are suggestions only: change the workbook yourself, or ask `/butler-tune`.
+it saves a dated copy of the workbook in `budget/history/`.
+
+### Applying a budget suggestion by reply
+
+The monthly look-back suggests a new daily-spending budget for categories whose trend is well
+off their budget. Reply to the look-back to apply one:
+
+| Reply | What changes |
+|---|---|
+| "Transport" or "apply the Transport suggestion" | The category's one Monthly line becomes the suggested amount |
+| "Transport 160" | That line becomes 160 |
+| "Food: Groceries" | In a category with several lines, Groceries changes so Food reaches the suggestion |
+| "Food: Groceries 800" | Groceries becomes 800 |
+
+What keeps it safe:
+
+- Only replies from `email.trusted_senders` with a passing DKIM signature count, as for every
+  reply.
+- Only the Amount cell (column D) of one Monthly line changes. Fixed lines, off-book lines and
+  the cash drawer's line are never touched. Nothing is deleted.
+- Before the change, Butler copies the workbook to
+  `budget/history/budget_<date>_reply.xlsx` (`_2`, `_3` for more the same day).
+- Python reads the figure, not Claude, and the figure must appear in the reply. Figures are in
+  the primary currency; a line priced in the second currency converts at Assumptions!C5.
+- The category's new budget must be between half the lower and double the higher of its
+  current budget and its trend.
+- Suggestions stay open for 40 days, until the next look-back replaces them.
+- Anything unclear or out of range changes nothing. The confirmation, sent to everyone, asks
+  for what's missing. When something changes, it says the line, old and new amounts, and where
+  the backup is.
+
+This works once the household has its own `budget/budget.xlsx` (the example is never edited)
+and at least one trusted sender. Until then the look-back says to edit the workbook instead.
+You can always change the workbook yourself, or ask `/butler-tune`.
 
 ## deadlines.yaml
 

@@ -95,7 +95,8 @@ class Home:
 
     def set_actions(self, by_subject: dict[str, list[dict]]) -> None:
         """Canned Claude plans for replies, by subject. Unused fields are filled with None."""
-        fields = ("step_id", "status", "date", "start_time", "end_time", "location", "category", "waiting_on")
+        fields = ("step_id", "status", "date", "start_time", "end_time", "location", "category", "waiting_on",
+                  "amount")
         full = {s: [{**{f: None for f in fields}, **a} for a in actions] for s, actions in by_subject.items()}
         (self.root / "fakes" / "actions.json").write_text(json.dumps(full))
 

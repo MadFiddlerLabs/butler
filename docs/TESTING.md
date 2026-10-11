@@ -8,7 +8,7 @@ fails, it opens a GitHub issue.
 
 | Layer | Where | Runs | What it catches |
 |---|---|---|---|
-| Unit | `tests/test_finance.py`, `test_networth.py`, `test_projects.py`, `test_inbox.py`, `test_portal.py`, `test_config.py` | Every push (Linux, macOS) | Wrong sums, broken money rules, the DKIM check, the portal gate, a bad config |
+| Unit | `tests/test_finance.py`, `test_networth.py`, `test_projects.py`, `test_inbox.py`, `test_portal.py`, `test_config.py`, `test_budget_changes.py` | Every push (Linux, macOS) | Wrong sums, broken money rules, the DKIM check, the portal gate, a bad config, a budget change by reply that isn't clear, bounded and backed up |
 | Integration | `tests/test_flows.py` | Every push | Any email flow breaking end to end: the brief, replies, the Sunday letter, the monthly look-back, every portal page |
 | Privacy | `tests/test_privacy.py` | Every push | An ID number, phone or secret reaching an email, a prompt, a log or a file; household details reaching the news call |
 | Contracts | `tests/test_contracts.py` | Every push | Claude schemas that aren't strict, a reply action that could delete, the test stub drifting from the Swift helper, renamed course steps or scripts |

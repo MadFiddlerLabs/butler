@@ -23,7 +23,8 @@ learn how AI works along the way.
 | Monthly look-back | The 1st | What got done, where the time went (from the calendar), where the money went, budget suggestions from your trend |
 
 Reply to any of them: "add milk to shopping", "dentist for Mia Thursday at 10", "done: school
-visit", "that Q-2026-41-1 charge was the plumber, Household", "less sport in the news please".
+visit", "that Q-2026-41-1 charge was the plumber, Household", "apply the Transport suggestion",
+"less sport in the news please".
 A confirmation comes back to everyone within about five minutes.
 
 The portal has the same views plus Money (every transaction, by category), Budget (the plan
