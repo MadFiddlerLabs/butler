@@ -40,6 +40,24 @@ class NetWorthTest(unittest.TestCase):
         self.assertIn("Joint Savings −€3,008 (drawn from savings for spending)", loud)
         self.assertIn("($", loud)                                         # total shown in USD too
 
+    def test_an_account_that_drops_out_is_explained(self):
+        """A closed account, or a bank link that broke overnight: the whole change is accounted for."""
+        before = snap("2026-10-08", 0.90, 100_000, 200_000, 3_000)
+        now = {**before, "date": "2026-10-09", "accounts": before["accounts"][1:]}
+        now["total"] = sum(a["value"] for a in now["accounts"])
+        ch = nw.compare(now, before)
+        self.assertEqual([(m.account, m.kind, round(m.real)) for m in ch.moves],
+                         [("Joint Savings", "not in Lunch Money today", -90_000)])
+        self.assertAlmostEqual(ch.total - ch.previous, ch.fx + sum(m.real for m in ch.moves))
+        text = nw.line(now, ch, "since yesterday", 1000, reasons={"Joint Savings": "spending"})
+        self.assertIn("Joint Savings −€90,000 (not in Lunch Money today)", text)
+
+    def test_a_negative_net_worth_reads_naturally_in_both_currencies(self):
+        debt = {"date": "2026-10-09", "total": -8_600.0, "accounts": [
+            {"name": "Card", "type": "credit", "currency": "usd", "balance": -10_000, "value": -8_600.0},
+            {"name": "Joint Savings", "type": "depository", "currency": "usd", "balance": 1, "value": 0.86}]}
+        self.assertIn("Net worth: −€8,600 (−$10,000)", nw.line(debt, None, "since yesterday", 1000))
+
 
 if __name__ == "__main__":
     unittest.main()

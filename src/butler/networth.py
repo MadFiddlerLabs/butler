@@ -17,6 +17,7 @@ from .fmt import money, name, primary_code, second_code, second_money
 
 SNAPSHOTS = ROOT / "data" / "networth.jsonl"
 LIABILITY_TYPES = {"credit", "loan"}
+NEW, GONE = "newly added to Lunch Money", "not in Lunch Money today"
 KIND = {"investment": "investments", "depository": "cash", "credit": "card balance",
         "real estate": "property value", "other asset": "asset value"}
 
@@ -97,8 +98,13 @@ def compare(now: dict, before: dict) -> Change:
         real = (a["balance"] - p["balance"]) * rate
         fx_total += fx
         if abs(real) >= 1:
-            kind = "newly added to Lunch Money" if new else KIND.get(a["type"], a["type"] or "account")
+            kind = NEW if new else KIND.get(a["type"], a["type"] or "account")
             moves.append(Move(a["name"], kind, real, fx))
+    # An account that's gone (closed, or its bank link broke) takes its whole value with it.
+    current = {a["name"] for a in now["accounts"]}
+    for account, p in prev.items():
+        if account not in current and abs(p["value"]) >= 1:
+            moves.append(Move(account, GONE, -p["value"], 0.0))
     moves.sort(key=lambda m: -abs(m.real))
     change = (usd_now / usd_then - 1) if usd_now and usd_then else 0.0
     return Change(total=now["total"], previous=before["total"], since=date.fromisoformat(before["date"]),
@@ -183,7 +189,7 @@ def line(now: dict, ch: Change | None, period: str, notable: float,
                    f"({'+' if ch.fx >= 0 else ''}{money(ch.fx)} on your {second_code()} holdings)")
     for m in ch.moves[:3]:
         if abs(m.real) >= notable / 4:
-            reason = m.kind if m.kind == "newly added to Lunch Money" else reasons.get(m.account, m.kind)
+            reason = m.kind if m.kind in (NEW, GONE) else reasons.get(m.account, m.kind)
             why.append(f"{labels.get(m.account, m.account)} {'+' if m.real >= 0 else ''}"
                        f"{money(m.real)} ({reason})")
     return out + (" What changed: " + "; ".join(why) + "." if why else "")

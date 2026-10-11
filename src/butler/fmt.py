@@ -23,10 +23,10 @@ def money(x: float) -> str:
 
 
 def second_money(x: float) -> str:
-    """'$1,234' in the second currency (the one the budget converts with its FX rate)."""
+    """'$1,234' or '−$56' in the second currency (the one the budget converts with its FX rate)."""
     code = _symbols()[2]
     sym = SYMBOLS.get(code, code + " ")
-    return f"{sym}{x:,.0f}"
+    return f"−{sym}{-x:,.0f}" if x < -0.5 else f"{sym}{abs(x):,.0f}"
 
 
 NAMES = {"EUR": "euro", "USD": "dollar", "GBP": "pound", "CAD": "Canadian dollar", "AUD": "Australian dollar",

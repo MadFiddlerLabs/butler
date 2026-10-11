@@ -36,9 +36,12 @@ class ParseTest(unittest.TestCase):
         for text, want in cases.items():
             self.assertEqual(parse_amounts(text), [want], text)
         self.assertEqual(parse_amounts("1 050"), [1, 50], "a plain space separates two figures")
+        nbsp = {"1\u00a0050": 1050, "1\u202f050,50": 1050.5, "160\u00a0€": 160, "12\u00a0345\u00a0678": 12345678}
+        for text, want in nbsp.items():
+            self.assertEqual(parse_amounts(text), [want], repr(text))
 
     def test_unclear_figures_are_none(self):
-        for text in ("1,05,0", "1,050.000", "12.345.67"):
+        for text in ("1,05,0", "1,050.000", "12.345.67", "1\u00a01\u00a0000", "1234\u00a0567", "1\u00a05"):
             self.assertEqual(parse_amounts(text), [None], text)
 
     def test_every_figure_is_found(self):
