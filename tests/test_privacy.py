@@ -65,7 +65,7 @@ class PrivacyTest(unittest.TestCase):
             text = p["system"] + p["prompt"]
             self.assertNotIn(fixtures.ABOUT_MARKER, text)
             self.assertNotIn(fixtures.FEEDBACK_MARKER, text)
-            for name in ("Sam", "Alex", "Mia", "Pat", "Rivera"):
+            for name in ("Sam", "Alex", "Mia", "Pat", "Johnson"):
                 self.assertNotIn(name, text, f"the news call saw the name {name}")
 
     def test_personal_calls_do_get_context(self):

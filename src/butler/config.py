@@ -33,7 +33,7 @@ def config_path(name: str) -> Path:
 
 
 def on_example() -> bool:
-    """True until the household has its own settings.yaml: the app is showing the Riveras."""
+    """True until the household has its own settings.yaml: the app is showing the Johnsons."""
     return not (ROOT / "config" / "settings.yaml").exists()
 
 

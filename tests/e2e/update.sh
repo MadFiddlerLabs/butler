@@ -44,7 +44,7 @@ installer -pkg "$v1" -target CurrentUserHomeDirectory
 [ "$(cat "$b/.butler-version")" = "v0.0.1" ] || fail "v0.0.1 not installed"
 grep -v -e '^updates:' -e '^update_hour:' "$b/config/settings.example.yaml" > "$b/config/settings.yaml"
 mkdir -p "$b/data" "$b/projects"
-echo "- the Riveras' plumber is Rui (invented)" > "$b/data/household_notes.md"
+echo "- the Johnsons' plumber is Rui (invented)" > "$b/data/household_notes.md"
 cp "$b/examples/projects/home.yaml" "$b/projects/home.yaml"
 cp "$b/budget/budget.example.xlsx" "$b/budget/budget.xlsx"
 cp "$b/config/settings.yaml" "$work/settings.before"

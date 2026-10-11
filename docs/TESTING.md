@@ -20,7 +20,7 @@ fails, it opens a GitHub issue.
 ## How the fakes work
 
 The integration and privacy tests run each flow in a throwaway install (`tests/fakes/home.py`)
-with the invented Riveras' settings, projects, budget and reference file. A harness
+with the invented Johnsons' settings, projects, budget and reference file. A harness
 (`tests/fakes/harness.py`) runs the flow in a subprocess, so `ROOT` is the test install and the
 repo is never touched. Inside it:
 

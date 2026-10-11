@@ -27,7 +27,7 @@ class FreshTest(unittest.TestCase):
     def test_no_example_household_left(self):
         s = ss.fresh()
         text = yaml.safe_dump(s)
-        for invented in ("Rivera", "Sam", "Alex", "Mia", "sam@example.com", "Lisbon"):
+        for invented in ("Johnson", "Sam", "Alex", "Mia", "sam@example.com", "Lisbon"):
             self.assertNotIn(invented, text, invented)
         self.assertEqual(s["name"], ss.PLACEHOLDER_NAME)
         self.assertEqual(s["household"]["adults"], [])

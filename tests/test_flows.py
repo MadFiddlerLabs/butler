@@ -60,7 +60,7 @@ class FullHouseholdTest(unittest.TestCase):
         self.assertIn("Bento", m["from"])
         self.assertEqual(m["to"], ["sam@example.com", "alex@example.com"])
         self.assertTrue(m["text"].strip() and m["html"].strip())
-        self.assertEqual(self.daily["smtp_logins"], [{"user": "bento.rivera.butler@example.com", "password_ok": True}])
+        self.assertEqual(self.daily["smtp_logins"], [{"user": "bento.johnson.butler@example.com", "password_ok": True}])
 
     def test_brief_has_every_section_and_no_problems(self):
         m = self.daily["mails"][0]
@@ -87,7 +87,7 @@ class FullHouseholdTest(unittest.TestCase):
         self.assertIn(("add-reminder", ["--list", "Shopping", "--title", "milk"]), calls)
         self.assertIn(("add-reminder", ["--list", "Bento", "--title", "Call the plumber"]), calls)
         event = next(a for c, a in calls if c == "add-event")
-        self.assertEqual(event[event.index("--calendar") + 1], "Rivera Family")
+        self.assertEqual(event[event.index("--calendar") + 1], "Johnson Family")
         self.assertEqual(event[event.index("--start") + 1], "2026-10-15T10:00:00+01:00")
         step = (self.home.root / "projects" / "home.yaml").read_text()
         self.assertIn("status: done", step.split("- id: boiler-service")[1].split("- id:")[0])
@@ -101,7 +101,7 @@ class FullHouseholdTest(unittest.TestCase):
         self.assertEqual(m["subject"], TRUSTED_SUBJECT)
         self.assertEqual(m["in_reply_to"], self.trusted_id)
         self.assertEqual(sorted(m["to"]), ["alex@example.com", "sam@example.com"])
-        for line in ("Added to Shopping: milk", "Added to Rivera Family: Dentist for Mia", "Marked done"):
+        for line in ("Added to Shopping: milk", "Added to Johnson Family: Dentist for Mia", "Marked done"):
             self.assertIn(line, m["text"])
 
     def test_every_reply_is_marked_read_and_handled_once(self):

@@ -1,4 +1,4 @@
-"""Invented data for the integration tests: the Riveras' calendar, Reminders, Lunch Money and news.
+"""Invented data for the integration tests: the Johnsons' calendar, Reminders, Lunch Money and news.
 
 Everything is dated relative to the day a test runs, so the tests pass on any date. Nothing here
 belongs to a real household.
@@ -53,14 +53,14 @@ def reference_yaml(today: date) -> str:
 # (day offset from the window start, start time or None for all day, minutes, title, calendar,
 #  location, notes, recurring)
 EVENTS = [
-    (0, "08:30", 30, "Mia school drop-off", "Rivera Family", "", "", True),
+    (0, "08:30", 30, "Mia school drop-off", "Johnson Family", "", "", True),
     (0, "10:00", 60, "Sam standup", "Sam Work", "", "", True),
     (0, "15:00", 90, "Alex Portuguese class", "Alex", "Escola Exemplo", "", True),
     (1, "11:00", 60, "Alex residence card appointment", "Alex", "Loja do Cidadão",
      "Bring the renewal form", False),
     (2, None, 0, "Sam in Porto", "Sam Work", "", "", False),
-    (3, "17:00", 60, "Mia swimming", "Rivera Family", "Swim School", "", True),
-    (4, "19:30", 120, "Dinner with the Costas", "Rivera Family", "Restaurante Exemplo", "", False),
+    (3, "17:00", 60, "Mia swimming", "Johnson Family", "Swim School", "", True),
+    (4, "19:30", 120, "Dinner with the Costas", "Johnson Family", "Restaurante Exemplo", "", False),
     (5, None, 0, "Republic Day", "Holidays in Portugal", "", "", False),
 ]
 
@@ -91,7 +91,7 @@ def events(start: datetime, end: datetime) -> list[dict]:
 
 
 CALENDARS = [{"title": t, "source": "iCloud", "id": t, "writable": True}
-             for t in ("Rivera Family", "Sam Work", "Alex", "Holidays in Portugal")]
+             for t in ("Johnson Family", "Sam Work", "Alex", "Holidays in Portugal")]
 
 REMINDERS = {
     "Bento": [{"id": "r1", "title": "Renew the parking permit", "notes": "", "due": None},
@@ -190,7 +190,7 @@ def reply_message(sender: str, subject: str, body: str, message_id: str, signed_
     from email.message import EmailMessage
     msg = EmailMessage()
     msg["From"], msg["To"], msg["Subject"], msg["Message-ID"] = (
-        sender, "bento.rivera.butler@example.com", subject, message_id)
+        sender, "bento.johnson.butler@example.com", subject, message_id)
     msg.set_content(body)
     auth = gmail_auth_results(signed_by) if signed_by else "Authentication-Results: mx.google.com; dkim=none\r\n"
     return auth.encode() + msg.as_bytes()
