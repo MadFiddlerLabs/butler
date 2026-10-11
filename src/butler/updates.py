@@ -357,7 +357,7 @@ def tick(settings: dict, now: datetime) -> None:
         return
     hour = int(settings.get("update_hour", 3))
     today = now.date().isoformat()
-    if now.hour != hour or state.get("checked") == today:
+    if not _due_hour(now, hour) or state.get("checked") == today:
         return
     state["checked"] = today
     save_state(state)
@@ -374,6 +374,17 @@ def tick(settings: dict, now: datetime) -> None:
         state["waiting"] = {**decision.entry, "kind": decision.action}
         state.pop("announced_waiting", None)
         save_state(state)
+
+
+def _due_hour(now: datetime, hour: int) -> bool:
+    """True during update_hour, local time. On the night the clocks skip that hour (spring
+    forward), the hour after it stands in, so the day's check still happens."""
+    if now.hour == hour:
+        return True
+    if now.tzinfo is None or now.hour != hour + 1:
+        return False
+    wanted = now.replace(hour=hour, minute=30, second=0, microsecond=0, fold=0)
+    return wanted.astimezone(timezone.utc).astimezone(now.tzinfo).hour != hour
 
 
 def _apply_logged(entry: dict, now: datetime) -> None:
