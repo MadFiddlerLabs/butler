@@ -6,8 +6,9 @@ and minor versions overnight on its own. A major version waits for a yes: the br
 
 ## How an update happens
 
-1. **The check.** At `update_hour` (3 a.m. by default, in the household's timezone), the tick
-   reads `https://buildyourbutler.com/updates/stable.json`. It holds the newest released version,
+1. **The check.** Once a day, on the first tick at or after `update_hour` (3 a.m. by default, in the
+   household's timezone), the tick reads `https://buildyourbutler.com/updates/stable.json`. A Mac asleep at that hour checks when it
+   wakes (setup wakes it at 06:59 for the brief). The manifest holds the newest released version,
    its package URL, SHA-256 and size, `min_version`, the release notes, and an optional
    `rollout_percent`.
 2. **The decision** (`updates.decide`):

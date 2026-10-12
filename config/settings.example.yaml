@@ -13,7 +13,7 @@ timezone: Europe/Lisbon
 
 # Updates: auto installs new versions overnight (a major version still asks first), notify
 # always asks ("Reply 'update'" in the brief), off never checks. update_hour is when, in your
-# timezone. See docs/UPDATES.md.
+# timezone (a Mac asleep then checks when it wakes). See docs/UPDATES.md.
 updates: auto
 update_hour: 3
 
