@@ -197,7 +197,10 @@ class UpdateCheckAcrossDstTest(unittest.TestCase):
             p.start()
             self.addCleanup(p.stop)
 
-    def checks(self, zone, hour, start, end) -> list[datetime]:
+    def checks(self, zone, hour, start, end, last_checked=None) -> list[datetime]:
+        """The ticks that checked, from start to end. By default every check due before start was
+        done, as on a Mac that has been running."""
+        self.state["checked"] = last_checked or updates._check_day(start.astimezone(ZoneInfo(zone)), hour)
         seen = []
         with mock.patch.object(updates, "fetch_manifest", side_effect=lambda: seen.append(now) or {"available": False}):
             for t in ticks(start, end):
@@ -219,8 +222,19 @@ class UpdateCheckAcrossDstTest(unittest.TestCase):
         seen = self.checks("Europe/Lisbon", 3, datetime(2026, 10, 12, 0, 0, tzinfo=UTC),
                            datetime(2026, 10, 13, 0, 0, tzinfo=UTC))
         self.assertEqual([t.strftime("%H:%M") for t in seen], ["03:00"])
-        self.assertFalse(updates._due_hour(datetime(2026, 10, 12, 4, 0, tzinfo=ZoneInfo("Europe/Lisbon")), 3))
-        self.assertFalse(updates._due_hour(datetime(2026, 10, 12, 4, 0), 3), "a naive time has no skipped hours")
+
+    def test_a_mac_asleep_at_the_hour_checks_when_it_wakes(self):
+        # Setup wakes the Mac at 06:59 for the brief; it slept through 3 a.m.
+        seen = self.checks("Europe/Lisbon", 3, datetime(2026, 10, 12, 5, 59, tzinfo=UTC),
+                           datetime(2026, 10, 13, 1, 0, tzinfo=UTC), last_checked="2026-10-11")
+        self.assertEqual([t.strftime("%d %H:%M") for t in seen], ["12 06:59"])
+
+    def test_a_late_hour_slept_through_is_checked_the_next_morning(self):
+        # update_hour 23, and the Mac slept through it: the missed check comes at 06:59, and that
+        # evening's on the first tick after 23:00.
+        seen = self.checks("Europe/Lisbon", 23, datetime(2026, 10, 13, 5, 59, tzinfo=UTC),
+                           datetime(2026, 10, 13, 23, 0, tzinfo=UTC), last_checked="2026-10-11")
+        self.assertEqual([t.strftime("%d %H:%M") for t in seen], ["13 06:59", "13 23:04"])
 
 
 class LetterDayProperties(unittest.TestCase):

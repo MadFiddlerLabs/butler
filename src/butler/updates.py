@@ -3,7 +3,8 @@
     butler update --check      # is there a new version?
     butler update [--yes]      # install it now
 
-Once a day, at `update_hour`, the tick reads a small manifest on buildyourbutler.com (version,
+Once a day, on the first tick at or after `update_hour` (so a Mac asleep then checks when it
+wakes), the tick reads a small manifest on buildyourbutler.com (version,
 package URL, checksum, notes). Patch and minor versions install on their own (`updates: auto`);
 a major version, or any version under `updates: notify`, waits for a "Reply 'update'" from the
 household. `updates: off` never checks.
@@ -33,7 +34,7 @@ import subprocess
 import sys
 import urllib.request
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .config import ROOT
@@ -344,8 +345,8 @@ def _short_notes(notes: str, limit: int = 200) -> str:
 # ---------- the daily tick, the reply, the brief ----------
 
 def tick(settings: dict, now: datetime) -> None:
-    """Called by the tick every 5 minutes; checks at most once a day, at update_hour, and installs
-    an approved update straight away."""
+    """Called by the tick every 5 minutes; checks at most once a day, on the first tick at or after
+    update_hour, and installs an approved update straight away."""
     if can_update():
         return
     state = load_state()
@@ -355,11 +356,10 @@ def tick(settings: dict, now: datetime) -> None:
         return
     if settings.get("updates", "auto") == "off":
         return
-    hour = int(settings.get("update_hour", 3))
-    today = now.date().isoformat()
-    if not _due_hour(now, hour) or state.get("checked") == today:
+    due = _check_day(now, int(settings.get("update_hour", 3)))
+    if state.get("checked", "") >= due:
         return
-    state["checked"] = today
+    state["checked"] = due
     save_state(state)
     try:
         decision = decide(settings, fetch_manifest(), installed_version(), install_id())
@@ -376,15 +376,13 @@ def tick(settings: dict, now: datetime) -> None:
         save_state(state)
 
 
-def _due_hour(now: datetime, hour: int) -> bool:
-    """True during update_hour, local time. On the night the clocks skip that hour (spring
-    forward), the hour after it stands in, so the day's check still happens."""
-    if now.hour == hour:
-        return True
-    if now.tzinfo is None or now.hour != hour + 1:
-        return False
-    wanted = now.replace(hour=hour, minute=30, second=0, microsecond=0, fold=0)
-    return wanted.astimezone(timezone.utc).astimezone(now.tzinfo).hour != hour
+def _check_day(now: datetime, hour: int) -> str:
+    """The day whose check is due: today once update_hour has come, otherwise yesterday. The Mac
+    may sleep through update_hour (setup wakes it at 06:59), so the first tick after it counts.
+    That also covers the night the clocks skip the hour, and `checked` stops a repeated hour from
+    checking twice."""
+    day = now.date() if now.hour >= hour else now.date() - timedelta(days=1)
+    return day.isoformat()
 
 
 def _apply_logged(entry: dict, now: datetime) -> None:

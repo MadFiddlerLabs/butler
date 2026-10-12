@@ -19,7 +19,7 @@ Plus the budget workbook, `budget/budget.xlsx`, and the household notes Claude r
 | `name` | Your butler's name: it signs the emails, titles the portal and answers to it in Siri |
 | `timezone` | IANA name, e.g. `Europe/Lisbon`. All schedules follow it |
 | `updates` | `auto` (default): install new versions overnight; a major version still asks. `notify`: always ask. `off`: never check. See [UPDATES.md](UPDATES.md) |
-| `update_hour` | The hour the daily update check runs, in your timezone (default 3) |
+| `update_hour` | The hour the daily update check runs, in your timezone (default 3). A Mac asleep then checks when it next wakes |
 | `currency.primary` | Lunch Money's primary currency |
 | `currency.second` | Optional second currency for budget lines (converted at Assumptions!C5) |
 | `email.sender`, `sender_name` | The assistant's Gmail account |

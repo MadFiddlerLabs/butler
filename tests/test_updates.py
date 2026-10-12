@@ -247,6 +247,7 @@ class TickTest(Sandbox):
 
     def test_checks_once_a_day_at_the_hour(self):
         manifest = {"version": "v0.2.0", "pkg_url": "u"}
+        updates.save_state({"checked": "2026-10-11"})       # last night's check
         with mock.patch.object(updates, "fetch_manifest", return_value=manifest) as fetch, \
                 mock.patch.object(updates, "apply") as apply:
             updates.tick(self.SETTINGS, datetime(2026, 10, 12, 2, 55))

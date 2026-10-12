@@ -23,6 +23,16 @@ log="$home/logs/setup.log"
 # shellcheck source-path=SCRIPTDIR source=lib/names.sh
 . "$home/scripts/lib/names.sh"
 
+# The `butler` command, from any new Terminal window. First, before anything can stop the setup,
+# because every way out says "type: butler setup".
+profile="$HOME/.zprofile"
+path_line="export PATH=\"$home/bin:\$PATH\""
+path_added=""
+if ! grep -qsF "$path_line" "$profile"; then
+  printf '\n# Added by Butler: lets you type `butler` in Terminal.\n%s\n' "$path_line" >> "$profile"
+  path_added=1
+fi
+
 bold=""; dim=""; green=""; reset=""
 if [ -t 1 ]; then
   bold="$(printf '\033[1m')"; dim="$(printf '\033[2m')"; green="$(printf '\033[32m')"; reset="$(printf '\033[0m')"
@@ -107,7 +117,7 @@ if [ "$(json_value terms_version "$(cat "$terms_file" 2>/dev/null)")" != "$terms
   case "$(printf '%s' "$agree" | tr '[:upper:]' '[:lower:]')" in
     n|no)
       kill "$bootstrap_pid" 2>/dev/null || true
-      say "No problem. Nothing has been sent anywhere. If you change your mind, open Terminal and type: butler setup"
+      say "No problem. Nothing has been sent anywhere. If you change your mind, open a new Terminal window and type: butler setup"
       exit 0
       ;;
   esac
@@ -202,18 +212,14 @@ if kill -0 "$bootstrap_pid" 2>/dev/null; then
   printf '\n'
 fi
 if ! wait "$bootstrap_pid" || [ ! -x "$home/.venv/bin/python" ]; then
-  say "Something went wrong getting ready. Check your internet connection, then type: butler setup"
+  say "Something went wrong getting ready. Check your internet connection, then open a new Terminal window and type: butler setup"
   say "If it keeps happening, email support@buildyourbutler.com and attach logs/setup.log from your Butler folder."
   exit 1
 fi
 ok "$name is ready."
 
-# The `butler` command, from any Terminal window.
-profile="$HOME/.zprofile"
-path_line="export PATH=\"$home/bin:\$PATH\""
-if ! grep -qsF "$path_line" "$profile"; then
-  printf '\n# Added by Butler: lets you type `butler` in Terminal.\n%s\n' "$path_line" >> "$profile"
-  say "${dim}I added one line to ~/.zprofile so you can type \"butler\" in any Terminal window.${reset}"
+if [ -n "$path_added" ]; then
+  say "${dim}I added one line to ~/.zprofile so you can type \"butler\" in any new Terminal window.${reset}"
 fi
 "$butler" name "$name" >>"$log" 2>&1 || true
 
