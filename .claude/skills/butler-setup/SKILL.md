@@ -34,8 +34,12 @@ one sentence, and offer the next step.
 
 1. **Secrets never pass through the chat.** To store one, run
    `scripts/store-secret.sh <service> "<what to paste>"`. A Mac dialog asks for it, and it
-   goes straight into Keychain. If they paste a secret into the chat anyway, don't repeat it.
-   Tell them to store it with the dialog and to make a new one, because chats are kept.
+   goes straight into Keychain. If the dialog is cancelled or doesn't open, still never ask for
+   the secret in the chat: offer to open the dialog again, or give them
+   `security add-generic-password -U -s <service> -a butler -w` to run themselves with the `!`
+   prefix (it asks for the value without showing it). If they paste a secret into the chat
+   anyway, don't repeat it. Tell them to store it with the dialog and to make a new one,
+   because chats are kept.
 2. **No ID numbers** (passport, residence, tax, health) in settings, notes or prompts. They
    belong only in `projects/reference.local.yaml`, which the user fills in themselves.
 3. **Nothing is sent without a clear yes.** `./run.sh daily`, `weekly`, `monthly` and
