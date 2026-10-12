@@ -68,6 +68,9 @@ class FirstRunTest(unittest.TestCase):
         self.assertEqual(self.api.calls, [])
         self.assertFalse((h.root / "data" / "terms.json").exists())
         self.assertFalse((h.root / "config" / "settings.yaml").exists())
+        # The way back it names works: `butler` is on the PATH of any new Terminal window.
+        self.assertIn("open a new Terminal window and type: butler setup", proc.stdout)
+        self.assertIn(f'export PATH="{h.root}/bin:$PATH"', (h.home / ".zprofile").read_text())
 
     def test_the_terms_are_asked_once_per_version(self):
         h = self.home()
