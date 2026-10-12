@@ -30,6 +30,13 @@ caddy/domain.env
 !/bin/butler
 /.venv/
 __pycache__/
+# Test runs: coverage data, Hypothesis's example database, mutation testing
+.coverage
+.coverage.*
+htmlcov/
+coverage.json
+.hypothesis/
+/mutants/
 *.pyc
 .env
 .DS_Store

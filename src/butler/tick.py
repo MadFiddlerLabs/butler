@@ -36,9 +36,10 @@ def main() -> None:
 
 def _weekly_if_due() -> None:
     settings = load_settings()
-    cfg = settings["email"]
     now = datetime.now(tz(settings))
-    if now.weekday() != cfg["weekly_day"] or now.hour < cfg["weekly_hour"]:
+    # Sunday at 17:00 unless set, as docs/CONFIG.md says. The hour is "at or after", so a night the
+    # clocks change can't skip it.
+    if now.weekday() != weekly.letter_weekday(settings) or now.hour < settings["email"].get("weekly_hour", 17):
         return
     year, week, _ = now.isocalendar()
     marker = ROOT / "out" / f"weekly-sent-{year}-{week:02d}"

@@ -1,4 +1,6 @@
 # Test-only dependencies, on top of requirements.txt.
 -r requirements.txt
+coverage>=7.10
+hypothesis>=6.100
 jsonschema>=4.23
 pyflakes>=3.2

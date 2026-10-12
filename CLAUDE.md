@@ -67,9 +67,11 @@ clone runs on the example household.
 
 Tests: `PYTHONPATH=src .venv/bin/python -m unittest discover tests` (needs `requirements-dev.txt`).
 There is no manual testing: every check is automated, and `docs/TESTING.md` lists the layers
-(unit, integration with fakes, privacy, contracts, dates, macOS end to end, paid skill evals and
+(unit, money rules and properties, integration with fakes, failure isolation, security, privacy,
+contracts, dates, coverage floors, weekly mutation testing, macOS end to end, paid skill evals and
 a live contract). New behaviour needs a test in the right layer; new outside services need a
-fake in `tests/fakes/`; a new Claude call needs its schema in `test_contracts.py`.
+fake in `tests/fakes/`; a new Claude call needs its schema in `test_contracts.py`. Merge only
+when the `test` check is green; coverage below a floor fails it.
 
 Safe checks that send nothing: `./run.sh preview` (opens the brief in the browser),
 `./run.sh daily --dry-run [--no-llm]` (writes `out/preview/`),

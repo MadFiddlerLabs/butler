@@ -1,6 +1,7 @@
 """A fake buildyourbutler.com account API (the contract in docs/ACCOUNTS.md), plus Open-Meteo's
 geocoding, on a local port. Tests start it, point BUTLER_API and BUTLER_GEOCODE_URL at it, and
-read back what the setup sent.
+read back what the setup sent. tests/test_account_contract.py runs the doc's table through it,
+so it can't drift from the contract.
 
     api = FakeAccountAPI(auto_verify=True); api.start()
     ... BUTLER_API=api.url + "/api" ...
@@ -41,7 +42,8 @@ class FakeAccountAPI:
         self.expire = expire
         self.requests: dict[str, dict] = {}      # request_id -> {email, butler_name, poll_hash, token, status}
         self.sessions: dict[str, str] = {}       # sha256(session) -> email
-        self.progress: list[dict] = []
+        self.users: dict[str, dict] = {}         # email -> {butler_name}
+        self.progress: list[dict] = []           # every progress call, in order
         self.prefs: list[dict] = []
         self.calls: list[tuple[str, str, dict]] = []
         self.links: list[str] = []               # magic-link tokens "emailed"
@@ -60,12 +62,22 @@ class FakeAccountAPI:
         """What the student's click on the emailed link does."""
         self._verify(token or self.links[-1])
 
-    def _verify(self, token: str) -> bool:
+    def _verify(self, token: str) -> dict | None:
         for r in self.requests.values():
             if r["link_hash"] == _hash(token) and r["status"] == "pending":
                 r["status"] = "verified"
-                return True
-        return False
+                return r
+        return None
+
+    def me(self, email: str) -> dict:
+        """GET /api/me: one entry per lesson, and a done lesson stays done."""
+        lessons: dict[str, dict] = {}
+        for p in self.progress:
+            if p["email"] == email and lessons.get(p["lesson"], {}).get("status") != "done":
+                lessons[p["lesson"]] = {"lesson": p["lesson"], "status": p["status"], "at": p["at"]}
+        nudges = [p["nudges"] for p in self.prefs if p["email"] == email]
+        return {"email": email, "butler_name": self.users.get(email, {}).get("butler_name", ""),
+                "nudges": nudges[-1] if nudges else False, "progress": list(lessons.values())}
 
     def _handler(self):
         api = self
@@ -82,9 +94,11 @@ class FakeAccountAPI:
                 self.end_headers()
                 self.wfile.write(data)
 
+            def _bearer(self) -> str:
+                return self.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+
             def _session(self) -> str | None:
-                auth = self.headers.get("Authorization", "")
-                token = auth.removeprefix("Bearer ").strip()
+                token = self._bearer()
                 return api.sessions.get(_hash(token)) if token else None
 
             def do_GET(self):
@@ -97,7 +111,7 @@ class FakeAccountAPI:
                     email = self._session()
                     if not email:
                         return self._send(401, {"error": "not signed in"})
-                    return self._send(200, {"email": email, "butler_name": "", "progress": api.progress})
+                    return self._send(200, api.me(email))
                 self._send(404, {"error": "not found"})
 
             def do_POST(self):
@@ -118,6 +132,7 @@ class FakeAccountAPI:
                     api.requests[request_id] = {"email": body["email"], "butler_name": body.get("butler_name", ""),
                                                 "poll_hash": _hash(poll_secret), "link_hash": _hash(link),
                                                 "status": "pending", "issued": False,
+                                                "client": str(body.get("client", "")),
                                                 "terms_version": body.get("terms_version"),
                                                 "terms_accepted_at": body.get("terms_accepted_at")}
                     api.links.append(link)
@@ -126,8 +141,10 @@ class FakeAccountAPI:
                     return self._send(200, {"request_id": request_id, "poll_secret": poll_secret,
                                             "expires_in": 900})
                 if url.path == "/api/auth/verify":
-                    if api._verify(body.get("token", "")):
-                        return self._send(200, {"ok": True})
+                    request = api._verify(body.get("token", ""))
+                    if request:
+                        client = "web" if request["client"].startswith("web") else "setup"
+                        return self._send(200, {"ok": True, "client": client})
                     return self._send(400, {"error": "this link expired or was already used"})
                 if url.path == "/api/auth/poll":
                     r = api.requests.get(body.get("request_id", ""))
@@ -139,6 +156,8 @@ class FakeAccountAPI:
                         r["issued"] = True
                         session = secrets.token_urlsafe(32)
                         api.sessions[_hash(session)] = r["email"]
+                        if r["butler_name"]:
+                            api.users.setdefault(r["email"], {})["butler_name"] = r["butler_name"]
                         return self._send(200, {"status": "verified", "session_token": session})
                     return self._send(200, {"status": "verified" if r["issued"] else r["status"]})
                 if url.path == "/api/progress":
@@ -164,6 +183,20 @@ class FakeAccountAPI:
                     api.prefs.append({"email": email, "nudges": body["nudges"]})
                     return self._send(200, {"ok": True})
                 if url.path == "/api/auth/logout":
+                    if not self._session():
+                        return self._send(401, {"error": "not signed in"})
+                    del api.sessions[_hash(self._bearer())]
+                    return self._send(200, {"ok": True})
+                if url.path == "/api/account/delete":
+                    email = self._session()
+                    if not email:
+                        return self._send(401, {"error": "not signed in"})
+                    if body.get("confirm") is not True:
+                        return self._send(400, {"error": "confirm must be true"})
+                    api.sessions = {h: e for h, e in api.sessions.items() if e != email}
+                    api.users.pop(email, None)
+                    api.progress = [p for p in api.progress if p["email"] != email]
+                    api.prefs = [p for p in api.prefs if p["email"] != email]
                     return self._send(200, {"ok": True})
                 self._send(404, {"error": "not found"})
 

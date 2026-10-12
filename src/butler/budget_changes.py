@@ -71,7 +71,12 @@ _TOKEN = re.compile(r"\d[\d.,  ]*")
 
 def _number(token: str) -> float | None:
     """'160', '1,050', '1.050', '1,050.50', '1.050,50', '87.5' -> a number; None if unclear."""
-    t = token.rstrip(".,").replace(" ", "").replace(" ", "")
+    t = token.rstrip(".,\u00a0\u202f")          # "160 €" ends its figure with a no-break space
+    # A no-break space groups thousands too ('1\u00a0050'), so each group after one is three digits.
+    head, *groups = re.split("[\u00a0\u202f]", t)
+    if groups and not (re.fullmatch(r"\d{1,3}", head) and all(re.match(r"\d{3}(?!\d)", g) for g in groups)):
+        return None
+    t = "".join([head, *groups])
     if re.fullmatch(r"\d+", t):
         return float(t)
     m = re.fullmatch(r"\d{1,3}(([.,])\d{3})(?:\2\d{3})*", t)

@@ -6,6 +6,7 @@ The test home installs it as bin/butler-ek with a shebang for the running Python
 """
 
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -28,6 +29,9 @@ def main() -> int:
     command, args = (sys.argv[1] if len(sys.argv) > 1 else ""), sys.argv[2:]
     with open(HERE / "ek-calls.jsonl", "a") as log:
         log.write(json.dumps({"command": command, "args": args}) + "\n")
+    if "calendar" in os.environ.get("BUTLER_FAKE_DOWN", "").split(","):
+        print("butler-ek: no Calendar access. Grant it in System Settings.", file=sys.stderr)
+        return 1
     if command not in COMMANDS:
         print(f"butler-ek: unknown command '{command}'", file=sys.stderr)
         return 1

@@ -3,9 +3,9 @@ went out: emails, Claude prompts, helper calls, URLs and portal responses.
 
     python harness.py <flow> <record.json>      (cwd: the test home; PYTHONPATH: its src/)
 
-Flows: daily, daily-dry, replies, weekly, monthly, portal. The fakes:
+Flows: daily, daily-dry, replies, weekly, monthly, portal, progress, tick. The fakes:
 
-- Claude: `llm._ask_json` answers from canned responses. Each schema is checked to be a valid,
+- Claude: `llm._request` (the API call, after ID numbers are withheld) answers from canned responses. Each schema is checked to be a valid,
   strict JSON schema, and each canned answer is validated against it, so schema drift fails.
 - Gmail: smtplib.SMTP_SSL records messages; imaplib.IMAP4_SSL serves fakes/imap/*.eml.
 - Lunch Money, Open-Meteo: urllib.request.urlopen answers from fixtures.py. Loopback addresses
@@ -13,6 +13,10 @@ Flows: daily, daily-dry, replies, weekly, monthly, portal. The fakes:
 - News: feedparser.parse returns invented stories, one carrying a prompt injection.
 - Keychain: a fake `security` on PATH (installed by the test home).
 - Anything else that tries the network fails loudly.
+
+BUTLER_FAKE_DOWN takes services down for the failure tests, comma-separated: lunchmoney, weather,
+news, claude (an API error 500), claude-timeout, smtp (Gmail refuses the login), imap (Gmail's
+IMAP is unreachable). The stub butler-ek reads it too: calendar makes it fail.
 """
 
 import io
@@ -22,6 +26,7 @@ import re
 import socket
 import sys
 import traceback
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import date, datetime, timedelta
@@ -32,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fixtures  # noqa: E402
 
 HOME = Path.cwd()
+DOWN = set(filter(None, os.environ.get("BUTLER_FAKE_DOWN", "").split(",")))
 RECORD = {"mails": [], "smtp_logins": [], "prompts": [], "schema_errors": [], "urls": [],
           "imap_seen": [], "portal": {}, "error": None}
 
@@ -70,6 +76,9 @@ class FakeSMTP:
 
     def login(self, user, password):
         RECORD["smtp_logins"].append({"user": user, "password_ok": password == fixtures.SECRETS["butler-gmail"]})
+        if "smtp" in DOWN:
+            import smtplib
+            raise smtplib.SMTPAuthenticationError(535, b"5.7.8 Username and Password not accepted.")
 
     def send_message(self, msg):
         plain = msg.get_body(("plain",))
@@ -88,6 +97,8 @@ class FakeIMAP:
 
     def __init__(self, host, port=993):
         assert host == "imap.gmail.com", host
+        if "imap" in DOWN:
+            raise ConnectionRefusedError(61, "Connection refused")
         self.messages = {str(i + 1): p.read_bytes() for i, p in enumerate(sorted(self.folder.glob("*.eml")))} \
             if self.folder.exists() else {}
 
@@ -139,6 +150,9 @@ def fake_urlopen(req, timeout=None, **kwargs):
         # A fake server a test started on this machine (tests/fakes/account_api.py).
         return _real_urlopen(req, timeout=timeout, **kwargs)
     query = dict(urllib.parse.parse_qsl(parsed.query))
+    service = {"dev.lunchmoney.app": "lunchmoney", "api.open-meteo.com": "weather"}.get(parsed.netloc)
+    if service in DOWN:
+        raise urllib.error.HTTPError(url, 503, "Service Unavailable", {}, io.BytesIO(b"{}"))
     if parsed.netloc == "dev.lunchmoney.app":
         auth = req.headers.get("Authorization") if isinstance(req, urllib.request.Request) else None
         assert auth == f"Bearer {fixtures.SECRETS['butler-lunchmoney']}", "Lunch Money call without the token"
@@ -164,6 +178,8 @@ def fake_urlopen(req, timeout=None, **kwargs):
 
 def fake_feedparse(url, **kwargs):
     RECORD["urls"].append(url)
+    if "news" in DOWN:
+        return SimpleNamespace(bozo=1, entries=[])
     return SimpleNamespace(bozo=0, entries=fixtures.feed_entries(datetime.now().astimezone()))
 
 
@@ -229,10 +245,25 @@ def _schema_name(schema: dict) -> str:
     return "unknown:" + ",".join(sorted(props))
 
 
-def fake_ask_json(settings, system, prompt, schema):
+def _claude_down():
+    """The SDK's own error types, as a failing API call raises them."""
+    import anthropic
+    if "claude-timeout" in DOWN:
+        error = anthropic.APITimeoutError.__new__(anthropic.APITimeoutError)
+        Exception.__init__(error, "Request timed out.")
+    else:
+        error = anthropic.InternalServerError.__new__(anthropic.InternalServerError)
+        Exception.__init__(error, "Internal server error")
+        error.status_code = 500
+    return error
+
+
+def fake_request(settings, system, prompt, schema):
     import jsonschema
     name = _schema_name(schema)
     RECORD["prompts"].append({"schema": name, "system": system, "prompt": prompt})
+    if DOWN & {"claude", "claude-timeout"}:
+        raise _claude_down()
     try:
         jsonschema.Draft202012Validator.check_schema(schema)
         RECORD["schema_errors"] += [f"{name}: {p}" for p in _strict_problems(schema)]
@@ -255,7 +286,7 @@ def install_fakes() -> None:
     urllib.request.urlopen = fake_urlopen
     feedparser.parse = fake_feedparse
     from butler import llm
-    llm._ask_json = fake_ask_json
+    llm._request = fake_request
 
 
 def run(flow: str) -> None:
@@ -301,6 +332,11 @@ def run(flow: str) -> None:
         r = client.post("/lists/add", data={"list": "Shopping", "title": "x"},
                         headers={**host, "Origin": "https://attacker.example.test"})
         RECORD["portal"]["POST /lists/add cross-site"] = {"status": r.status_code, "cache_control": "", "body": ""}
+    elif flow == "tick":
+        # What launchd runs every five minutes. The fakes are the network, so the Mac is online.
+        from butler import daily, tick
+        daily._online = lambda: True
+        tick.main()
     elif flow == "progress":
         from butler import progress
         state, problem = progress.sync(force=True)

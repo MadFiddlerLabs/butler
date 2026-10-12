@@ -4,8 +4,9 @@ Run with: PYTHONPATH=src .venv/bin/python -m unittest discover tests"""
 
 import json
 import unittest
-from datetime import date, timedelta
+from datetime import timedelta
 
+from fakes import fixtures
 from fakes.home import Home
 
 TRUSTED_SUBJECT = "Re: Bento · Saturday"
@@ -167,7 +168,7 @@ class BudgetByReplyTest(unittest.TestCase):
         # doesn't depend on which month the fixtures fall in.
         saved = h.root / "data" / "budget_suggestions.json"
         cls.saved = json.loads(saved.read_text())
-        saved.write_text(json.dumps({"month": cls.saved["month"], "sent": str(date.today() - timedelta(days=1)),
+        saved.write_text(json.dumps({"month": cls.saved["month"], "sent": str(fixtures.today() - timedelta(days=1)),
                                      "suggestions": {"Lifestyle": {"budget": 120, "trend": 13, "suggested": 25},
                                                      "Food": {"budget": 950, "trend": 1100, "suggested": 1100}}}))
         h.set_actions({
@@ -207,8 +208,8 @@ class BudgetByReplyTest(unittest.TestCase):
             self.assertEqual(record["schema_errors"], [])
 
     def test_the_sent_look_back_keeps_its_suggestions_for_replies(self):
-        last_month = (date.today().replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
-        self.assertIn(self.saved["month"], (last_month, date.today().strftime("%Y-%m")))
+        last_month = (fixtures.today().replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+        self.assertIn(self.saved["month"], (last_month, fixtures.today().strftime("%Y-%m")))
         text = self.monthly["mails"][0]["text"]
         for category in self.saved["suggestions"]:
             self.assertIn(f"  {category}: budget", text)
@@ -263,7 +264,7 @@ class WeeklyOnFridayTest(unittest.TestCase):
     def test_letter_names_friday_and_never_sunday(self):
         self.assertIsNone(self.weekly["error"], self.weekly["error"])
         m = self.weekly["mails"][0]
-        friday = date.today() + timedelta(days=(4 - date.today().weekday()) % 7)
+        friday = fixtures.today() + timedelta(days=(4 - fixtures.today().weekday()) % 7)
         self.assertEqual(m["subject"], f"Bento · your week ahead, {friday + timedelta(days=1):%-d %B}")
         self.assertIn(f"Week ending Friday {friday.day} {friday:%B %Y}", m["text"])
         self.assertIn("Bento, Friday letter.", m["html"])

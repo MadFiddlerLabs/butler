@@ -307,5 +307,141 @@ class MigrationTest(unittest.TestCase):
         self.assertEqual(numbers[0], 1)
 
 
+class CommandTest(Sandbox):
+    """`butler update`, in the plain words a person at a Terminal sees."""
+
+    MANIFEST = {"version": "v0.2.0", "url": "https://example.test/Butler.pkg", "notes": "Budget changes by reply."}
+
+    def run_command(self, manifest=None, check=False, yes=True, typed="", result=None, fetch_error=None,
+                    why_not=None):
+        said, applied = [], []
+
+        def fetch():
+            if fetch_error:
+                raise updates.UpdateError(fetch_error)
+            return self.MANIFEST if manifest is None else manifest
+
+        def apply(m):
+            applied.append(m["version"])
+            if isinstance(result, Exception):
+                raise result
+            return result or {"status": "updated", "to": m["version"]}
+
+        with mock.patch.object(updates, "can_update", return_value=why_not), \
+             mock.patch.object(updates, "fetch_manifest", side_effect=fetch), \
+             mock.patch.object(updates, "apply", side_effect=apply), \
+             mock.patch("builtins.input", return_value=typed):
+            code = updates.command(check, yes, say=said.append)
+        return code, said, applied
+
+    def test_installs_a_newer_version(self):
+        code, said, applied = self.run_command()
+        self.assertEqual((code, applied), (0, ["v0.2.0"]))
+        self.assertEqual(said, ["Version v0.2.0 is ready (you have v0.1.0). What is new: Budget changes by reply.",
+                                "Downloading and checking it. This takes a minute or two…",
+                                "Done. You're on version v0.2.0."])
+
+    def test_check_only_says_how_to_install(self):
+        code, said, applied = self.run_command(check=True)
+        self.assertEqual((code, applied, said[-1]), (0, [], "To install it, type: butler update"))
+
+    def test_asks_first_and_no_means_no(self):
+        for typed, installs in (("no", False), ("N", False), ("", True), ("yes", True)):
+            with self.subTest(typed=typed):
+                code, said, applied = self.run_command(yes=False, typed=typed)
+                self.assertEqual((code, bool(applied)), (0, installs))
+                if not installs:
+                    self.assertEqual(said[-1], "No problem. Type butler update whenever you like.")
+
+    def test_up_to_date(self):
+        for manifest in ({"version": "v0.1.0"}, {"version": "v0.0.9"}, {"version": "v0.2.0", "available": False},
+                         {"version": "not a version"}, {}):
+            with self.subTest(manifest=manifest):
+                code, said, applied = self.run_command(manifest=manifest)
+                self.assertEqual((code, said, applied), (0, ["You're up to date: version v0.1.0."], []))
+
+    def test_too_old_for_an_update_needs_a_download(self):
+        code, said, applied = self.run_command(manifest={**self.MANIFEST, "min_version": "v0.1.5"})
+        self.assertEqual((code, applied), (0, []))
+        self.assertEqual(said, ["Version v0.2.0 needs a fresh download from buildyourbutler.com. "
+                                "Your settings and data stay."])
+
+    def test_plain_words_when_it_cannot(self):
+        code, said, _ = self.run_command(why_not="this copy is a git checkout")
+        self.assertEqual((code, said), (1, ["I can't update myself: this copy is a git checkout."]))
+        code, said, _ = self.run_command(fetch_error="couldn't reach the update server")
+        self.assertEqual((code, said), (1, ["I couldn't reach the update server. "
+                                            "Check your internet connection and try again."]))
+        code, said, _ = self.run_command(result=updates.UpdateError("the download's checksum didn't match"))
+        self.assertEqual((code, said[-1]), (1, "I didn't update: the download's checksum didn't match."))
+
+    def test_a_failed_check_says_it_went_back(self):
+        code, said, _ = self.run_command(result={"status": "rolled_back", "restored": "v0.1.0"})
+        self.assertEqual(code, 1)
+        self.assertEqual(said[-1], "The new version didn't pass its check, so I went back to v0.1.0. "
+                                   "Nothing changed for you. Details are in logs/butler.log.")
+
+
+class PostInstallTest(Sandbox):
+    """The new code's side: dependencies, migrations, a health check, then the portal restarts."""
+
+    def post_install(self, bootstrap=0, migration_error=None, problems=()):
+        ran = []
+
+        def run(cmd, timeout=600):
+            ran.append(cmd[:2])
+            if cmd[0] == "bash":
+                return done(cmd, bootstrap, err="pip: no matching distribution\n")
+            return done(cmd, 0)
+
+        def migrate():
+            if migration_error:
+                raise migration_error
+            return [3]
+
+        env = {k: v for k, v in os.environ.items() if k != "BUTLER_UPDATE_SKIP_BOOTSTRAP"}
+        with mock.patch.dict(os.environ, env, clear=True), \
+             mock.patch.object(updates, "_run", side_effect=run), \
+             mock.patch.object(updates.shutil, "which", return_value="/bin/launchctl"), \
+             mock.patch.object(migrations, "run_pending", side_effect=migrate), \
+             mock.patch.object(updates, "health", return_value=list(problems)):
+            return updates.run_post_install(), ran
+
+    def test_all_good_restarts_the_portal(self):
+        result, ran = self.post_install()
+        self.assertEqual(result, {"ok": True, "migrations": [3]})
+        self.assertEqual(ran, [["bash", str(self.root / "scripts" / "bootstrap.sh")],
+                               ["launchctl", "print"], ["launchctl", "kickstart"]])
+
+    def test_each_failure_stops_it_with_the_reason(self):
+        result, ran = self.post_install(bootstrap=1)
+        self.assertEqual(result, {"ok": False, "problem": "dependencies didn't install (pip: no matching distribution)"})
+        result, _ = self.post_install(migration_error=ValueError("settings.yaml has a tab"))
+        self.assertEqual(result, {"ok": False, "problem": "a settings migration failed (settings.yaml has a tab)"})
+        result, ran = self.post_install(problems=["butler.render doesn't load", "settings lost 'email'"])
+        self.assertEqual(result, {"ok": False, "problem": "butler.render doesn't load; settings lost 'email'"})
+        self.assertNotIn(["launchctl", "kickstart"], ran)
+
+    def test_the_post_install_entry_point_prints_json(self):
+        with mock.patch.object(updates, "run_post_install", return_value={"ok": True, "migrations": []}), \
+             mock.patch("builtins.print") as printed:
+            self.assertEqual(updates.main(["--post-install", "v0.1.0"]), 0)
+        printed.assert_called_once_with('{"ok": true, "migrations": []}', flush=True)
+
+
+class HealthTest(unittest.TestCase):
+    def test_this_code_is_healthy(self):
+        self.assertEqual(updates.health(), [])
+
+    def test_a_module_that_doesnt_load_or_settings_that_lost_a_section(self):
+        with mock.patch.object(updates, "HEALTH_MODULES", ("butler.config", "butler.no_such_module")), \
+             mock.patch("butler.config.load_settings", return_value={"timezone": "Europe/Lisbon", "email": {}}):
+            self.assertEqual(updates.health(), [
+                "butler.no_such_module doesn't load (ModuleNotFoundError: No module named 'butler.no_such_module')",
+                "settings lost 'household'"])
+        with mock.patch("butler.config.load_settings", side_effect=OSError("settings.yaml: permission denied")):
+            self.assertEqual(updates.health(), ["settings don't load (settings.yaml: permission denied)"])
+
+
 if __name__ == "__main__":
     unittest.main()

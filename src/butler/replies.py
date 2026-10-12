@@ -13,6 +13,8 @@ import logging
 import subprocess
 from datetime import date, datetime, time, timedelta
 
+import yaml
+
 from . import inbox, llm, mailer, projects
 from .config import BUTLER_EK, ROOT, load_settings, name_for_email, people, tz
 
@@ -262,7 +264,9 @@ def _add_override(payee: str, category: str, why: str) -> None:
         end += 1
     while not lines[end - 1].strip():
         end -= 1
-    rule = (f"  - payee: {json.dumps(payee, ensure_ascii=False)}\n"
+    # YAML's own double-quoted form: any character a reply holds stays readable and exact.
+    quoted = yaml.safe_dump(payee, default_style='"', allow_unicode=True, width=10**9).strip()
+    rule = (f"  - payee: {quoted}\n"
             f"    category: {category}            # {why}\n")
     lines.insert(end, rule)
     path.write_text("".join(lines))

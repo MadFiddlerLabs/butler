@@ -52,7 +52,7 @@ def _dkim_passes(msg: email.message.Message, sender: str) -> bool:
         return False
     # The domain must end where the property ends, so "gmail.com.attacker.example" fails.
     signed_by = re.compile(rf"\bheader\.(?:i=@|d=){re.escape(domain)}(?=[\s;)]|$)", re.I)
-    return any(re.match(r"\s*dkim=pass\b", r, re.I) and signed_by.search(r)
+    return any(re.match(r"\s*dkim=pass(?=[\s(]|$)", r, re.I) and signed_by.search(r)
                for r in results.split(";"))
 
 

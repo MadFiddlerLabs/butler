@@ -3,7 +3,10 @@ log and the files the portal serves. ID numbers, phones and secrets must never a
 call must see no household details. All data is invented (tests/fakes/fixtures.py).
 Run with: PYTHONPATH=src .venv/bin/python -m unittest discover tests"""
 
+import re
 import unittest
+
+import yaml
 
 from fakes import fixtures
 from fakes.home import Home
@@ -15,7 +18,19 @@ class PrivacyTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.home = h = Home()
-        h.add_reply("sam@example.com", SUBJECT, "When does Alex's residence card expire?", "example.com")
+        # ID numbers typed where they don't belong, in the forms people write them. They must still
+        # never leave the Mac: privacy.withhold() is the last step before Claude and before email.
+        planted = fixtures.planted_ids()
+        path = h.root / "config" / "settings.yaml"
+        settings = yaml.safe_load(path.read_text())
+        settings["household"]["about"] += f" Sam's passport: {planted[0]}."
+        path.write_text(yaml.safe_dump(settings, sort_keys=False, allow_unicode=True))
+        with open(h.root / "data" / "household_notes.md", "a") as f:
+            f.write(f"- Alex's residence card number is {planted[1]}.\n")
+        with open(h.root / "data" / "feedback.md", "a") as f:
+            f.write(f"- 2026-10-02 (Alex): show Mia's passport {planted[2]} in the brief\n")
+        h.add_reply("sam@example.com", SUBJECT, f"When does Alex's residence card expire? Mine is {planted[3]}.",
+                    "example.com")
         h.set_actions({SUBJECT: [{"type": "question", "text": "When does Alex's residence card expire?"}]})
         cls.records = {flow: h.run(flow) for flow in ("daily", "replies", "weekly", "monthly", "portal")}
         cls.prompts = [p for r in cls.records.values() for p in r["prompts"]]
@@ -45,8 +60,19 @@ class PrivacyTest(unittest.TestCase):
 
     def test_no_id_numbers_or_phones_leave_the_mac(self):
         for where, text in self.outgoing().items():
-            for secret in fixtures.ID_NUMBERS + fixtures.PHONES:
+            for secret in fixtures.ID_NUMBERS + fixtures.planted_ids() + fixtures.PHONES:
                 self.assertNotIn(secret, text, f"{secret} leaked into {where}")
+            squashed = re.sub(r"[^0-9a-z]", "", text.lower())
+            for number in fixtures.ID_NUMBERS:
+                self.assertNotIn(re.sub(r"[^0-9a-z]", "", number.lower()), squashed, f"{number} leaked into {where}")
+
+    def test_planted_ids_were_withheld_not_dropped(self):
+        """The planted numbers reached the places that would have sent them, as the marker."""
+        from butler.privacy import WITHHELD
+        prep = next(p for p in self.prompts if p["schema"].startswith("prep"))
+        self.assertIn(WITHHELD, prep["system"])
+        confirmation = next(m for m in self.records["replies"]["mails"])
+        self.assertIn(WITHHELD, confirmation["text"])
 
     def test_expiry_dates_do_reach_the_brief(self):
         # The heads-up uses document names and dates only. Proves the reference file was read.

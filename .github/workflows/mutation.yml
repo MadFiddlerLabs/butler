@@ -1,0 +1,44 @@
+# Weekly and on demand: mutation testing on the money arithmetic (finance.py). mutmut changes the
+# code one small way at a time and runs the money tests against each change; a change no test
+# notices is a rule nothing pins. Config in setup.cfg; the floor in tests/mutation/score.py.
+# Too slow for every push (about half an hour), so it isn't one of the required checks.
+name: mutation
+
+on:
+  schedule:
+    - cron: "23 5 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  mutation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt -r requirements-mutation.txt
+      - name: Mutate finance.py and run the money tests against each change
+        run: mutmut run --max-children "$(nproc)"
+        env:
+          HYPOTHESIS_PROFILE: mutation
+      - name: Score, survivors and the floor
+        shell: bash
+        run: |
+          mutmut export-cicd-stats
+          status=0
+          python tests/mutation/score.py mutants/mutmut-cicd-stats.json | tee -a "$GITHUB_STEP_SUMMARY" || status=1
+          { echo; echo '<details><summary>Survivors</summary>'; echo; echo '```';
+            mutmut results; echo '```'; echo '</details>'; } >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+      - name: Open an issue when a scheduled run fails
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/report-failure.sh
