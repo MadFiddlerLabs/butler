@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from html import escape
 
-from .agenda import OUTSIDE_MARK, Agenda, Event
+from .agenda import OUTSIDE_MARK, Agenda, Event, is_outside
 from .config import brand, people as adults
 from .fmt import money, primary_code, scale, second_code
 from .finance import Summary
@@ -110,7 +110,7 @@ def _tag(brief: Brief, e: Event) -> str:
 
 def _outside(e: Event, html: bool = True) -> str:
     """The quiet marker on an invite from outside the household (agenda.from_outside)."""
-    if not e.outside:
+    if not is_outside(e):
         return ""
     return f'<span style="color:{MUTED}">{escape(OUTSIDE_MARK)}</span>' if html else OUTSIDE_MARK
 

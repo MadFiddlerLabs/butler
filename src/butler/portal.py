@@ -387,8 +387,12 @@ def _subscriptions_html(m) -> str:
 
 def _claude_html() -> str:
     """What Butler spent on Claude this month, from the token counts each answer reports. Shown
-    whether or not Lunch Money is connected; never in the emails."""
-    line = claude_usage.summary(load_settings(), _today())
+    whether or not Lunch Money is connected; never in the emails. A part of the page that can't
+    be worked out is left off, never the page with it."""
+    try:
+        line = claude_usage.summary(load_settings(), _today())
+    except Exception:
+        return ""
     if not line:
         return ""
     return (f"<h2>Claude</h2><p>{escape(line)}</p><p class=sub>An estimate from Butler's own calls; "

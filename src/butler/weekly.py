@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
 from . import charts, finance, llm, mailer, networth, projects
-from .agenda import OUTSIDE_LABEL, OUTSIDE_MARK, Agenda, load_agenda
+from .agenda import OUTSIDE_LABEL, OUTSIDE_MARK, Agenda, is_outside, load_agenda
 from .config import ROOT, brand, load_settings, people, portal_url, tz
 from .finance import SPEND, Summary, Tx
 from .fmt import money, primary_code, scale
@@ -177,7 +177,7 @@ def _routines(agenda: Agenda) -> list[str]:
     groups: dict[tuple[str, str], list[str]] = {}
     for e in agenda.today + agenda.upcoming:
         if e.recurring:
-            key = (e.people[0] if len(e.people) == 1 else "Family", e.short_title + (OUTSIDE_MARK if e.outside else ""))
+            key = (e.people[0] if len(e.people) == 1 else "Family", e.short_title + (OUTSIDE_MARK if is_outside(e) else ""))
             day = f"{e.start:%a}"
             if day not in groups.setdefault(key, []):
                 groups[key].append(day)
@@ -453,7 +453,7 @@ def sections(w: Week, words: dict) -> list[tuple[str, list[str]]]:
             if not e.recurring:
                 who = e.people[0] if len(e.people) == 1 else "Family"
                 ahead.append(f"{e.start:%a %-d} {e.time_label()}, {who}: {e.short_title}"
-                             + (OUTSIDE_MARK if e.outside else ""))
+                             + (OUTSIDE_MARK if is_outside(e) else ""))
         if w.routines:
             ahead.append("Routines: " + "; ".join(w.routines) + ".")
     out.append(("The week ahead", ahead))

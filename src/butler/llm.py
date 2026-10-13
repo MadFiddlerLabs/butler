@@ -12,7 +12,7 @@ import re
 import anthropic
 
 from . import claude_usage, privacy
-from .agenda import OUTSIDE_LABEL, Agenda, Event
+from .agenda import OUTSIDE_LABEL, Agenda, Event, is_outside
 from .config import KEYCHAIN_ANTHROPIC, ROOT, keychain
 from .news import Story
 
@@ -100,7 +100,7 @@ def block(name: str, value) -> str:
 def event_label(e: Event) -> dict:
     """What a prompt says about who an event is from: an invite from outside the household is
     labelled, so Claude reads its title and notes as a stranger's."""
-    return {"from": OUTSIDE_LABEL} if e.outside else {}
+    return {"from": OUTSIDE_LABEL} if is_outside(e) else {}
 
 
 def _client(settings: dict) -> anthropic.Anthropic:

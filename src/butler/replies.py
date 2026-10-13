@@ -293,7 +293,7 @@ def answer(settings: dict, question: str, who: str, today: date) -> str:
     and this month's money lines. ID numbers aren't in any of these."""
     from datetime import datetime as _dt
     from . import finance as _fin
-    from .agenda import OUTSIDE_LABEL, load_agenda
+    from .agenda import OUTSIDE_LABEL, is_outside, load_agenda
     from .render import money_lines
     zone = tz(settings)
     context = {}
@@ -302,7 +302,7 @@ def answer(settings: dict, question: str, who: str, today: date) -> str:
         s2["calendar"]["lookahead_days"] = 14
         ag = load_agenda(s2, today, zone)
         context["calendar_next_14_days"] = [
-            f"{e.start:%a %d %b %H:%M} {e.title}" + (f" ({OUTSIDE_LABEL})" if e.outside else "")
+            f"{e.start:%a %d %b %H:%M} {e.title}" + (f" ({OUTSIDE_LABEL})" if is_outside(e) else "")
             for e in ag.today + ag.upcoming]
     except Exception:
         pass

@@ -18,6 +18,12 @@ OUTSIDE_MARK = " (invite from outside)"
 OUTSIDE_LABEL = "invite from outside the household"
 
 
+def is_outside(e) -> bool:
+    """Whether an event is an invite from outside the household. Events built elsewhere (the
+    screenshots, a test) may not have the field: those are the household's own."""
+    return bool(getattr(e, "outside", False))
+
+
 @dataclass
 class Event:
     ref: str
