@@ -51,7 +51,7 @@ someone developing Butler itself. The hard rules apply to both.
 | `src/butler/agenda.py` + `helpers/butler-ek/` | Calendar and Reminders through a Swift EventKit helper |
 | `src/butler/config.py`, `fmt.py` | Config loading (with example fallback) and currency formatting |
 | `config/*.example.yaml`, `budget/budget.example.xlsx`, `examples/` | The invented example household |
-| `bin/butler`, `src/butler/cli.py` | The `butler` command: one pasted line per early lesson |
+| `bin/butler`, `src/butler/cli.py`, `doctor.py` | The `butler` command: one pasted line per early lesson; `butler doctor` reads the log and the last restart |
 | `scripts/first-run.sh` | The guided first run the package opens: sign-in, lessons, then Claude Code |
 | `src/butler/setup_settings.py`, `account.py` | Settings written one answer at a time; the course account |
 | `src/butler/progress.py`, `course_progress.json` | Progress that marks itself: each setup step's check, the step-to-lesson map, the offline queue (`data/progress.json`), `butler progress` |

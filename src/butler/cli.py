@@ -8,6 +8,7 @@ a terminal before.
 """
 
 import argparse
+import getpass
 import logging
 import os
 import shutil
@@ -17,7 +18,7 @@ import sys
 import textwrap
 from pathlib import Path
 
-from . import progress, setup_settings as ss, updates
+from . import doctor, progress, setup_settings as ss, updates
 from .config import ROOT
 
 CLAUDE_INSTALL = "curl -fsSL https://claude.ai/install.sh | bash"
@@ -254,10 +255,13 @@ def cmd_doctor(args) -> int:
                          "Restore config/settings.yaml from a backup, or ask for help"))
     log = ROOT / "logs" / "butler.log"
     if log.exists():
-        errors = [l for l in log.read_text(errors="replace").splitlines()[-300:] if " ERROR " in l]
+        recent = log.read_text(errors="replace").splitlines()[-300:]
+        errors = [l for l in recent if " ERROR " in l]
         if errors:
             problems.append((f"The log has {len(errors)} recent error(s).",
                              "Open Claude Code and type /butler-doctor to have them explained"))
+        problems += doctor.log_problems(recent)
+    problems += doctor.restart_check(getpass.getuser())
     briefs = ROOT / "logs" / "brief-errors.log"
     if briefs.exists():
         problems.append(("The last `butler brief` failed.", "Its details are in logs/brief-errors.log"))
