@@ -349,8 +349,9 @@ focus: three to five things to get done this coming week, chosen from "next_up" 
 week ahead. Each: who ({", ".join(people(settings))} or Both) and what, in one short sentence. Prefer
 high-priority steps and anything the calendar makes timely.
 
-ideas: up to three concrete ways to save or earn, each with a rough amount per month (or null)
-and what it would take. Mix cut / restructure / earn. Skip anything already suggested
+ideas: up to three concrete ways to save or earn, and what each would take. per_month: a rough
+amount per month only when a figure in the numbers gives it (a charge you'd cut, say); else null.
+The letter labels it as your estimate. Mix cut / restructure / earn. Skip anything already suggested
 recently (listed below) unless something changed. Fewer, better ideas beat filler.
 
 project_notes: one sentence per project on where it stands and what's stuck. The steps'
@@ -456,8 +457,8 @@ def sections(w: Week, words: dict) -> list[tuple[str, list[str]]]:
 
     if words["ideas"]:
         out.append(("Save or earn", [
-            f"{i['title']}"
-            + (f" (about {money(i['per_month'])} a month)" if i["per_month"] else "")
+            f"{i['title']}"     # Claude's figure, not Python's: the letter says so
+            + (f" (Claude's rough estimate: about {money(i['per_month'])} a month)" if i["per_month"] else "")
             + f". {i['detail']}" for i in words["ideas"]]))
     if w.questions:
         out.append(("Questions for you (reply with the id and your answer)",

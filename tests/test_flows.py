@@ -126,6 +126,8 @@ class FullHouseholdTest(unittest.TestCase):
         self.assertIn("Bento, Sunday letter.", mails[0]["html"])
         self.assertIn("An invented, calm week.", mails[0]["text"])
         self.assertIn("Mystery Payee Lda", mails[0]["text"], "unmapped spending should be asked about")
+        # Claude's figure for an idea is labelled as Claude's, not passed off as computed.
+        self.assertIn("Cancel one streaming service (Claude's rough estimate: about €13 a month).", mails[0]["text"])
 
     def test_monthly_look_back(self):
         mails = self.monthly["mails"]
