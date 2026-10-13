@@ -195,7 +195,10 @@ The win: money in the brief, in three kinds of spending.
    `scripts/store-secret.sh butler-lunchmoney "Your Lunch Money access token"`.
 3. Set `currency.primary` (Lunch Money's primary currency) and `currency.second` if some
    budget lines are in another currency.
-4. Read their categories and accounts through the code, so the token stays in Keychain:
+4. Before reading any money data, tell them in one sentence: whatever Claude Code reads in
+   this chat goes to Anthropic, so you'll work out totals in Python and read only the
+   categories, accounts and totals you need.
+5. Read their categories and accounts through the code, so the token stays in Keychain:
    ```
    PYTHONPATH=src .venv/bin/python -c "
    from butler import lunchmoney
@@ -203,10 +206,10 @@ The win: money in the brief, in three kinds of spending.
    print([c['name'] for c in cats if not c.get('is_group')])
    print([(a['institution_name'], a['name'], a['type']) for a in lunchmoney.get('plaid_accounts')['plaid_accounts']])"
    ```
-5. Pull about four months of transactions (`lunchmoney.transactions(start, end)`). Work out
+6. Pull about four months of transactions (`lunchmoney.transactions(start, end)`). Work out
    monthly totals per category and the biggest recurring payees in Python. Don't print
    transaction lists into the chat beyond what you need.
-6. Explain the three kinds of spending in two sentences: fixed monthly expenses against
+7. Explain the three kinds of spending in two sentences: fixed monthly expenses against
    their plan, daily spending paced through the month, and one-offs kept apart. Then draft
    `config/category_map.yaml` with them from the example:
    - `map`: Lunch Money categories to 8–15 budget categories. Work or business categories
@@ -215,22 +218,40 @@ The win: money in the brief, in three kinds of spending.
    - `rules.ignore_accounts` / `ignore_institutions`: investment and retirement accounts.
    - Overrides for payees that need a label, a fixed line or rent timing.
    - Optional sections only if they apply: ledgers, cash drawer, managed fees, rental income.
-7. Copy `budget/budget.example.xlsx` to `budget/budget.xlsx` and replace the example lines
+8. Copy `budget/budget.example.xlsx` to `budget/budget.xlsx` and replace the example lines
    with openpyxl (input cells only: Expenses A–F and I from row 5, Income A–D from row 5,
    Assumptions C5–C6). Propose amounts from the averages and let them adjust. Fixed lines in
    daily categories go in `rules.fixed_lines`. Category names must match the category map.
-8. Check: the full test suite passes, then `./run.sh preview` shows the money section.
+9. Check: the full test suite passes, then `./run.sh preview` shows the money section.
 
 ## projects (Module 8: Projects and paperwork)
 
 The win: one real household project with steps, and document dates tracked.
 
-1. Explain projects in two sentences (see `docs/PROJECTS.md`). Offer to turn one or two
-   things they're working on into a project in `projects/<name>.yaml`. Steps need an owner
-   and, where it applies, a gate (`after`, `not_before`, `every`, `waiting`).
+1. Explain projects in two sentences (see `docs/PROJECTS.md`). Remind them that whatever
+   they tell you, and whatever Claude Code reads here, goes to Anthropic. Offer to turn one or
+   two things they're working on into a project in `projects/<name>.yaml`. Steps need an
+   owner and, where it applies, a gate (`after`, `not_before`, `every`, `waiting`).
 2. If they want the Info page, copy `examples/reference.local.example.yaml` to
    `projects/reference.local.yaml`. You may add names and document expiry dates they tell
-   you. They type any ID numbers themselves, in a text editor. Never ask for them.
+   you. They type any ID numbers themselves, in a text editor. Never ask for them, and don't
+   open the file once they have.
+   - The editor must save plain text with straight quotes. In TextEdit: Format > Make Plain
+     Text, and turn off Edit > Substitutions > Smart Quotes. Smart quotes (“ ” ‘ ’) aren't
+     quotes to YAML, so they end up inside values or break the file.
+   - When they've saved it, check that it parses without printing any of it. The check
+     prints only "ok", or the line to look at:
+     ```
+     .venv/bin/python -c "
+     import yaml
+     try:
+         yaml.safe_load(open('projects/reference.local.yaml'))
+         print('ok')
+     except yaml.YAMLError as e:
+         mark = getattr(e, 'problem_mark', None)
+         print('not valid YAML' + (f' near line {mark.line + 1}' if mark else ''))"
+     ```
+     Never run a plain YAML load or `cat` on it: a YAML error message quotes the line.
 3. Create `data/household_notes.md` with facts they shared that Claude should know.
 4. Check: the project tests pass, and `./run.sh preview` shows "Next up".
 
