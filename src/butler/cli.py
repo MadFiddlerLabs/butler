@@ -21,7 +21,7 @@ import textwrap
 from pathlib import Path
 
 from . import doctor, progress, setup_settings as ss, updates
-from .config import ROOT
+from .config import ROOT, plain_output
 
 CLAUDE_INSTALL = "curl -fsSL https://claude.ai/install.sh | bash"
 # The first time, Claude Code opens on Module 1 (Meet Claude Code): a welcome, nothing changed.
@@ -126,7 +126,7 @@ def cmd_brief(args) -> int:
     if not ss.SETTINGS.exists():
         ss.save(s)
     who = _butler(s)
-    say(f"{who[0].upper() + who[1:]} is writing your brief. This takes a few seconds...")
+    say(f"{who[0].upper() + who[1:]} is writing your brief. This takes a few seconds.")
     proc = subprocess.run([str(ROOT / "run.sh"), "preview"], cwd=ROOT, capture_output=True, text=True)
     brief = ss.first_brief()
     if proc.returncode != 0 or not brief:
@@ -222,7 +222,9 @@ def cmd_status(args) -> int:
     say()
     next_step = None
     for what, done, how in _checks():
-        say(f"  {'✓' if done else '·'} {what}")
+        # The words carry it: VoiceOver skips a lone "·", so the marks are only for the eye.
+        state = "Done:  " if done else "To do: "
+        say(f"  {state}{what}" if plain_output() else f"  {'✓' if done else '·'} {state}{what}")
         if not done and next_step is None:
             next_step = how
     say()
@@ -270,7 +272,7 @@ def cmd_doctor(args) -> int:
     if problems:
         say("I found something to fix:")
         for what, fix in problems:
-            say(f"  · {what} {fix}.")
+            say(f"  {'' if plain_output() else '· '}{what} {fix}.")
         return 1
     say("Everything I can check without Claude looks healthy. For a deeper check, open Claude Code "
         "and type /butler-doctor.")

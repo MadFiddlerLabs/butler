@@ -120,6 +120,22 @@ class CurrencyScaleTest(unittest.TestCase):
 
 
 
+class OutsideInviteTest(unittest.TestCase):
+    """The quiet marker for an invite from outside the household. An event built elsewhere (the
+    screenshots, the portal) without the field is the household's own, never an error."""
+
+    def event(self, **extra):
+        from datetime import datetime
+        return SimpleNamespace(start=datetime(2026, 10, 19, 10), location="", title="Dinner with the Costas",
+                               time_label=lambda: "10:00–11:00", **extra)
+
+    def test_marked_only_when_from_outside(self):
+        self.assertIn("Dinner with the Costas<span", render._event_row(self.event(outside=True)))
+        self.assertIn("(invite from outside)", render._event_row(self.event(outside=True)))
+        for own in (self.event(outside=False), self.event()):
+            self.assertNotIn("invite from outside", render._event_row(own))
+
+
 class ReadableTest(unittest.TestCase):
     """Accessibility: text colors reach 4.5:1 on the email's paper, and the email page has a
     language and a title."""

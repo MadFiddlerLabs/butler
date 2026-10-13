@@ -22,7 +22,7 @@ from typing import Callable
 import yaml
 
 from . import account
-from .config import ROOT
+from .config import ROOT, plain_output
 
 MAP_FILE = Path(__file__).with_name("course_progress.json")
 STATE_FILE = Path("data") / "progress.json"
@@ -282,16 +282,20 @@ def _day(iso: str) -> str:
 
 def lines(state: dict, problem: str | None) -> list[str]:
     """What `butler progress` prints: each step, whether it's done, and whether the course knows."""
+    plain = plain_output()   # words only for a screen reader: the marks are for the eye
+
+    def mark(symbol: str) -> str:
+        return "  " if plain else f"  {symbol} "
     out = []
     for step, entry in course_map().items():
-        where = f"Module {entry['module']} · /butler-setup {step}"
+        where = f"Module {entry['module']}{', ' if plain else ' · '}/butler-setup {step}"
         if step not in state["steps"]:
-            out.append(f"  · {where}: not done yet")
+            out.append(f"{mark('·')}{where}: not done yet")
         elif any(lesson in state["queued"] for lesson in entry["lessons"]):
-            out.append(f"  … {where}: done, waiting to send")
+            out.append(f"{mark('…')}{where}: done, waiting to send")
         else:
             sent = [state["reported"][lesson]["sent_at"] for lesson in entry["lessons"] if lesson in state["reported"]]
-            out.append(f"  ✓ {where}: sent {_day(max(sent))}" if sent else f"  ✓ {where}: done")
+            out.append(f"{mark('✓')}{where}: " + (f"sent {_day(max(sent))}" if sent else "done"))
     mapped = {lesson for entry in course_map().values() for lesson in entry["lessons"]}
     other = [lesson for lesson in state["reported"] if lesson not in mapped]
     if other:

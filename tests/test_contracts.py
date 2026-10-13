@@ -98,6 +98,30 @@ class HelperContractTest(unittest.TestCase):
         self.assertEqual(listed, self.swift_commands())
         self.assertLess(SWIFT.index("guard commands.contains(command)"), SWIFT.index("\nrequestAccess()"))
 
+    def test_the_helper_answers_for_its_own_calendar_access(self):
+        """macOS asks butler-ek for Calendar access, not Terminal or launchd's job, so one grant covers
+        the 07:00 run. The re-run happens once, before anything touches EventKit, and falls back
+        to running as before when the private call is missing."""
+        self.assertIn('dlsym(UnsafeMutableRawPointer(bitPattern: -2), "responsibility_spawnattrs_setdisclaim")', SWIFT)
+        self.assertIn("guard getenv(disclaimedKey) == nil else { return }", SWIFT)
+        self.assertIn("POSIX_SPAWN_SETEXEC", SWIFT)
+        first = SWIFT.index("\ndisclaimResponsibility()")
+        self.assertLess(first, SWIFT.index("\nlet store = EKEventStore()"))
+        self.assertLess(first, SWIFT.index("\nrequestAccess()"))
+
+    def test_the_stubs_events_have_the_helpers_fields(self):
+        """The stub's `events` rows carry exactly the keys the Swift helper emits, organiser too."""
+        swift_event = SWIFT.split('let events = store.events(matching: predicate).map')[1].split("emit(events)")[0]
+        swift_organizer = SWIFT.split("func organizer(")[1].split("\n}\n")[0]
+        start = fixtures.datetime.combine(fixtures.today(), fixtures.time.min, fixtures.ZONE)
+        rows = fixtures.events(start, start + timedelta(days=7))
+        self.assertEqual({k for r in rows for k in r}, set(re.findall(r'"([a-z_]+)":', swift_event)))
+        organizers = [r["organizer"] for r in rows if r["organizer"]]
+        self.assertTrue(organizers)
+        self.assertTrue(any(r["organizer"] is None for r in rows))
+        for o in organizers:
+            self.assertEqual(set(o), set(re.findall(r'"([a-z_]+)":', swift_organizer)))
+
     def test_python_calls_only_real_commands(self):
         called = set()
         for text in SRC.values():

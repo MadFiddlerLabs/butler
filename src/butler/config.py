@@ -1,3 +1,5 @@
+import functools
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -25,6 +27,25 @@ def butler_ek() -> str:
     if not BUTLER_EK.exists():
         raise NotSetUp("the Calendar and Reminders helper isn't built yet (/butler-setup calendar)")
     return str(BUTLER_EK)
+
+
+@functools.cache
+def plain_output() -> bool:
+    """Terminal text for a screen reader: words only, no tick marks, dots or other symbols that
+    VoiceOver reads aloud or skips. On with BUTLER_PLAIN=1, when CLAUDE_AX_SCREEN_READER is set
+    (the course's accessibility page has VoiceOver users set it for Claude Code), or while
+    VoiceOver runs. BUTLER_PLAIN=0 turns it off. scripts/lib/plain.sh decides the same way."""
+    flag = os.environ.get("BUTLER_PLAIN", "").strip().lower()
+    if flag in ("1", "yes", "true"):
+        return True
+    if flag in ("0", "no", "false"):
+        return False
+    if os.environ.get("CLAUDE_AX_SCREEN_READER", "").strip().lower() not in ("", "0", "no", "false"):
+        return True
+    try:
+        return subprocess.run(["pgrep", "-x", "VoiceOver"], capture_output=True, timeout=5).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
 
 
 def config_path(name: str) -> Path:

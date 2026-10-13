@@ -44,7 +44,7 @@ they are). Something not connected yet is normal mid-course, not a problem.
 | What you see | What it means | Fix |
 |---|---|---|
 | "update … didn't happen" in the log, or the brief says it went back | An update was refused or rolled back; the log line says why | Read `data/updates/state.json` and the log; `butler update --check` shows what's available. Never relax the signature check |
-| Calendar permission error | macOS isn't letting Butler read Calendar | System Settings > Privacy & Security > Calendars: switch it on. The same for Reminders |
+| Calendar permission error | macOS isn't letting Butler read Calendar | System Settings > Privacy & Security > Calendars: switch on butler-ek (an older helper may be listed under Terminal instead). The same for Reminders |
 | `bin/butler-ek` missing | The Calendar step isn't done | `/butler-setup calendar` |
 | A secret is missing | It was never stored, or stored under another name | `scripts/store-secret.sh <name> "..."` |
 | Gmail "Username and Password not accepted" or "AUTHENTICATIONFAILED" in the log, or "queued" and "outbox" lines | The app password is wrong or was revoked. Changing the butler's Gmail password revokes every app password, so ask whether anyone changed it. Built emails wait in `data/outbox/` and go out on their own once Gmail takes them (tried hourly after three refusals; dropped after three days) | Make a new app password; store it again. Don't rebuild or resend by hand |

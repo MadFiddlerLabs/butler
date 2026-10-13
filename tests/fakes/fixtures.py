@@ -78,6 +78,15 @@ EVENTS = [
 ]
 
 
+# Who sent the invite, as butler-ek reports it. Events not listed have no organiser: the household
+# made them. Sam's standup comes from Sam's own work account, signed in on the Mac; the dinner is
+# an invite from friends outside the household.
+ORGANIZERS = {
+    "Sam standup": {"email": "sam@work.example.com", "current_user": True},
+    "Dinner with the Costas": {"email": "ines.costa@example.net", "current_user": False},
+}
+
+
 def events(start: datetime, end: datetime) -> list[dict]:
     """butler-ek `events` output for the window, in the helper's JSON shape."""
     out = []
@@ -99,7 +108,8 @@ def events(start: datetime, end: datetime) -> list[dict]:
             out.append({"id": f"{title}-{day}", "event_id": f"{title}-{day}", "occurrence": s.isoformat(),
                         "declined": False, "title": title, "start": s.isoformat(), "end": e.isoformat(),
                         "all_day": at is None, "recurring": recurring, "location": location,
-                        "notes": notes, "calendar": cal, "source": "iCloud"})
+                        "notes": notes, "calendar": cal, "source": "iCloud",
+                        "organizer": ORGANIZERS.get(title)})
     return out
 
 

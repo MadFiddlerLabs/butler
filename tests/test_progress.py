@@ -335,10 +335,18 @@ class SyncTest(unittest.TestCase):
         state["reported"] = {l: {"status": "done", "at": "x", "sent_at": "2026-10-11T09:05:00Z"}
                              for l in MAP["calendar"]["lessons"] + ["setup.town"]}
         state["queued"] = {l: {"status": "done", "at": "x"} for l in MAP["brain"]["lessons"]}
-        text = "\n".join(progress.lines(state, "signed out"))
+        with mock.patch.object(progress, "plain_output", return_value=False):
+            text = "\n".join(progress.lines(state, "signed out"))
         self.assertIn("✓ Module 3 · /butler-setup calendar: sent 11 October", text)
         self.assertIn("… Module 4 · /butler-setup brain: done, waiting to send", text)
         self.assertIn("· Module 5 · /butler-setup inbox: not done yet", text)
+        # For a screen reader, the same in words only.
+        with mock.patch.object(progress, "plain_output", return_value=True):
+            plain = "\n".join(progress.lines(state, "signed out"))
+        self.assertIn("  Module 3, /butler-setup calendar: sent 11 October", plain)
+        self.assertIn("  Module 4, /butler-setup brain: done, waiting to send", plain)
+        self.assertIn("  Module 5, /butler-setup inbox: not done yet", plain)
+        self.assertNotRegex(plain, "[✓…·]")
         self.assertIn("Also sent: setup.town", text)
         self.assertIn("type: butler setup", text)
         self.assertIn("couldn't reach", "\n".join(progress.lines(state, "offline")))

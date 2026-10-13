@@ -28,7 +28,7 @@ Plus the budget workbook, `budget/budget.xlsx`, and the household notes Claude r
 | `email.recipients` | Who gets the emails |
 | `email.trusted_senders` | Addresses whose replies are acted on (DKIM must pass) |
 | `email.send_hour`, `weekly_day`, `weekly_hour`, `monthly_hour` | When each email goes out. `weekly_day` is Monday = 0 ... Sunday = 6 (default 6); the weekly letter names that day ("Week ending Friday 16 October"). If the Mac is asleep or offline at a letter's or look-back's hour, it goes out on the first tick in the next two days and says it's late |
-| `household.adults` | The adults, with the addresses they reply from |
+| `household.adults` | The adults, with the addresses they reply from. These, `email.trusted_senders`, `email.recipients` and `email.sender` are the household's addresses: an invite organised by any other address, and not by the person signed in on the Mac, shows "(invite from outside)" in the emails, and its text reaches Claude labelled as a stranger's. Add an adult's other addresses here if their invites are marked |
 | `household.place` | Your town, for the news prompt |
 | `news.interests` | What you want from the news, in a sentence. With `household.place`, the only household detail the news call sees, so keep names out of it |
 | `household.about` | A short description of the household for Claude. Never put ID numbers here |
@@ -43,6 +43,7 @@ Plus the budget workbook, `budget/budget.xlsx`, and the household notes Claude r
 | `news.regions` | Regions in order, each with RSS feeds |
 | `news.language` | The language summaries are written in |
 | `llm.model`, `effort` | The Claude model and effort level. The example uses Sonnet 5.5: the model check (`scripts/model_check.py`, docs/TESTING.md) scored it with Opus at about a third of the cost. Any current model works |
+| `llm.monthly_limit` | Optional: the monthly spend limit set in the Anthropic Console, in US dollars. The portal's Money page shows "Claude this month: about $1.20 of your $5 limit", or only the spend without it. Butler estimates the spend from the token counts each answer reports, priced in Python from the table in `src/butler/claude_usage.py`, and keeps one line per call in `data/claude_usage.jsonl` (the day, the model and the token counts; never a prompt or an answer). An estimate: the Console has the bill. Never in the emails |
 | `weather` | Optional: `place`, `latitude`, `longitude`, `unit` |
 | `language_learning` | Optional: a phrase of the day for `learner` in `language` at `level` |
 | `score_tracker` | Optional: practice-test scores for `person` toward `pass_score`/`out_of` |

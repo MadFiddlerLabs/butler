@@ -13,8 +13,42 @@
 //   butler-ek completed --list Butler --start 2026-09-01 --end 2026-10-01
 //   butler-ek add-event --calendar "Family" --title T --start ISO --end ISO [--all-day 1] [--location L] [--notes N]
 
+import Darwin
 import EventKit
 import Foundation
+
+// macOS asks the "responsible" process for Calendar access: the app that started this helper
+// (Terminal, Claude Code), or launchd's job at 07:00. A grant made in Terminal then may not cover
+// the morning run. So, first thing, the helper runs itself again with responsibility disclaimed:
+// macOS then asks for butler-ek, and one grant works whatever starts it. The call is private but
+// long used in libSystem. If it's missing or the re-run fails, the helper carries on as before.
+// BUTLER_EK_DISCLAIMED stops the second run from running itself again.
+let disclaimedKey = "BUTLER_EK_DISCLAIMED"
+
+func disclaimResponsibility() {
+    guard getenv(disclaimedKey) == nil else { return }
+    typealias SetDisclaim = @convention(c) (UnsafeMutablePointer<posix_spawnattr_t?>, Int32) -> Int32
+    // RTLD_DEFAULT is (void *)-2; the macro doesn't reach Swift.
+    guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "responsibility_spawnattrs_setdisclaim")
+    else { return }
+    var size: UInt32 = 0
+    _ = _NSGetExecutablePath(nil, &size)
+    var path = [CChar](repeating: 0, count: Int(size) + 1)
+    guard _NSGetExecutablePath(&path, &size) == 0 else { return }
+    var attributes: posix_spawnattr_t?
+    guard posix_spawnattr_init(&attributes) == 0 else { return }
+    defer { posix_spawnattr_destroy(&attributes) }
+    // POSIX_SPAWN_SETEXEC replaces this process: same pid, arguments, stdin, stdout and stderr.
+    guard posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETEXEC)) == 0,
+          unsafeBitCast(symbol, to: SetDisclaim.self)(&attributes, 1) == 0
+    else { return }
+    setenv(disclaimedKey, "1", 1)
+    var pid: pid_t = 0
+    _ = posix_spawn(&pid, path, nil, &attributes, CommandLine.unsafeArgv, environ)
+    unsetenv(disclaimedKey)   // only reached when the re-run failed
+}
+
+disclaimResponsibility()
 
 let store = EKEventStore()
 
@@ -87,6 +121,17 @@ func declined(_ e: EKEvent) -> Bool {
     e.attendees?.first(where: { $0.isCurrentUser })?.participantStatus == .declined
 }
 
+// Who sent the invite: its address when EventKit gives one, and whether it's the person signed in
+// on this Mac. Null for an event nobody invited anyone to. Butler marks invites from outside the
+// household, so a stranger's text reaches Claude labelled as theirs.
+func organizer(_ e: EKEvent) -> Any {
+    guard let o = e.organizer else { return NSNull() }
+    let link = o.url.absoluteString
+    let email = link.lowercased().hasPrefix("mailto:")
+        ? (String(link.dropFirst("mailto:".count)).removingPercentEncoding ?? "") : ""
+    return ["email": email, "current_user": o.isCurrentUser]
+}
+
 // Every command, checked before asking for access, so a wrong one fails at once instead of
 // waiting on a permission prompt.
 let commands: Set<String> = ["calendars", "events", "reminder-lists", "reminders", "ensure-list",
@@ -122,6 +167,7 @@ case "events":
             "notes": String((e.notes ?? "").prefix(600)),
             "calendar": e.calendar.title,
             "source": e.calendar.source.title,
+            "organizer": organizer(e),
         ]
     }
     emit(events)

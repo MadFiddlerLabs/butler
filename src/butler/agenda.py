@@ -12,6 +12,17 @@ from .config import butler_ek
 # Events the Apps Script copied from another calendar (apps-script/butler-calendar.gs).
 COPY_NOTE = re.compile(r"^Copied from \S+@\S+")
 
+# The quiet marker on an invite from outside the household, in the emails.
+OUTSIDE_MARK = " (invite from outside)"
+# The same, where an event reaches Claude: always inside a marked data block.
+OUTSIDE_LABEL = "invite from outside the household"
+
+
+def is_outside(e) -> bool:
+    """Whether an event is an invite from outside the household. Events built elsewhere (the
+    screenshots, a test) may not have the field: those are the household's own."""
+    return bool(getattr(e, "outside", False))
+
 
 @dataclass
 class Event:
@@ -26,6 +37,7 @@ class Event:
     calendar: str
     people: list[str]
     short_title: str  # title without a leading owner name: "Sam Swimming" -> "Swimming"
+    outside: bool = False  # organised by someone outside the household (from_outside)
 
     def time_label(self) -> str:
         if self.all_day:
@@ -60,6 +72,25 @@ def _assign(title: str, calendar: str, people: list[dict]) -> tuple[list[str], s
     return [p["name"] for p in people if calendar in p.get("calendars", [])][:1], title
 
 
+def household_addresses(settings: dict) -> set[str]:
+    """Every address settings give the household: the adults' own, the trusted senders, the
+    recipients and the butler's mailbox."""
+    email = settings.get("email") or {}
+    found = [e for p in (settings.get("household") or {}).get("adults", []) for e in p.get("emails", [])]
+    found += (email.get("trusted_senders") or []) + (email.get("recipients") or []) + [email.get("sender") or ""]
+    return {str(a).strip().lower() for a in found if a}
+
+
+def from_outside(raw: dict, addresses: set[str]) -> bool:
+    """True for an invite whose organiser isn't the household: not the person signed in on this
+    Mac and not an address in settings. An event with no organiser is one the household made.
+    An organiser without an address counts as outside: unknown isn't ours."""
+    org = raw.get("organizer")
+    if not org or org.get("current_user"):
+        return False
+    return (org.get("email") or "").strip().lower() not in addresses
+
+
 def _fetch(start: datetime, end: datetime) -> list[dict]:
     out = subprocess.run(
         [butler_ek(), "events", "--start", start.isoformat(), "--end", end.isoformat()],
@@ -77,6 +108,7 @@ def load_agenda(settings: dict, day: date, zone: ZoneInfo) -> Agenda:
     window_end = day_end + timedelta(days=cfg["lookahead_days"])
 
     include, holiday_cals = set(cfg["include"]), set(cfg["holidays"])
+    ours = household_addresses(settings)
     seen: set[tuple] = set()
     events: list[Event] = []
     holidays: dict[date, list[str]] = {}
@@ -104,7 +136,7 @@ def load_agenda(settings: dict, day: date, zone: ZoneInfo) -> Agenda:
             all_day=raw["all_day"], recurring=raw.get("recurring", False),
             location=raw["location"].strip(), notes=raw["notes"].strip(),
             calendar=raw["calendar"],
-            people=people, short_title=short_title,
+            people=people, short_title=short_title, outside=from_outside(raw, ours),
         ))
 
     events.sort(key=lambda e: (e.start, not e.all_day))

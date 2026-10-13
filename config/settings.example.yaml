@@ -143,6 +143,9 @@ llm:
   effort: medium
   # Set this only if your API key isn't scoped to a workspace (Console > Workspaces).
   workspace_id:
+  # Optional: the monthly spend limit you set in the Anthropic Console, in US dollars. The portal's
+  # Money page then shows "Claude this month: about $1.20 of your $5 limit". Without it, the spend.
+  monthly_limit: 5
 
 # Optional. One line of weather at the top of the brief (Open-Meteo, no key needed).
 weather:

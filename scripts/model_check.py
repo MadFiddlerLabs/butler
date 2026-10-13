@@ -32,33 +32,11 @@ FIXTURE = REPO / "tests" / "fixtures" / "model_check.json"
 
 # ---------- prices ----------
 
-PRICES_SOURCE = "https://platform.claude.com/docs/en/about-claude/pricing"
-PRICES_CHECKED = "2026-10-13"
-
-
-@dataclass(frozen=True)
-class Price:
-    """US dollars per million tokens."""
-    input: float
-    output: float
-    cache_write: float    # 5-minute cache writes
-    cache_read: float
-
-
-# From PRICES_SOURCE, checked PRICES_CHECKED. Butler sets no cache_control, so the cache prices
-# should never apply; they're here so a cache hit can't be priced as zero.
-PRICES = {
-    "claude-opus-5-5": Price(4.00, 20.00, 5.00, 0.20),
-    "claude-opus-5": Price(5.00, 25.00, 6.25, 0.50),
-    "claude-opus-4-8": Price(5.00, 25.00, 6.25, 0.50),     # where a refused request can fall back
-    "claude-sonnet-5-5": Price(2.00, 10.00, 2.50, 0.10),
-    "claude-sonnet-5": Price(2.00, 10.00, 2.50, 0.20),
-    "claude-haiku-5-5": Price(0.10, 0.50, 0.125, 0.01),    # prompts up to 100,000 tokens
-    "claude-haiku-4-5-20251001": Price(1.00, 5.00, 1.25, 0.10),
-}
-# Haiku 5.5 charges more when a prompt passes 100,000 tokens (input, cache reads and writes counted).
-LONG_PROMPT = {"claude-haiku-5-5": (100_000, Price(0.50, 2.50, 0.625, 0.05))}
-HIGHEST = max(PRICES.values(), key=lambda p: (p.output, p.input))
+# One price table for Butler: the Money page's Claude estimate and this check use the same one.
+# Appended, so a throwaway install's own src/ (the worker's PYTHONPATH) still comes first.
+sys.path.append(str(REPO / "src"))
+from butler.claude_usage import (HIGHEST, PRICES, PRICES_CHECKED, PRICES_SOURCE, _n,  # noqa: E402
+                                 attempts as billed_attempts, price_of, usage_cost)
 
 # ---------- the run ----------
 
@@ -124,25 +102,6 @@ def default_models() -> list[str]:
 
 # ---------- cost ----------
 
-def price_of(model: str, prompt_tokens: int = 0) -> tuple[Price, bool]:
-    """The price for `model`, and whether it's known. An unknown model is priced at the highest."""
-    if model in LONG_PROMPT and prompt_tokens > LONG_PROMPT[model][0]:
-        return LONG_PROMPT[model][1], True
-    return (PRICES[model], True) if model in PRICES else (HIGHEST, False)
-
-
-def _n(usage, name: str) -> int:
-    return int(getattr(usage, name, 0) or 0)
-
-
-def usage_cost(model: str, usage) -> float:
-    """Dollars for one usage record: input, output, cache writes and cache reads."""
-    tokens_in, tokens_out = _n(usage, "input_tokens"), _n(usage, "output_tokens")
-    written, read = _n(usage, "cache_creation_input_tokens"), _n(usage, "cache_read_input_tokens")
-    p, _ = price_of(model, tokens_in + written + read)
-    return (tokens_in * p.input + tokens_out * p.output + written * p.cache_write + read * p.cache_read) / 1_000_000
-
-
 @dataclass
 class Cost:
     dollars: float
@@ -156,16 +115,10 @@ def response_cost(requested: str, response) -> Cost:
     """What one response cost. With a server-side fallback, usage.iterations has one entry per
     attempt, each billed at its own model's price; top-level usage covers only the last. Every
     attempt is counted, including a declined one the API doesn't bill, so the figure errs high."""
-    usage = response.usage
     served = getattr(response, "model", None) or requested
-    attempts = [a for a in (getattr(usage, "iterations", None) or [])
-                if getattr(a, "type", "") in ("message", "fallback_message")]
-    if not attempts:
-        attempts = [SimpleNamespace(model=served, **{k: _n(usage, k) for k in (
-            "input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")})]
     cost = Cost(0.0, 0, 0, served)
-    for a in attempts:
-        model = getattr(a, "model", None) or requested
+    for a in billed_attempts(requested, response):
+        model = a.model
         if not price_of(model)[1]:
             cost.notes.append(f"{model} isn't in PRICES: priced as the most expensive model")
         cost.dollars += usage_cost(model, a)

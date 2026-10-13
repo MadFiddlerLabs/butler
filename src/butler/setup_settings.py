@@ -61,6 +61,7 @@ def fresh() -> dict:
     s["calendar"].update(include=[], holidays=[], write_to="")
     s["reminders"]["todo_list"] = PLACEHOLDER_NAME
     s["portal"].update(url="", allowed_logins=[], people={})
+    s["llm"].pop("monthly_limit", None)    # theirs, from the Console: /butler-setup brain asks
     s.pop("weather", None)
     for key in OPTIONAL_FEATURES:
         s.pop(key, None)

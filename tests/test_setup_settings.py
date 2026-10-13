@@ -32,6 +32,7 @@ class FreshTest(unittest.TestCase):
         self.assertEqual(s["name"], ss.PLACEHOLDER_NAME)
         self.assertEqual(s["household"]["adults"], [])
         self.assertNotIn("weather", s)
+        self.assertNotIn("monthly_limit", s["llm"], "the Johnsons' limit isn't theirs")
         for key in ss.OPTIONAL_FEATURES:
             self.assertNotIn(key, s)
         self.assertEqual(s["portal"]["url"], "")

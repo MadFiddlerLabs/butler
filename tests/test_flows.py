@@ -3,9 +3,11 @@ Money, the news, the weather and the Calendar helper faked (tests/fakes). No net
 Run with: PYTHONPATH=src .venv/bin/python -m unittest discover tests"""
 
 import json
+import re
 import unittest
 from datetime import timedelta
 
+from butler.agenda import OUTSIDE_LABEL, OUTSIDE_MARK
 from fakes import fixtures
 from fakes.home import Home
 
@@ -21,6 +23,20 @@ ACTIONS = {TRUSTED_SUBJECT: [
 ]}
 SAFE_EK_COMMANDS = {"calendars", "events", "reminder-lists", "reminders", "ensure-list", "add-reminder",
                     "complete-reminder", "completed", "add-event"}
+
+
+def _mentions(value, title: str, labelled: bool = False):
+    """For each string in a data block that holds `title`: whether it's labelled as an invite from
+    outside, by its own text or by a "from" beside it."""
+    if isinstance(value, dict):
+        labelled = labelled or value.get("from") == OUTSIDE_LABEL
+        for v in value.values():
+            yield from _mentions(v, title, labelled)
+    elif isinstance(value, list):
+        for v in value:
+            yield from _mentions(v, title, labelled)
+    elif isinstance(value, str) and title in value:
+        yield labelled or OUTSIDE_MARK in value or OUTSIDE_LABEL in value
 
 
 class FullHouseholdTest(unittest.TestCase):
@@ -73,6 +89,25 @@ class FullHouseholdTest(unittest.TestCase):
         self.assertNotIn("Problems this morning", m["text"])
         self.assertNotIn("Not connected yet", m["text"])
         self.assertTrue(m["images"], "the brief has no charts")
+
+    def test_an_invite_from_outside_is_marked_quietly(self):
+        m = self.daily["mails"][0]
+        self.assertIn("Dinner with the Costas (invite from outside)", m["text"])
+        self.assertIn("Dinner with the Costas<span", m["html"])
+        for own in ("standup", "school drop-off", "swimming"):
+            self.assertNotIn(f"{own} (invite from outside)", m["text"])
+
+    def test_outside_titles_reach_claude_only_labelled_inside_a_data_block(self):
+        title = "Dinner with the Costas"
+        prompts = [p for flow in ("daily", "weekly", "monthly") for p in getattr(self, flow)["prompts"]]
+        self.assertTrue(any(title in p["prompt"] for p in prompts))
+        for p in prompts:
+            self.assertNotIn(title, p["system"], p["schema"])
+            outside_blocks = re.sub(r"<<<\w+\n.*?\n>>>", "", p["prompt"], flags=re.S)
+            self.assertNotIn(title, outside_blocks, p["schema"])
+            for found in re.findall(r"<<<\w+\n(.*?)\n>>>", p["prompt"], flags=re.S):
+                for labelled in _mentions(json.loads(found), title):
+                    self.assertTrue(labelled, p["schema"])
 
     def test_brief_links_come_from_the_feed(self):
         self.assertIn("https://news.example.test/metro", self.daily["mails"][0]["text"])

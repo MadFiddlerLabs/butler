@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from html import escape
 
-from .agenda import Agenda, Event
+from .agenda import OUTSIDE_MARK, Agenda, Event, is_outside
 from .config import brand, people as adults
 from .fmt import money, primary_code, scale, second_code
 from .finance import Summary
@@ -108,12 +108,19 @@ def _tag(brief: Brief, e: Event) -> str:
             f'{escape(e.people[0])}</span> ')
 
 
+def _outside(e: Event, html: bool = True) -> str:
+    """The quiet marker on an invite from outside the household (agenda.from_outside)."""
+    if not is_outside(e):
+        return ""
+    return f'<span style="color:{MUTED}">{escape(OUTSIDE_MARK)}</span>' if html else OUTSIDE_MARK
+
+
 def _event_row(e: Event, show_day: bool = False, tag: str = "", title: str | None = None) -> str:
     when = f"{e.start:%a} {e.start.day} " if show_day else ""
     where = f'<span style="color:{MUTED}"> · {escape(e.location)}</span>' if e.location else ""
     return (f'<tr><td style="padding:3px 12px 3px 0;color:{MUTED};white-space:nowrap;'
             f'vertical-align:top">{when}{e.time_label()}</td>'
-            f'<td style="padding:3px 0">{tag}{escape(title or e.title)}{where}</td></tr>')
+            f'<td style="padding:3px 0">{tag}{escape(title or e.title)}{_outside(e)}{where}</td></tr>')
 
 
 def _todo_text(t: dict, day: date) -> str:
@@ -410,7 +417,7 @@ def to_html(brief: Brief, image_src=lambda name: f"cid:{name}") -> str:
             for p in brief.prep:
                 e = p["event"]
                 parts.append(
-                    f'<p style="margin:0 0 10px"><strong>{escape(e.title)}</strong>'
+                    f'<p style="margin:0 0 10px"><strong>{escape(e.title)}</strong>{_outside(e)}'
                     f'<span style="color:{MUTED}"> · {e.start:%a %d %b}</span><br>'
                     f'{escape(p["note"])}</p>')
 
@@ -523,13 +530,15 @@ def to_text(brief: Brief) -> str:
             lines.append(f"  {name}")
             for e in events:
                 title = e.short_title if name != FAMILY else e.title
-                lines.append(f"    {e.time_label():<12} {title}" + (f" ({e.location})" if e.location else ""))
+                lines.append(f"    {e.time_label():<12} {title}{_outside(e, html=False)}"
+                             + (f" ({e.location})" if e.location else ""))
             if not events:
                 lines.append("    Nothing on the calendar")
         if brief.prep:
             lines += ["", "GET READY FOR"]
             for p in brief.prep:
-                lines.append(f"  {p['event'].title} ({p['event'].start:%a %d %b}): {p['note']}")
+                lines.append(f"  {p['event'].title}{_outside(p['event'], html=False)} "
+                             f"({p['event'].start:%a %d %b}): {p['note']}")
         week, holidays = _week(brief), _upcoming_holidays(brief)
         if week or holidays:
             lines += ["", "THIS WEEK"]
@@ -537,7 +546,7 @@ def to_text(brief: Brief) -> str:
                 lines.append("  " + _holiday_summary(holidays))
             lines += [f"  {e.start:%a} {e.start.day:<2} {e.time_label():<12} "
                       + (f"{e.people[0]}: {e.short_title}" if len(e.people) == 1 else e.title)
-                      for e in week]
+                      + _outside(e, html=False) for e in week]
 
     if brief.next_up:
         lines += ["", "NEXT UP"]
