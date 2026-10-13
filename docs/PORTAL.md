@@ -1,13 +1,33 @@
 # The portal
 
 The portal is a small web app on your Mac: Today, Week, Last month, Money, Budget, Projects,
-Lists and Info. It listens on 127.0.0.1 only. Tailscale makes it reachable from your own
-devices, over HTTPS, and from nowhere else.
+Lists, Info and Devices. It listens on 127.0.0.1 only. Tailscale makes it reachable from your
+own devices, over HTTPS, and from nowhere else. It opens only in browsers you've paired.
 
 ```
 ./run.sh portal        # or: launchd/install.sh, which keeps it running
-open http://127.0.0.1:8787
+butler portal          # opens it in this Mac's browser, and pairs that browser
 ```
+
+## Paired browsers
+
+Every account on the Mac can reach 127.0.0.1, and any program there can send the headers
+Tailscale and Caddy use to say who is visiting. So a login alone doesn't get in: each browser
+also needs a device key, a cookie it gets by pairing once.
+
+- **This Mac:** run `butler portal`. It opens the portal in your browser and pairs it. The
+  one-time code goes through a file only your Mac account can read, never a command line.
+- **A phone or another browser:** in a paired browser, open **Devices** and choose **Add a
+  phone or browser**. It shows a code. On the phone, open the portal's address and type the
+  code. A code works once, within 10 minutes, and five wrong tries cancel every open code.
+- **An iPhone Home Screen icon** keeps its own cookies, apart from Safari. Add the icon first,
+  open the portal from it, and pair it there.
+- **Forget a device** on the Devices page, for a lost phone or an old browser.
+
+The key lasts 400 days and renews on every visit. `data/portal_devices.json` keeps only hashes
+of keys and codes, readable by your Mac account only. Butler's folder is readable by your
+account only too (`scripts/bootstrap.sh` sets it), because other accounts on a Mac can open a
+home folder's subfolders.
 
 ## On your phones, with Tailscale
 
@@ -27,11 +47,15 @@ open http://127.0.0.1:8787
 5. Put that address in `portal.url` in `config/settings.yaml`. The emails link to it.
 6. List who may enter in `portal.allowed_logins` (their Tailscale login emails), and map each
    to a name in `portal.people` so updates say who made them.
+7. Pair each phone: in a paired browser on the Mac, open Devices > Add a phone or browser, then
+   type the code on the phone (see Paired browsers above).
 
 `tailscale serve` tells the portal who is visiting (the `Tailscale-User-Login` header), and the
 portal turns away anyone not in `allowed_logins`. It also refuses any request for a name it
 doesn't serve (`portal.url`, `portal.hosts`, or 127.0.0.1 and localhost), and any request
-without a login unless it comes straight from the Mac itself.
+without a login unless it comes straight from the Mac itself. On top of all that, every
+request needs a paired browser's device key. Only the pairing page, the web app manifest and
+the icons answer without one.
 
 On iPhone, open the address in Safari and use Share > Add to Home Screen for an app icon.
 

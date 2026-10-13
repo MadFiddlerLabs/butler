@@ -22,7 +22,7 @@ from hypothesis import assume, example, given
 from hypothesis import strategies as st
 from props import PROFILE
 
-from butler import inbox, llm, portal, privacy, replies, updates
+from butler import devices, inbox, llm, portal, privacy, replies, updates
 from butler.inbox import _dkim_passes
 from butler.news import Story
 
@@ -488,10 +488,35 @@ class PortalGateFuzzTest(unittest.TestCase):
                   mock.patch.object(portal, "_caddy", return_value=False)):
             p.start()
             self.addCleanup(p.stop)
-        self.client = portal.app.test_client()
+        self.client = portal.app.test_client(use_cookies=False)   # each request carries its own Cookie
+        folder = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, folder, True)
+        store = mock.patch.object(devices, "FILE", folder / "portal_devices.json")
+        store.start()
+        self.addCleanup(store.stop)
+        self.key = devices.pair(devices.new_code(), "Mac, Safari")
 
-    def status(self, method="GET", **headers) -> int:
-        return self.client.open("/gate-test", method=method, headers=headers).status_code
+    def status(self, method="GET", path="/gate-test", **headers) -> int:
+        """With a paired browser's key unless the test gives its own Cookie."""
+        headers.setdefault("Cookie", f"{devices.COOKIE}={self.key}")
+        return self.client.open(path, method=method, headers=headers).status_code
+
+    @given(st.sampled_from(["127.0.0.1:8787", "localhost:8787", "mac.tailnet.test", "butler.example.test"]),
+           st.dictionaries(st.sampled_from(["Tailscale-User-Login", "Tailscale-User-Name", "X-Butler-Peer",
+                                            "X-Forwarded-For", "X-Forwarded-Proto"]),
+                           st.sampled_from(["sam@example.com", "100.64.0.9", "127.0.0.1", "https", "Sam"])),
+           st.text(alphabet="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_", max_size=50))
+    def test_no_header_or_guessed_key_opens_the_id_page(self, host, forged, guess):
+        """Another account on the Mac can send any header to 127.0.0.1. Without the device key it
+        gets the pairing page at most, never the Info page or a change."""
+        assume(guess != self.key)
+        cookie = {"Cookie": f"{devices.COOKIE}={guess}" if guess else ""}
+        for caddy in (False, True):
+            with mock.patch.object(portal, "_caddy", return_value=caddy), \
+                 mock.patch.object(portal, "_whois", return_value="sam@example.com"):
+                self.assertIn(self.status(path="/info", Host=host, **forged, **cookie), (303, 403))
+                self.assertEqual(self.status("POST", path="/lists/add", Host=host, Origin=f"http://{host}",
+                                             **forged, **cookie), 403)
 
     @given(DOMAIN | st.from_regex(r"[a-z0-9.\-]{1,30}", fullmatch=True), st.sampled_from(["", ":8787", ":443"]))
     @example("mac.tailnet.test.attacker.test", "")
@@ -519,7 +544,7 @@ class PortalGateFuzzTest(unittest.TestCase):
     def test_no_page_can_frame_the_portal(self):
         """Clickjacking: a framed portal page would pass the Origin check. Every answer, a refusal
         included, forbids framing and type sniffing."""
-        login = {"Tailscale-User-Login": "sam@example.com"}
+        login = {"Tailscale-User-Login": "sam@example.com", "Cookie": f"{devices.COOKIE}={self.key}"}
         with mock.patch.object(portal, "_money", side_effect=RuntimeError("no Lunch Money in this test")):
             answers = [self.client.get("/money", headers={"Host": "mac.tailnet.test", **login}),
                        self.client.get("/gate-test", headers={"Host": "mac.tailnet.test", **login}),

@@ -273,12 +273,20 @@ CROP = """most => {
 }"""
 
 
+def device_key(home) -> str:
+    """A paired browser for the photos: the portal opens only on one (src/butler/devices.py)."""
+    sys.path.insert(0, str(REPO / "src"))
+    from butler import devices
+    devices.FILE = home.root / "data" / "portal_devices.json"
+    return devices.pair(devices.new_code(), "Mac, Chrome")
+
+
 def photograph(home, port: int, out: Path) -> list[Path]:
     from playwright.sync_api import sync_playwright
     preview = home.root / "out" / "preview"
     pages = {"brief": (preview / f"brief-{BRIEF_AT.date()}.html").as_uri(),
              "letter": next(preview.glob("weekly-*.html")).as_uri()}
-    css, written = font_css(), []
+    css, written, key = font_css(), [], device_key(home)
     with sync_playwright() as p:
         browser = p.chromium.launch()
         for name, what, size, scale, most in SHOTS:
@@ -286,6 +294,7 @@ def photograph(home, port: int, out: Path) -> list[Path]:
                                           locale="en-GB", timezone_id="Europe/Lisbon", reduced_motion="reduce")
             # The emails are files; the portal is the throwaway install's, on this Mac only.
             context.route(re.compile(r"^https?://(?!127\.0\.0\.1[:/]).*"), lambda route: route.abort())
+            context.add_cookies([{"name": "butler_device", "value": key, "url": f"http://127.0.0.1:{port}"}])
             page = context.new_page()
             page.goto(pages.get(what) or f"http://127.0.0.1:{port}{what}", wait_until="networkidle")
             page.add_style_tag(content=css)

@@ -3,10 +3,15 @@ front of it for devices on the tailnet.
 
     python -m butler.portal            # serve on 127.0.0.1:8787
 
-Who's allowed: requests that come through `tailscale serve` carry a Tailscale-User-Login
-header, checked against portal.allowed_logins. A request without a login is let in only
-when it comes straight from this Mac to 127.0.0.1 or localhost, with no proxy in between.
-Any other Host name is refused, so a web page can't reach the portal by DNS rebinding.
+Who's allowed, in order:
+- The Host must be one the portal serves, so a web page can't reach it by DNS rebinding.
+- Requests through `tailscale serve` carry a Tailscale-User-Login header, checked against
+  portal.allowed_logins. A request without a login must come straight from this Mac to
+  127.0.0.1 or localhost, with no proxy in between.
+- Every browser also needs its device key (devices.py), a cookie it got by pairing once. Any
+  account or process on the Mac can reach 127.0.0.1 and forge the login headers there, so the
+  headers alone prove nothing. Only the pairing page, the web app manifest and the icons are
+  open without a key.
 Changes go through the same code paths as email replies (projects.update_step, butler-ek),
 so nothing here can delete anything.
 """
@@ -18,11 +23,11 @@ import time as _time
 from datetime import date, datetime, timedelta
 from html import escape
 
-from flask import Flask, Response, abort, redirect, request, send_from_directory
+from flask import Flask, Response, abort, g, redirect, request, send_from_directory
 
 from urllib.parse import quote, urlparse
 
-from . import charts, finance, networth, projects, replies
+from . import charts, devices, finance, networth, projects, replies
 from .config import BUTLER_EK, ROOT, brand, load_settings, people, tz
 from .render import money_lines, one_off_note, readable
 from .fmt import SYMBOLS, money, primary_code, second_code
@@ -98,8 +103,34 @@ def _gate():
         abort(403)
     if request.method == "POST":
         origin = request.headers.get("Origin") or request.headers.get("Referer") or ""
-        if urlparse(origin).netloc.lower() != request.host.lower():
+        # `butler portal` pairs this Mac's browser from a local file, which posts as Origin "null".
+        from_file = request.path == "/pair" and origin == "null" and host in LOCAL_HOSTS
+        if urlparse(origin).netloc.lower() != request.host.lower() and not from_file:
             abort(403)
+    if request.path in OPEN_PATHS or request.path.startswith("/static/"):
+        return None
+    g.device = devices.known(request.cookies.get(devices.COOKIE))
+    if g.device is None:
+        if request.method == "GET":
+            return redirect("/pair", 303)
+        abort(403)
+    return None
+
+
+OPEN_PATHS = {"/pair", "/manifest.json"}
+KEY_DAYS = 400          # the longest a browser keeps a cookie; each visit renews it
+
+
+def _set_key(resp: Response, key: str) -> None:
+    resp.set_cookie(devices.COOKIE, key, max_age=KEY_DAYS * 86400, path="/", httponly=True,
+                    samesite="Lax", secure=_hostname(request.host) not in LOCAL_HOSTS)
+
+
+@app.after_request
+def _renew_key(resp: Response) -> Response:
+    if g.get("device") and request.cookies.get(devices.COOKIE):
+        _set_key(resp, request.cookies[devices.COOKIE])
+    return resp
 
 
 @app.after_request
@@ -193,12 +224,16 @@ def _people_css() -> str:
 
 
 NAV = [("/", "Today"), ("/week", "Week"), ("/month", "Last month"), ("/money", "Money"),
-       ("/budget", "Budget"), ("/projects", "Projects"), ("/lists", "Lists"), ("/info", "Info")]
+       ("/budget", "Budget"), ("/projects", "Projects"), ("/lists", "Lists"), ("/info", "Info"),
+       ("/devices", "Devices")]
 
 
-def page(title: str, body: str, active: str) -> str:
+def page(title: str, body: str, active: str | None) -> str:
+    """A portal page. With active=None (the pairing page, seen before a browser is paired):
+    no navigation and no household colors, nothing beyond the butler's name."""
     links = "".join(f'<a href="{h}"' + (' aria-current="page"' if h == active else "") + f'>{n}</a>'
-                    for h, n in NAV)
+                    for h, n in NAV) if active is not None else ""
+    people_css = _people_css() if active is not None else ""
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8">'
             f'<meta name="viewport" content="width=device-width,initial-scale=1">'
             f'<title>{escape(title)} · {escape(brand())}</title>'
@@ -207,7 +242,7 @@ def page(title: str, body: str, active: str) -> str:
             f'<meta name="apple-mobile-web-app-title" content="{escape(brand())}">'
             f'<meta name="theme-color" content="#1a1a19" media="(prefers-color-scheme: dark)">'
             f'<meta name="theme-color" content="#fcfcfb" media="(prefers-color-scheme: light)">'
-            f'<style>{CSS}{_people_css()}</style></head>'
+            f'<style>{CSS}{people_css}</style></head>'
             f'<body><header><nav>{links}</nav></header><main>{body}</main></body></html>')
 
 
@@ -556,13 +591,13 @@ def projects_page():
 
     def render(p) -> list[str]:
         out = []
-        grouped = {g: [] for g in projects.GROUPS}
+        grouped = {group: [] for group in projects.GROUPS}
         for s in p.steps:
             grouped[projects.state(s, steps, today)[0]].append(s)
-        for g in projects.GROUPS:
-            if grouped[g]:
-                out.append(f'<div class=grp>{GROUP_LABEL[g]} · {len(grouped[g])}</div>')
-                out += [_step_html(s, steps, today) for s in grouped[g]]
+        for group in projects.GROUPS:
+            if grouped[group]:
+                out.append(f'<div class=grp>{GROUP_LABEL[group]} · {len(grouped[group])}</div>')
+                out += [_step_html(s, steps, today) for s in grouped[group]]
         out += [f'<p class=gate>Rule: {escape(r)}</p>' for r in p.rules]
         return out
 
@@ -685,6 +720,85 @@ def info_page():
     resp = Response(page("Info", "".join(body), "/info"))
     resp.headers["Cache-Control"] = "no-store"
     return resp
+
+
+# ---------- devices: pairing a browser, and the ones already paired ----------
+
+def _device_label(agent: str) -> str:
+    """A name a person recognises, from the browser's User-Agent: "iPhone, Safari"."""
+    kind = next((k for k, pattern in [("iPhone", "iPhone"), ("iPad", "iPad"), ("Android", "Android"),
+                                      ("Mac", "Macintosh"), ("Windows", "Windows"), ("Linux", "Linux")]
+                 if pattern in agent), "A browser")
+    browser = next((b for b, pattern in [("Edge", "Edg/"), ("Firefox", "Firefox/"), ("Chrome", "Chrome/"),
+                                         ("Chrome", "CriOS/"), ("Safari", "Safari/")] if pattern in agent), "")
+    return f"{kind}, {browser}" if browser else kind
+
+
+PAIR_FORM = ('<form method=post action="/pair"><p><label for=code>Pairing code</label><br>'
+             '<input type=text id=code name=code autocomplete=one-time-code autocapitalize=characters '
+             'spellcheck=false placeholder="K7QM-3XPA" required> <button>Pair</button></p></form>')
+
+
+def _pair_page(message: str = "") -> str:
+    name = escape(brand())
+    return page("Pair", f"<h1>Pair this browser with {name}</h1>{message}"
+                f"<p>{name} opens only on browsers you've paired. Type the code from a paired device's "
+                "<strong>Devices</strong> page. On the Mac itself, run <code>butler portal</code> "
+                f"instead.</p>{PAIR_FORM}", None)
+
+
+@app.get("/pair")
+def pair_page():
+    if devices.known(request.cookies.get(devices.COOKIE)):
+        return redirect("/", 303)
+    return _pair_page()
+
+
+@app.post("/pair")
+def pair():
+    key = devices.pair(request.form.get("code", ""), _device_label(request.headers.get("User-Agent", "")))
+    if not key:
+        return _pair_page("<p class=flash>That code didn't work. A code works once, for "
+                          f"{devices.CODE_MINUTES} minutes. Make a new one and try again.</p>"), 403
+    resp = redirect("/", 303)
+    _set_key(resp, key)
+    return resp
+
+
+@app.get("/devices")
+def devices_page(code: str = ""):
+    this = g.device["id"]
+    rows = "".join(
+        f"<tr><td>{escape(d['label'])}{' <span class=chip>this one</span>' if d['id'] == this else ''}</td>"
+        f"<td>{escape(d['added'])}</td><td>{escape(d['seen'])}</td><td>"
+        f'<form class=inline method=post action="/devices/{escape(d["id"])}/forget">'
+        f'<button aria-label="Forget {escape(d["label"])}, paired {escape(d["added"])}">Forget</button>'
+        "</form></td></tr>" for d in devices.listing())
+    address = load_settings()["portal"].get("url") or "this portal's address"
+    if code:
+        add = (f"<div class=flash>On the phone or browser to add, open <strong>{escape(address)}</strong> "
+               f"and type <strong><code>{escape(code)}</code></strong>. It works once, within "
+               f"{devices.CODE_MINUTES} minutes. On an iPhone, open it from the Home Screen icon if you "
+               "use one: the icon keeps its own pairing, apart from Safari.</div>")
+    else:
+        add = ('<form method=post action="/devices/code"><button>Add a phone or browser</button></form>')
+    body = (f"<h1>Devices</h1><div class=sub>The browsers that can open {escape(brand())}. Each was "
+            "paired once with a one-time code.</div><table><tr><th>Device</th><th>Paired</th>"
+            f"<th>Last seen</th><th></th></tr>{rows}</table><h2>Add one</h2>{add}")
+    resp = Response(page("Devices", body, "/devices"))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@app.post("/devices/code")
+def devices_code():
+    return devices_page(devices.new_code())
+
+
+@app.post("/devices/<device_id>/forget")
+def devices_forget(device_id: str):
+    devices.forget(device_id)
+    return redirect("/devices", 303)
 
 
 # ---------- lists (Apple Reminders) ----------

@@ -2,10 +2,19 @@
 says, in plain words, and records progress when signed in.
 Run with: PYTHONPATH=src .venv/bin/python -m unittest discover tests"""
 
+import io
 import json
+import os
+import re
+import shutil
+import tempfile
 import unittest
 import urllib.request
+from contextlib import redirect_stdout
+from pathlib import Path
+from unittest import mock
 
+from butler import cli, devices
 from fakes.account_api import FakeAccountAPI
 from fakes.setup_home import SetupHome
 
@@ -156,6 +165,46 @@ class CliTest(unittest.TestCase):
         proc = self.home.butler("doctor")
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertIn("looks healthy", proc.stdout)
+
+
+class PortalCommandTest(unittest.TestCase):
+    """`butler portal` pairs this Mac's browser. The one-time code travels in an owner-only file,
+    never on a command line, where other accounts on the Mac could read it."""
+
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dir, True)
+        for p in (mock.patch.object(devices, "FILE", self.dir / "portal_devices.json"),
+                  mock.patch.object(cli, "PORTAL_OPENER", self.dir / "portal-open.html"),
+                  mock.patch("butler.config.load_settings", return_value={"portal": {"port": 8799}}),
+                  mock.patch.object(cli.ss, "load", return_value={"name": "Bento"}),
+                  mock.patch.object(cli.progress, "sync"),
+                  mock.patch.dict(os.environ, {"BUTLER_COLUMNS": "1000"})):
+            p.start()
+            self.addCleanup(p.stop)
+        os.environ.pop("BUTLER_NO_OPEN", None)
+
+    def test_says_so_when_the_portal_isnt_running(self):
+        out = io.StringIO()
+        with mock.patch.object(cli, "_listening", return_value=False), redirect_stdout(out):
+            self.assertEqual(cli.main(["portal"]), 1)
+        self.assertIn("The portal isn't running. Start it with ./run.sh portal", out.getvalue())
+        self.assertFalse(cli.PORTAL_OPENER.exists())
+
+    def test_opens_an_owner_only_page_that_pairs_once(self):
+        out = io.StringIO()
+        with mock.patch.object(cli, "_listening", return_value=True), \
+             mock.patch.object(cli.subprocess, "run") as run, redirect_stdout(out):
+            self.assertEqual(cli.main(["portal"]), 0)
+        self.assertEqual(run.call_args.args[0], ["open", str(cli.PORTAL_OPENER)])
+        self.assertIn("Bento's portal is open in your browser, and this browser is paired.", out.getvalue())
+        self.assertEqual(cli.PORTAL_OPENER.stat().st_mode & 0o777, 0o600)
+        page = cli.PORTAL_OPENER.read_text()
+        self.assertIn('action="http://127.0.0.1:8799/pair"', page)
+        code = re.search(r'name="code" value="([A-Z0-9-]+)"', page).group(1)
+        self.assertNotIn(code, out.getvalue())
+        self.assertTrue(devices.pair(code, "Mac, Safari"))
+        self.assertIsNone(devices.pair(code, "Mac, Safari"))
 
 
 if __name__ == "__main__":

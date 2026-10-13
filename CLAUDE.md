@@ -48,6 +48,7 @@ someone developing Butler itself. The hard rules apply to both.
 | `src/butler/replies.py` | Reply to allowlisted actions; confirmation to all recipients |
 | `src/butler/projects.py` | Project steps, gates and the "Next up" view |
 | `src/butler/portal.py` | Flask app served by Waitress on 127.0.0.1 |
+| `src/butler/devices.py` | The portal's paired browsers: one-time codes for device keys, since anything on the Mac can reach 127.0.0.1 |
 | `src/butler/agenda.py` + `helpers/butler-ek/` | Calendar and Reminders through a Swift EventKit helper |
 | `src/butler/config.py`, `fmt.py` | Config loading (with example fallback) and currency formatting |
 | `config/*.example.yaml`, `budget/budget.example.xlsx`, `examples/` | The invented example household |

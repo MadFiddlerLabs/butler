@@ -287,8 +287,16 @@ The win: the portal on their phone, for their household only.
 4. Run `tailscale serve --bg 8787`. Put the address it prints in `portal.url`.
 5. Put each adult's Tailscale login in `portal.allowed_logins`, and map it to a name in
    `portal.people`.
-6. Check from their phone: the address opens the portal. On iPhone, Share > Add to Home
-   Screen gives it an icon.
+6. Explain in one sentence: the portal opens only in browsers they've paired, so other
+   accounts on the Mac can't read it. Run `bin/butler portal`: it opens the portal in the
+   Mac's browser, already paired, and never prints the one-time code.
+7. Pair each phone. On the iPhone, first open the address in Safari and use Share > Add to
+   Home Screen, then open the portal from the new icon: the icon keeps its own pairing, apart
+   from Safari. On the Mac, in the portal, they open Devices > Add a phone or browser, and type
+   the code it shows on the phone. Don't ask for the code and don't read it from the screen:
+   it's a key, so it stays out of the chat. A code works once, within 10 minutes; make a new
+   one if it runs out.
+8. Check from their phone: the address opens the portal, not the pairing page.
 
 ## Where am I?
 

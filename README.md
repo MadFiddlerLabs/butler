@@ -22,8 +22,9 @@ scripts/bootstrap.sh       # gives Butler its own Python, through uv
 ```
 
 The preview sends nothing and needs no account, API key or email address. `./run.sh portal`
-then serves the portal at http://127.0.0.1:8787. Cloning needs git, which on a Mac comes with
-the Xcode command-line tools (`xcode-select --install`).
+then serves the portal at http://127.0.0.1:8787, and `bin/butler portal` opens it in your
+browser, paired. Cloning needs git, which on a Mac comes with the Xcode command-line tools
+(`xcode-select --install`).
 
 **New to all this?** [Build Your Butler](https://buildyourbutler.com) is a free, step-by-step
 course for people who've never used a terminal. You finish with a working butler, and you
@@ -102,7 +103,8 @@ Butler was designed so a household can trust it with everything.
   local files. What goes to Claude, Google and Lunch Money is listed below. The `.gitignore` excludes all of them, so a fork can't publish them by accident.
 - **Secrets live in the macOS Keychain**, never in files, logs or chat.
 - **Nothing listens on the network.** The portal binds to 127.0.0.1. Tailscale makes it
-  reachable from your own devices, and only from them.
+  reachable from your own devices, and only from them. It opens only in browsers you've
+  paired, so other accounts on the Mac can't read it either.
 - **ID numbers never leave the Info page.** Passport, residence and health numbers live in a
   git-ignored file that isn't read into emails or sent to Claude. Emails and prompts use
   document names and dates only.

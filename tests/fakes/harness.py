@@ -336,9 +336,10 @@ def run(flow: str) -> None:
         from butler import monthly
         monthly.run(settings, (today.replace(day=1) - timedelta(days=1)).replace(day=1), preview=False)
     elif flow == "portal":
-        from butler import portal, projects
-        client = portal.app.test_client()
-        host = {"Host": "127.0.0.1:8787"}
+        from butler import devices, portal, projects
+        client = portal.app.test_client(use_cookies=False)        # each request carries its own Cookie
+        key = devices.pair(devices.new_code(), "Mac, Safari")       # a paired browser on the Mac
+        host = {"Host": "127.0.0.1:8787", "Cookie": f"{devices.COOKIE}={key}"}
         post = {**host, "Origin": "http://127.0.0.1:8787"}
         step = next(s for p in projects.load() for s in p.steps if s.status != "done")
         gets = ["/", f"/brief/{today}", "/week", "/manifest.json", "/month", "/money", "/budget",
@@ -361,6 +362,10 @@ def run(flow: str) -> None:
         r = client.post("/lists/add", data={"list": "Shopping", "title": "x"},
                         headers={**host, "Origin": "https://attacker.example.test"})
         RECORD["portal"]["POST /lists/add cross-site"] = {"status": r.status_code, "cache_control": "", "body": ""}
+        # Another account on the Mac: straight to 127.0.0.1, with no device key.
+        r = client.get("/info", headers={"Host": "127.0.0.1:8787"})
+        RECORD["portal"]["GET /info unpaired"] = {"status": r.status_code, "cache_control": "",
+                                                  "body": r.get_data(as_text=True)}
     elif flow == "tick":
         # What launchd runs every five minutes. The fakes are the network, so the Mac is online.
         from butler import daily, tick
