@@ -43,6 +43,7 @@ Plus the budget workbook, `budget/budget.xlsx`, and the household notes Claude r
 | `news.regions` | Regions in order, each with RSS feeds |
 | `news.language` | The language summaries are written in |
 | `llm.model`, `effort` | The Claude model and effort level. The example uses Sonnet 5.5: the model check (`scripts/model_check.py`, docs/TESTING.md) scored it with Opus at about a third of the cost. Any current model works |
+| `llm.monthly_limit` | Optional: the monthly spend limit set in the Anthropic Console, in US dollars. The portal's Money page shows "Claude this month: about $1.20 of your $5 limit", or only the spend without it. Butler estimates the spend from the token counts each answer reports, priced in Python from the table in `src/butler/claude_usage.py`, and keeps one line per call in `data/claude_usage.jsonl` (the day, the model and the token counts; never a prompt or an answer). An estimate: the Console has the bill. Never in the emails |
 | `weather` | Optional: `place`, `latitude`, `longitude`, `unit` |
 | `language_learning` | Optional: a phrase of the day for `learner` in `language` at `level` |
 | `score_tracker` | Optional: practice-test scores for `person` toward `pass_score`/`out_of` |

@@ -27,7 +27,7 @@ from flask import Flask, Response, abort, g, redirect, request, send_from_direct
 
 from urllib.parse import quote, urlparse
 
-from . import charts, devices, finance, networth, projects, replies
+from . import charts, claude_usage, devices, finance, networth, projects, replies
 from .config import BUTLER_EK, ROOT, brand, load_settings, people, tz
 from .render import money_lines, one_off_note, readable
 from .fmt import SYMBOLS, money, primary_code, second_code
@@ -385,12 +385,23 @@ def _subscriptions_html(m) -> str:
             f"<th class=num>Yearly</th><th>Last</th></tr>{rows}</table>")
 
 
+def _claude_html() -> str:
+    """What Butler spent on Claude this month, from the token counts each answer reports. Shown
+    whether or not Lunch Money is connected; never in the emails."""
+    line = claude_usage.summary(load_settings(), _today())
+    if not line:
+        return ""
+    return (f"<h2>Claude</h2><p>{escape(line)}</p><p class=sub>An estimate from Butler's own calls; "
+            "the Anthropic Console has the bill.</p>")
+
+
 @app.get("/money")
 def money_page():
     try:
         m = _money()
     except Exception as e:
-        return page("Money", f"<h1>Money</h1><p>Couldn't load Lunch Money: {escape(str(e))}</p>", "/money")
+        return page("Money", f"<h1>Money</h1><p>Couldn't load Lunch Money: {escape(str(e))}</p>"
+                    + _claude_html(), "/money")
     lines = "".join(f"<p>{escape(l)}</p>" for l in money_lines(m))
     snaps = networth.load()
     if snaps:
@@ -425,6 +436,7 @@ def money_page():
             f"<table><tr><th>Category</th><th class=num>Spent</th>"
             f"<th class=num>Budget</th><th class=num>Left</th></tr>{''.join(rows)}</table>"
             + _subscriptions_html(m)
+            + _claude_html()
             + f"<h2>This month's transactions</h2><table><tr><th>Date</th><th>Payee</th><th>Category</th>"
             f"<th class=num>{primary_code()}</th></tr>{tx_rows}</table>")
     return page("Money", body, "/money")

@@ -11,7 +11,7 @@ import re
 
 import anthropic
 
-from . import privacy
+from . import claude_usage, privacy
 from .agenda import OUTSIDE_LABEL, Agenda, Event
 from .config import KEYCHAIN_ANTHROPIC, ROOT, keychain
 from .news import Story
@@ -134,6 +134,8 @@ def _request(settings: dict, system: str, prompt: str, schema: dict) -> dict:
         system=system,
         messages=[{"role": "user", "content": prompt}],
     )
+    # Tokens and model only, for the Money page's estimate; a refused or cut-off answer is billed too.
+    claude_usage.record(settings, response)
     if response.stop_reason == "refusal":
         raise ClaudeError("Claude declined the request")
     if response.stop_reason == "max_tokens":

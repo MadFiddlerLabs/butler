@@ -26,6 +26,7 @@ FLOORS = {
     "privacy.py": 99,
     "networth.py": 93,
     "fmt.py": 99,
+    "claude_usage.py": 95,
 }
 
 
