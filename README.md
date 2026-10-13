@@ -134,8 +134,8 @@ Lunch Money and Open-Meteo are read over their APIs.
 
 Go to [buildyourbutler.com](https://buildyourbutler.com), name your butler, and download it.
 The package installs into `~/Butler` without asking for your password. Then a Terminal window
-opens, and your butler says hello. In about five minutes, you sign in by email and paste three
-one-line lessons, and your first brief opens:
+opens, and your butler says hello. In about ten minutes, two of them yours, you sign in by
+email and paste three one-line lessons, and your first brief opens:
 
 ```
 butler town "Lisbon"

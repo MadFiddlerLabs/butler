@@ -97,7 +97,7 @@ else
 fi
 printf '%s\n' "$name" > "$home/.butler-name"
 say
-say "Let's get me settled in. It takes about five minutes."
+say "Let's get me settled in. It takes about ten minutes, two of them yours."
 
 # Python installs while the student checks their email.
 bootstrap_cmd="${BUTLER_BOOTSTRAP:-$home/scripts/bootstrap.sh}"
