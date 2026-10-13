@@ -2,10 +2,12 @@
 the list and cross-site posts are all refused.
 Run with: PYTHONPATH=src .venv/bin/python -m unittest discover tests"""
 
+import re
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
-from butler import portal
+from butler import portal, render
 
 SETTINGS = {"portal": {"url": "https://mac.tailnet.test", "hosts": ["butler.example.test"],
                        "allowed_logins": ["sam@example.com"]}}
@@ -58,6 +60,61 @@ class GateTest(unittest.TestCase):
         self.assertEqual(self.status("POST", Host=TAILNET, Origin=f"https://{TAILNET}.attacker.test", **login), 403)
         self.assertEqual(self.status("POST", Host=TAILNET, Origin="https://attacker.test", **login), 403)
         self.assertEqual(self.status("POST", Host=TAILNET, **login), 403)
+
+
+
+def tokens(block: str) -> dict[str, str]:
+    return dict(re.findall(r"--([a-z0-9]+):(#[0-9a-f]{6})", block))
+
+
+class AccessibleTest(unittest.TestCase):
+    """Accessibility: text contrast, the current page and named controls."""
+    LIGHT = tokens(portal.CSS.split("@media")[0])
+    DARK = {**LIGHT, **tokens(portal.CSS.split("@media")[1].split("}}")[0])}
+
+    def test_text_tokens_reach_4_5_on_page_and_card(self):
+        for mode, t in (("light", self.LIGHT), ("dark", self.DARK)):
+            for text in ("ink", "ink2", "muted", "blue", "accent"):
+                for surface in ("bg", "card"):
+                    ratio = render.contrast(t[text], t[surface])
+                    self.assertGreaterEqual(ratio, 4.5, f"{mode} --{text} on --{surface}: {ratio:.2f}")
+            self.assertGreaterEqual(render.contrast("#ffffff", t["chipblue"]), 4.5, f"{mode} 'now' chip")
+            self.assertGreaterEqual(render.contrast(t["ink2"], t["chip"]), 4.5, f"{mode} chip")
+
+    def test_the_current_page_is_marked_beyond_color(self):
+        with mock.patch.object(portal, "load_settings", return_value=SETTINGS):
+            html = portal.page("Lists", "", "/lists")
+        self.assertIn('<a href="/lists" aria-current="page">Lists</a>', html)
+        self.assertEqual(html.count('aria-current="page"'), 1)
+        self.assertIn("nav a[aria-current=page]{color:var(--accent);text-decoration:underline", portal.CSS)
+
+    def test_list_controls_have_names(self):
+        settings = {**SETTINGS, "reminders": {"todo_list": "Johnsons", "shopping_list": "Shopping"}}
+        items = [{"id": "r1", "title": "Call the plumber (invented)"}]
+        with mock.patch.object(portal, "load_settings", return_value=settings), \
+                mock.patch.object(portal, "_ek", return_value=items):
+            html = portal.lists()
+        self.assertIn('<button aria-label="Done: Call the plumber (invented)">✓</button>', html)
+        self.assertIn('<label class=vh for="add-todo_list">Add to Johnsons</label>'
+                      '<input type=text id="add-todo_list"', html)
+        self.assertIn('<label class=vh for="add-shopping_list">Add to Shopping</label>', html)
+
+    def test_step_controls_have_names(self):
+        step = SimpleNamespace(id="visa-3", do="Book the visa appointment", status="todo", every=None)
+        self.assertIn('<button aria-label="Done: Book the visa appointment">Done</button>', portal._buttons(step))
+        self.assertIn('<button aria-label="Pause: Book the visa appointment">Pause</button>', portal._buttons(step))
+        form = portal._update_form(step)
+        self.assertIn('<label class=vh for="upd-visa-3">Send an update on Book the visa appointment</label>'
+                      '<textarea id="upd-visa-3"', form)
+
+    def test_a_person_is_drawn_as_the_emails_draw_them(self):
+        settings = {**SETTINGS, "people": [{"name": "Alex", "color": "#e67c73", "color_dark": "#f4a199"}]}
+        with mock.patch.object(portal, "load_settings", return_value=settings):
+            css = portal._people_css()
+        darker = render.readable("#e67c73")
+        self.assertIn(f"--p0:{darker}", css)
+        self.assertIn(f'.brief [style*="color:{darker}"]', css)
+        self.assertIn("--p0:#f4a199", css)
 
 
 if __name__ == "__main__":

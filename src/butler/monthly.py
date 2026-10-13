@@ -21,7 +21,7 @@ from . import charts, finance, llm, mailer, networth, projects
 from .agenda import COPY_NOTE, _assign
 from .config import BUTLER_EK, ROOT, brand, load_settings, people, portal_url, tz
 from .finance import SPEND, Summary
-from .fmt import money, primary_code
+from .fmt import money, primary_code, scale
 
 log = logging.getLogger("butler")
 
@@ -90,7 +90,8 @@ def _time(settings: dict, start: date, end: date) -> dict[str, list[tuple[str, f
 
 def _suggestions(m: Summary, rules: dict, end: date) -> list[Suggestion]:
     """Trend-weighted monthly spend per daily category: the last two full months count double
-    against the ones before. Suggest a change when it's off the budget by >15% and >50."""
+    against the ones before. Suggest a change when it's off the budget by >15% and >50
+    (euro-sized; fmt.scale makes it ¥7,500 for a yen household)."""
     daily = set(rules["rules"]["day_to_day"])
     by: dict[str, dict[str, float]] = {}
     for t in m.txs:
@@ -111,7 +112,7 @@ def _suggestions(m: Summary, rules: dict, end: date) -> list[Suggestion]:
         recent, earlier = vals[-2:], vals[:-2]
         trend = (2 * sum(recent) / len(recent) + (sum(earlier) / len(earlier) if earlier else sum(recent) / len(recent))) / 3
         budget = m.daily_budget_by_category.get(cat, 0.0)
-        if abs(trend - budget) > max(50.0, 0.15 * budget):
+        if abs(trend - budget) > max(50.0 * scale(), 0.15 * budget):
             out.append(Suggestion(cat, budget, trend, months))
     return sorted(out, key=lambda s: -abs(s.trend - s.budget))
 
@@ -146,10 +147,10 @@ def build_month(settings: dict, start: date) -> Month:
     nw = ((snaps[0]["total"], snaps[-1]["total"], date.fromisoformat(snaps[0]["date"]),
            date.fromisoformat(snaps[-1]["date"])) if len(snaps) >= 2 else None)
 
-    # Runway: the savings account (latest snapshot) over the average monthly draw, last 90 days.
-    draws = sum(t.amount for t in m.txs if t.kind == finance.DRAW and end - timedelta(days=89) <= t.day <= end)
+    # Runway: the savings account (latest snapshot) over the monthly draw finance.py averages
+    # from the first draw over the last 90 days; none until there's a full month of draws.
     savings = m.savings_balance
-    runway = savings / (draws / 3) if savings and draws else None
+    runway = savings / m.draw_monthly if savings and m.draw_monthly else None
 
     return Month(start=start, end=end, money=m, done_steps=done, done_reminders=reminders,
                  shopping_done=shopping, time=time_spent, suggestions=_suggestions(m, rules, end),
@@ -269,7 +270,7 @@ def sections(mo: Month, words: dict, by_reply: bool = False) -> list[tuple[str, 
         para.append(f"Net worth: {money(a)} on {f:%-d %b} → {money(b)} on {t:%-d %b} ({money(b - a)}).")
     if mo.runway_months:
         para.append(f"Runway: savings ({money(mo.savings_balance)}) cover about "
-                    f"{mo.runway_months:.0f} months at the last three months' draw.")
+                    f"{mo.runway_months:.0f} months at the recent draw of {money(mo.money.draw_monthly)} a month.")
     out.append(("Where the money went", para))
     if mo.suggestions:
         lines = [f"{s.category}: budget {money(s.budget)}, trend {money(s.trend)} → suggest {money(s.suggested)}"
@@ -298,8 +299,8 @@ def sections(mo: Month, words: dict, by_reply: bool = False) -> list[tuple[str, 
 def to_html(mo: Month, secs, image_src=lambda n: f"cid:{n}", banner: str = "") -> str:
     from html import escape
 
-    from .render import EMAIL_HEAD, EMAIL_TAIL, INK, MUTED, PAPER, RULE, _h2, portal_button
-    parts = [EMAIL_HEAD,
+    from .render import EMAIL_TAIL, INK, MUTED, PAPER, RULE, _h2, email_head, portal_button
+    parts = [email_head(f"{brand()} · {mo.start:%B %Y} looking back"),
              f'<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:{INK};'
              f'background:{PAPER};max-width:640px;margin:0 auto;padding:16px;font-size:15px;line-height:1.5">',
              f'<h1 style="font-size:22px;margin:0 0 4px">{mo.start:%B %Y}: looking back</h1>',

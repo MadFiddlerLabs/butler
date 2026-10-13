@@ -515,6 +515,22 @@ class PortalGateFuzzTest(unittest.TestCase):
         got = self.status("POST", Host="mac.tailnet.test", Origin=origin, **{"Tailscale-User-Login": "sam@example.com"})
         self.assertEqual(got == 403, not same, origin)
 
+    def test_no_page_can_frame_the_portal(self):
+        """Clickjacking: a framed portal page would pass the Origin check. Every answer, a refusal
+        included, forbids framing and type sniffing."""
+        login = {"Tailscale-User-Login": "sam@example.com"}
+        with mock.patch.object(portal, "_money", side_effect=RuntimeError("no Lunch Money in this test")):
+            answers = [self.client.get("/money", headers={"Host": "mac.tailnet.test", **login}),
+                       self.client.get("/gate-test", headers={"Host": "mac.tailnet.test", **login}),
+                       self.client.get("/money", headers={"Host": "attacker.test"}),
+                       self.client.post("/lists/complete", headers={"Host": "mac.tailnet.test",
+                                                                    "Origin": "https://attacker.test", **login})]
+        self.assertEqual([r.status_code for r in answers], [200, 404, 403, 403])
+        for r in answers:
+            self.assertEqual(r.headers["X-Frame-Options"], "DENY")
+            self.assertEqual(r.headers["Content-Security-Policy"], "frame-ancestors 'none'")
+            self.assertEqual(r.headers["X-Content-Type-Options"], "nosniff")
+
     @given(st.sampled_from(["127.0.0.1:8787", "localhost:8787"]), st.from_regex(r"\d{1,3}(\.\d{1,3}){3}", fullmatch=True))
     def test_a_proxied_request_without_a_login_is_refused(self, host, ip):
         self.assertEqual(self.status(Host=host, **{"X-Forwarded-For": ip}), 403)

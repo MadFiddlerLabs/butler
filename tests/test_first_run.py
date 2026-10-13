@@ -27,6 +27,11 @@ class FirstRunTest(unittest.TestCase):
         out = proc.stdout
         self.assertEqual(proc.returncode, 0, out + proc.stderr)
         self.assertIn("Hello! I'm Bento, your new butler.", out)
+        # Only claims that hold: household data does leave the Mac, for the services it chooses.
+        self.assertIn("We never see your household's data. It goes only from this Mac to services you "
+                      "choose, such as Anthropic and Google.", out)
+        self.assertNotIn("ever leaves this Mac", out)
+        self.assertNotIn("can't break anything", out)
         self.assertIn("You're signed in as sam@example.com.", out)
         self.assertIn("Bento is ready.", out)
         self.assertIn("I work for Sam and Alex.", out)

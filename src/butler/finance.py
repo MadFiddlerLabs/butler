@@ -19,7 +19,7 @@ from datetime import date, datetime, timedelta, timezone
 
 import yaml
 
-from . import lunchmoney
+from . import fmt, lunchmoney
 from .budget import Line, Plan, load_plan
 from .config import config_path
 
@@ -165,7 +165,8 @@ class Summary:
     since: datetime
     new: list[Tx]
     mtd_total: float
-    mtd_by_category: dict[str, float]
+    mtd_by_category: dict[str, float]           # everything this month, one-offs included
+    against_budget_by_category: dict[str, float]   # the same without one-offs: what budgets compare with
     budget_month: float
     budget_by_category: dict[str, float]
     day_to_day_mtd: float
@@ -182,7 +183,8 @@ class Summary:
     over_pace: list[tuple[str, float, float]]
     unbudgeted: list[tuple[str, float]]
     last7: float
-    prior_weekly_avg: float
+    prior_weekly_avg: float     # a week's daily spending, over the days before the last seven
+    prior_days: int             # those days: 28, fewer for a new household, 0 under a week
     draw_mtd: float
     funding_mtd: float
     rental_mtd: float
@@ -202,14 +204,14 @@ class Summary:
     managed_fee_rate: float
     managed_balance: float
     savings_balance: float | None
-    draw_monthly: float
+    draw_monthly: float         # 0 until there's a full month of draws
     tx_count: int
     fx_rate_plan: float
     txs: list[Tx]
     daily_this_month: dict[int, float]
     daily_last_month: dict[int, float]
     days_in_month: int
-    new_by_category: dict[str, float]
+    new_by_category: dict[str, float]           # new since the last brief, one-offs and fixed lines left out
     problems: list[str] = field(default_factory=list)
 
 
@@ -235,9 +237,9 @@ def _fixed_plan(plan: Plan, off_book: set[str], daily: set[str], fixed_items: se
     return sorted((x for x in out if x[1] > 0), key=lambda x: -x[1])
 
 
-def _fixed_status(plan: Plan, mtd: list[Tx], off_book: set[str], daily: set[str],
-                  fixed_items: set[str]) -> tuple[list[tuple[str, float]], list[tuple[str, float]]]:
-    """(still to come, paid) per fixed-plan entry."""
+def _fixed_status(plan: Plan, mtd: list[Tx], off_book: set[str], daily: set[str], fixed_items: set[str],
+                  unit: float) -> tuple[list[tuple[str, float]], list[tuple[str, float]]]:
+    """(still to come, paid) per fixed-plan entry. `unit` scales the thresholds (fmt.scale)."""
     names = _group_names(plan, off_book, daily, fixed_items)
     paid: dict[str, float] = {}
     for t in mtd:
@@ -247,7 +249,7 @@ def _fixed_status(plan: Plan, mtd: list[Tx], off_book: set[str], daily: set[str]
     planned = dict(_fixed_plan(plan, off_book, daily, fixed_items))
     left = [(name, planned.get(name, 0.0) - paid.get(key, 0.0)) for key, name in names.items()]
     # Gaps under 15 are bills coming in slightly under plan, not bills still to come.
-    still = sorted(((n, v) for n, v in left if v >= 15), key=lambda x: -x[1])
+    still = sorted(((n, v) for n, v in left if v >= 15 * unit), key=lambda x: -x[1])
     done = sorted(((names[k], v) for k, v in paid.items() if v >= 1), key=lambda x: -x[1])
     return still, done
 
@@ -327,8 +329,15 @@ def _drawer(txs: list[Tx], rules: dict, today: date) -> tuple[float | None, date
     return est, counted
 
 
+def covered_days(start: date, end: date, first: date | None) -> int:
+    """How many days of [start, end] the data covers when its earliest day is `first`. Averages
+    divide by this, not the whole window, so missing history doesn't count as days of zero."""
+    return 0 if first is None else max(0, (end - max(start, first)).days + 1)
+
+
 def summarize(txs: list[Tx], plan: Plan, rules: dict, today: date, since: datetime) -> Summary:
     r = rules["rules"]
+    unit = fmt.scale()      # thresholds below are euro-sized; ¥ and kr households scale them
     month_start = today.replace(day=1)
     days_in_month = calendar.monthrange(today.year, today.month)[1]
     month_end = month_start + timedelta(days=days_in_month - 1)
@@ -354,25 +363,36 @@ def summarize(txs: list[Tx], plan: Plan, rules: dict, today: date, since: dateti
     spend = [t for t in txs if t.kind == SPEND]
     mtd = [t for t in spend if month_start <= t.book_day <= today]
     by_cat: dict[str, float] = {}
+    planned_cat: dict[str, float] = {}
     daily_by_cat: dict[str, float] = {}
     for t in mtd:
         by_cat[t.category] = by_cat.get(t.category, 0.0) + t.amount
+        if not t.one_off:
+            planned_cat[t.category] = planned_cat.get(t.category, 0.0) + t.amount
         if t.category in daily_cats and not t.fixed and not t.one_off:
             daily_by_cat[t.category] = daily_by_cat.get(t.category, 0.0) + t.amount
 
     over = []
     for cat, actual in daily_by_cat.items():
         expected = daily_budget.get(cat, 0.0) * frac
-        if expected > 0 and actual - expected > max(100.0, 0.25 * expected):
+        if expected > 0 and actual - expected > max(100.0 * unit, 0.25 * expected):
             over.append((cat, actual, expected))
     over.sort(key=lambda o: o[2] - o[1])
-    unbudgeted = sorted(((c, a) for c, a in by_cat.items() if budget.get(c, 0.0) == 0 and a > 50),
+    unbudgeted = sorted(((c, a) for c, a in planned_cat.items() if budget.get(c, 0.0) == 0 and a > 50 * unit),
                         key=lambda x: -x[1])
 
     recurring = [t for t in spend if not t.one_off and not t.fixed and t.category in daily_cats]
     week_start = today - timedelta(days=6)
     last7 = sum(t.amount for t in recurring if week_start <= t.day <= today)
     prior = sum(t.amount for t in recurring if week_start - timedelta(days=28) <= t.day < week_start)
+    prior_days = covered_days(week_start - timedelta(days=28), week_start - timedelta(days=1),
+                              min((t.day for t in recurring), default=None))
+    prior_days = prior_days if prior_days >= 7 else 0      # under a week: nothing to compare with
+    # The savings draw per month, from the first draw over at most the last 90 days. Runway needs
+    # a full month of draws, so a first draw last week doesn't promise years of savings.
+    draws = [t for t in txs if t.kind == DRAW]
+    draw_days = covered_days(today - timedelta(days=89), today, min((t.day for t in draws), default=None))
+    draw_total = sum(t.amount for t in draws if today - timedelta(days=89) <= t.day <= today)
 
     def mtd_sum(kind: str) -> float:
         return sum(t.amount for t in txs if t.kind == kind and month_start <= t.day <= today)
@@ -391,7 +411,8 @@ def summarize(txs: list[Tx], plan: Plan, rules: dict, today: date, since: dateti
     new = sorted([t for t in spend if t.created > since and t.day >= recent], key=lambda t: -t.amount)
     new_by_cat: dict[str, float] = {}
     for t in new:
-        new_by_cat[t.category] = new_by_cat.get(t.category, 0.0) + t.amount
+        if not t.one_off and not t.fixed:     # the chart's "+€x new" is daily spending only
+            new_by_cat[t.category] = new_by_cat.get(t.category, 0.0) + t.amount
 
     ledgers = []
     for led in rules.get("ledgers") or []:
@@ -405,13 +426,13 @@ def summarize(txs: list[Tx], plan: Plan, rules: dict, today: date, since: dateti
 
     real_off_book = {o["item"]: o.get("paid", "") for o in rules.get("off_book") or []}
     not_one_off = [t for t in mtd if not t.one_off]
-    still, done = _fixed_status(plan, not_one_off, off_book_items, daily_cats, fixed_items)
+    still, done = _fixed_status(plan, not_one_off, off_book_items, daily_cats, fixed_items, unit)
     drawer, counted = _drawer(txs, rules, today)
     fees = rules.get("managed_fees") or {}
     label = (rec or {}).get("label", "")
     return Summary(
         today=today, since=since, new=new,
-        mtd_total=sum(by_cat.values()), mtd_by_category=by_cat,
+        mtd_total=sum(by_cat.values()), mtd_by_category=by_cat, against_budget_by_category=planned_cat,
         budget_month=sum(budget.values()), budget_by_category=budget,
         day_to_day_mtd=sum(daily_by_cat.values()),
         day_to_day_budget=sum(b for c, b in daily_budget.items() if c in daily_cats),
@@ -424,7 +445,7 @@ def summarize(txs: list[Tx], plan: Plan, rules: dict, today: date, since: dateti
         daily_by_category=daily_by_cat,
         lumps_due=[(l.item, l.amount_primary(plan.fx_rate)) for l in plan.lumps_due(today.month)],
         pace_fraction=frac, over_pace=over, unbudgeted=unbudgeted,
-        last7=last7, prior_weekly_avg=prior / 4,
+        last7=last7, prior_weekly_avg=prior * 7 / prior_days if prior_days else 0.0, prior_days=prior_days,
         draw_mtd=mtd_sum(DRAW), funding_mtd=mtd_sum(FUNDING), rental_mtd=-mtd_sum(RENTAL),
         one_offs_mtd=[t for t in mtd if t.one_off],
         one_offs_last_month=[t for t in spend if t.one_off
@@ -443,7 +464,7 @@ def summarize(txs: list[Tx], plan: Plan, rules: dict, today: date, since: dateti
         managed_balance=(_snapshot_sum(lambda n: n.startswith(fees["managed_institution"])) or 0.0)
         if fees.get("managed_institution") else 0.0,
         savings_balance=_snapshot_sum(lambda n: n.endswith(r.get("savings_account") or "\0")),
-        draw_monthly=sum(t.amount for t in txs if t.kind == DRAW and today - timedelta(days=89) <= t.day <= today) / 3,
+        draw_monthly=draw_total * 30 / draw_days if draw_days >= 30 else 0.0,
         tx_count=len(txs), fx_rate_plan=plan.fx_rate, txs=txs,
         daily_this_month=daily(month_start, today),
         daily_last_month=daily(last_month_end.replace(day=1), last_month_end),

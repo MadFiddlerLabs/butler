@@ -9,7 +9,7 @@ from unittest import mock
 
 import yaml
 
-from butler import finance
+from butler import charts, finance, weekly
 from butler.budget import Line, Plan
 from butler.config import config_path
 from butler.finance import (CASH_TOPUP, DRAW, IGNORED, LEDGER, MANAGED_FEE, SPEND, TRANSFER, Tx,
@@ -281,6 +281,12 @@ class SummaryWindows(unittest.TestCase):
         s = summarize(txs, PLAN, PLAN_RULES, TODAY, SINCE)
         self.assertEqual([t.id for t in s.new], [4, 1, 5])
         self.assertEqual(s.new_by_category, {"Food": 50, "Household": 5})
+        # A new one-off or fixed line is new, but it isn't new daily spending in the chart.
+        txs += [spend(6, date(2026, 10, 19), "Sofa Shop", 700, created=after, one_off=True),
+                spend(7, date(2026, 10, 19), "School", 90, created=after, fixed=True)]
+        s = summarize(txs, PLAN, PLAN_RULES, TODAY, SINCE)
+        self.assertEqual([t.id for t in s.new], [6, 7, 4, 1, 5])
+        self.assertEqual(s.new_by_category, {"Food": 50, "Household": 5})
         self.assertEqual((s.today, s.since), (TODAY, SINCE))
 
     def test_over_pace(self):
@@ -296,6 +302,20 @@ class SummaryWindows(unittest.TestCase):
         s = summarize(txs, plan, rules, TODAY, SINCE)
         self.assertEqual([(c, round(a, 2), round(e, 2)) for c, a, e in s.over_pace],
                          [("Food", 900, 580.65), ("Cinema", 358.57, 258.06)])
+
+    def test_one_offs_stay_out_of_every_category_compared_with_a_budget(self):
+        # Invented: an 800 bookcase as a one-off in Food, whose daily budget is 900.
+        txs = [spend(1, date(2026, 10, 2), "Grocer", 100),
+               spend(2, date(2026, 10, 3), "Bookcase Shop", 800, one_off=True),
+               spend(3, date(2026, 10, 4), "Gift Shop", 400, "Gifts", one_off=True),  # no budget line
+               spend(4, date(2026, 10, 5), "School", 90, fixed=True, line="School lunch")]
+        s = summarize(txs, PLAN, PLAN_RULES, TODAY, SINCE)
+        self.assertEqual(s.mtd_by_category, {"Food": 990, "Gifts": 400})
+        self.assertEqual(s.against_budget_by_category, {"Food": 190})
+        self.assertEqual(s.unbudgeted, [])          # a one-off is named, not asked to get a budget line
+        self.assertEqual(charts.category_bars(s, ["Food"]), [("Food", 100, 900)])
+        rules = {"rules": {"day_to_day": ["Food"]}}
+        self.assertEqual(weekly._category_rows(s, rules), ([], ["Food", "Housing", "Pets", "Utilities"]))
 
     def test_unbudgeted_means_over_50_with_nothing_planned(self):
         txs = [spend(1, date(2026, 10, 4), "Gift Shop", 51, "Gifts"),
@@ -328,6 +348,19 @@ class SummaryWindows(unittest.TestCase):
                spend(5, TODAY, "To Everyday", 30, kind=DRAW)]
         s = summarize(txs, PLAN, self.RULES, TODAY, SINCE)
         self.assertEqual(s.draw_monthly, 310)
+
+    def test_a_first_draw_divides_by_the_days_since_it(self):
+        # Draws that began 60 days ago: two months of them, not three.
+        txs = [spend(1, TODAY - timedelta(days=59), "To Everyday", 400, kind=DRAW),
+               spend(2, TODAY - timedelta(days=29), "To Everyday", 400, kind=DRAW)]
+        self.assertEqual(summarize(txs, PLAN, self.RULES, TODAY, SINCE).draw_monthly, 400)
+
+    def test_runway_waits_for_a_full_month_of_draws(self):
+        month = [spend(1, TODAY - timedelta(days=29), "To Everyday", 500, kind=DRAW)]   # 30 days
+        short = [spend(1, TODAY - timedelta(days=28), "To Everyday", 500, kind=DRAW)]   # 29 days
+        self.assertEqual(summarize(month, PLAN, self.RULES, TODAY, SINCE).draw_monthly, 500)
+        self.assertEqual(summarize(short, PLAN, self.RULES, TODAY, SINCE).draw_monthly, 0)
+        self.assertEqual(summarize([], PLAN, self.RULES, TODAY, SINCE).draw_monthly, 0)
 
     def test_cash_over_the_last_eight_weeks(self):
         txs = [spend(1, TODAY - timedelta(days=56), "ATM", 400, kind=CASH_TOPUP),   # outside
@@ -371,6 +404,35 @@ class SummaryWindows(unittest.TestCase):
         s = summarize(txs, PLAN, PLAN_RULES, TODAY, SINCE)
         self.assertEqual((s.last7, s.prior_weekly_avg), (30, 75))
 
+    def test_a_short_history_averages_over_the_days_it_covers(self):
+        # Daily spending began on 1 October: 13 days before the last seven, so 130 is 70 a week.
+        txs = [spend(1, date(2026, 10, 1), "Grocer", 60),
+               spend(2, date(2026, 10, 13), "Grocer", 70),
+               spend(3, date(2026, 9, 1), "Sofa Shop", 900, one_off=True),     # one-offs don't start it
+               spend(4, date(2026, 9, 1), "School", 90, fixed=True),           # nor fixed lines
+               spend(5, TODAY, "Grocer", 20)]
+        s = summarize(txs, PLAN, PLAN_RULES, TODAY, SINCE)
+        self.assertEqual((s.prior_weekly_avg, s.prior_days), (70, 13))
+
+    def test_under_a_week_of_history_has_no_weekly_average(self):
+        week = [spend(1, date(2026, 10, 7), "Grocer", 40), spend(2, TODAY, "Grocer", 20)]
+        days = [spend(1, date(2026, 10, 8), "Grocer", 40), spend(2, TODAY, "Grocer", 20)]
+        s = summarize(week, PLAN, PLAN_RULES, TODAY, SINCE)
+        self.assertEqual((s.prior_weekly_avg, s.prior_days), (40, 7))
+        s = summarize(days, PLAN, PLAN_RULES, TODAY, SINCE)
+        self.assertEqual((s.prior_weekly_avg, s.prior_days), (0, 0))
+        s = summarize([], PLAN, PLAN_RULES, TODAY, SINCE)
+        self.assertEqual((s.prior_weekly_avg, s.prior_days), (0, 0))
+
+    def test_covered_days_counts_both_ends_from_the_first_day(self):
+        start, end = date(2026, 9, 1), date(2026, 9, 30)
+        self.assertEqual(finance.covered_days(start, end, date(2026, 8, 1)), 30)
+        self.assertEqual(finance.covered_days(start, end, start), 30)
+        self.assertEqual(finance.covered_days(start, end, date(2026, 9, 21)), 10)
+        self.assertEqual(finance.covered_days(start, end, end), 1)
+        self.assertEqual(finance.covered_days(start, end, date(2026, 10, 2)), 0)
+        self.assertEqual(finance.covered_days(start, end, None), 0)
+
     def test_last_months_one_offs_and_this_months_unmapped(self):
         txs = [spend(1, date(2026, 9, 1), "Sofa Shop", 700, one_off=True),
                spend(2, date(2026, 9, 30), "Bike Shop", 300, one_off=True),
@@ -401,6 +463,40 @@ class SummaryWindows(unittest.TestCase):
                spend(4, TODAY, "Venmo", -40, kind=LEDGER, ledger="Roof")]
         led = summarize(txs, PLAN, rules, TODAY, SINCE).ledgers[0]
         self.assertEqual((led.month, led.budget, led.costs, led.reimbursed), (110.5, 0.0, 150.5, 40))
+
+
+class ThresholdsScaleWithTheCurrency(unittest.TestCase):
+    """The thresholds are euro-sized; a yen household's are 150 times larger (fmt.scale). The plan
+    and amounts are invented, in yen."""
+    YEN_PLAN = Plan(fx_rate=1, lines=[Line("Food", "Groceries", None, 90_000, "Monthly", None),
+                                      Line("Housing", "Rent", None, 150_000, "Monthly", None)])
+    RULES = {"map": {}, "rules": {"day_to_day": ["Food"]}}
+
+    def summary(self, scale: float, *txs: Tx):
+        with mock.patch("butler.fmt.scale", return_value=scale):
+            return summarize(list(txs), self.YEN_PLAN, self.RULES, TODAY, SINCE)
+
+    def test_over_pace_needs_15000_yen_over(self):
+        expected = 90_000 * 20 / 31                         # 58,065 by the 20th; a quarter is 14,516
+        over = spend(1, date(2026, 10, 2), "Grocer", expected + 15_001)
+        under = spend(1, date(2026, 10, 2), "Grocer", expected + 14_999)
+        self.assertEqual([c for c, _, _ in self.summary(150, over).over_pace], ["Food"])
+        self.assertEqual(self.summary(150, under).over_pace, [])
+        self.assertEqual([c for c, _, _ in self.summary(1, under).over_pace], ["Food"])
+
+    def test_no_budget_line_needs_7500_yen(self):
+        gift = spend(1, date(2026, 10, 2), "Gift Shop", 7_400, "Gifts")
+        self.assertEqual(self.summary(150, gift).unbudgeted, [])
+        self.assertEqual(self.summary(1, gift).unbudgeted, [("Gifts", 7_400)])
+        big = spend(1, date(2026, 10, 2), "Gift Shop", 7_501, "Gifts")
+        self.assertEqual(self.summary(150, big).unbudgeted, [("Gifts", 7_501)])
+
+    def test_a_bill_still_to_come_needs_2250_yen_left(self):
+        rent = spend(1, date(2026, 10, 1), "Landlord", 148_000, "Housing")      # 2,000 under plan
+        self.assertEqual(self.summary(150, rent).fixed_remaining, [])
+        self.assertEqual(self.summary(1, rent).fixed_remaining, [("Rent", 2_000)])
+        part = spend(1, date(2026, 10, 1), "Landlord", 147_700, "Housing")      # 2,300 to come
+        self.assertEqual(self.summary(150, part).fixed_remaining, [("Rent", 2_300)])
 
 
 class Build(unittest.TestCase):

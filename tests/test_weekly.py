@@ -4,12 +4,13 @@ Run with: PYTHONPATH=src .venv/bin/python -m unittest discover tests"""
 
 import tempfile
 import unittest
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
 from butler import monthly, weekly
+from butler.finance import SPEND, Tx
 
 LATE = "This letter is late. It was due yesterday, Sunday at 17:00, but the Mac was asleep or offline then."
 
@@ -61,6 +62,52 @@ class LateLetterTest(unittest.TestCase):
             preview = Path(tmp) / "out" / "preview"
             self.assertIn(LATE, (preview / "weekly-2026-42.txt").read_text())
             self.assertIn(LATE, (preview / "weekly-2026-42.html").read_text())
+
+
+def grocer(day: date, amount: float, **kw) -> Tx:
+    return Tx(id=1, day=day, created=datetime(2026, 10, 1, tzinfo=timezone.utc), payee="Grocer",
+              account="Everyday", amount=amount, kind=SPEND, category="Food", **kw)
+
+
+class TypicalWeekTest(unittest.TestCase):
+    """The typical week divides by the history there is, not by 8 weeks of it. Invented amounts."""
+    RULES = {"rules": {"day_to_day": ["Food"]}}
+    SUNDAY = date(2026, 10, 18)
+
+    def numbers(self, txs):
+        return weekly._week_numbers(SimpleNamespace(txs=txs), self.RULES, self.SUNDAY)
+
+    def test_two_weeks_of_history_is_two_weeks(self):
+        first = self.SUNDAY - timedelta(days=20)          # 14 days before the week
+        txs = [grocer(first, 100), grocer(first + timedelta(days=7), 100), grocer(self.SUNDAY, 30),
+               grocer(first - timedelta(days=30), 500, one_off=True),
+               grocer(first - timedelta(days=30), 90, fixed=True)]
+        self.assertEqual(self.numbers(txs), (30, 100))
+
+    def test_a_full_eight_weeks(self):
+        txs = [grocer(self.SUNDAY - timedelta(days=62), 400), grocer(self.SUNDAY - timedelta(days=63), 1000)]
+        self.assertEqual(self.numbers(txs), (0, 50))
+
+    def test_under_a_week_of_history_has_no_typical_week(self):
+        txs = [grocer(self.SUNDAY - timedelta(days=10), 100), grocer(self.SUNDAY, 30)]
+        self.assertEqual(self.numbers(txs), (30, None))
+
+
+
+class YenThresholdTest(unittest.TestCase):
+    """A category is ahead of plan by 100 euro-sized units: ¥15,000 for a yen household."""
+
+    def rows(self, spent: float, scale: float):
+        m = SimpleNamespace(budget_by_category={"Rent": 15_000}, against_budget_by_category={"Rent": spent},
+                            daily_budget_by_category={}, daily_by_category={}, pace_fraction=0.5)
+        with mock.patch("butler.weekly.scale", return_value=scale):
+            return weekly._category_rows(m, {"rules": {"day_to_day": []}})
+
+    def test_a_few_thousand_yen_over_is_on_track(self):
+        self.assertEqual(self.rows(25_000, 150), ([], ["Rent"]))
+        self.assertEqual([r.category for r in self.rows(30_001, 150)[0]], ["Rent"])
+        self.assertEqual([r.category for r in self.rows(25_000, 1)[0]], ["Rent"])
+
 
 if __name__ == "__main__":
     unittest.main()

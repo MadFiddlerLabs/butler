@@ -22,6 +22,7 @@ Plus the budget workbook, `budget/budget.xlsx`, and the household notes Claude r
 | `update_hour` | The hour the daily update check runs, in your timezone (default 3). A Mac asleep then checks when it next wakes |
 | `currency.primary` | Lunch Money's primary currency |
 | `currency.second` | Optional second currency for budget lines (converted at Assumptions!C5) |
+| `currency.scale` | Optional. How many units of your currency Butler's money thresholds count as one euro, such as "100 over pace" or "right on pace within 25". Set from `currency.primary` when absent: 150 for JPY, 20 for MXN, 10 for SEK and NOK, 7 for DKK, 1 otherwise. A rough size, not an exchange rate |
 | `email.sender`, `sender_name` | The assistant's Gmail account |
 | `email.recipients` | Who gets the emails |
 | `email.trusted_senders` | Addresses whose replies are acted on (DKIM must pass) |
@@ -34,7 +35,7 @@ Plus the budget workbook, `budget/budget.xlsx`, and the household notes Claude r
 | `calendar.include` | Calendar titles to read, as `bin/butler-ek calendars` lists them |
 | `calendar.holidays` | Holiday calendars, shown as a note on the day |
 | `calendar.write_to` | Where replies add events |
-| `people` | Everyone events can belong to (children too), with aliases, owned calendars and a color |
+| `people` | Everyone events can belong to (children too), with aliases, owned calendars and a color (`color`, optional `color_dark` for the portal in dark mode). Names are drawn in their color, so a light one such as Google's Flamingo is darkened until it reaches 4.5:1 against the page |
 | `projects.in_brief` | Show "Next up" in the morning brief |
 | `projects.appointment_keywords` | Optional: words that mark a project step as an appointment or document note. Those steps go to Claude when it flags what to prepare. Write them in your steps' language. Default: `bring, appointment, document, passport, visa, permit, office`. An empty list sends none |
 | `reminders.todo_list`, `shopping_list` | Apple Reminders lists |

@@ -16,6 +16,20 @@ def _symbols() -> tuple[str, str, str]:
     return SYMBOLS.get(primary, primary + " "), primary, second
 
 
+# Roughly how many units of each currency make one euro or dollar. Butler's thresholds ("100
+# over pace", "right on pace within 25") are written in euro-sized units and scaled by this, so
+# a yen household isn't told about a ¥100 overrun. Not an exchange rate: an order of magnitude.
+SCALES = {"JPY": 150, "SEK": 10, "NOK": 10, "DKK": 7, "MXN": 20}
+
+
+@lru_cache(maxsize=1)
+def scale() -> float:
+    """What one euro-sized unit is in the primary currency: currency.scale if set, else SCALES."""
+    from .config import load_settings
+    cur = load_settings().get("currency", {})
+    return float(cur.get("scale") or SCALES.get(str(cur.get("primary", "EUR")).upper(), 1))
+
+
 def money(x: float) -> str:
     """'€1,234' or '−€56' in the primary currency."""
     sym = _symbols()[0]

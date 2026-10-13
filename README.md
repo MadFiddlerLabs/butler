@@ -10,6 +10,21 @@ It's built for families with real logistics: two calendars or more, a budget, pa
 deadlines, kids, maybe a move abroad. Claude does the reading and writing. Python does every
 sum, and every change goes through a fixed list of actions.
 
+**Status:** open beta, Mac only.
+
+## Try it in two commands, no account
+
+Butler runs on an invented example household out of the box. In a clone of this repository:
+
+```
+scripts/bootstrap.sh       # gives Butler its own Python, through uv
+./run.sh preview           # builds this morning's brief for the example household and opens it
+```
+
+The preview sends nothing and needs no account, API key or email address. `./run.sh portal`
+then serves the portal at http://127.0.0.1:8787. Cloning needs git, which on a Mac comes with
+the Xcode command-line tools (`xcode-select --install`).
+
 **New to all this?** [Build Your Butler](https://buildyourbutler.com) is a free, step-by-step
 course for people who've never used a terminal. You finish with a working butler, and you
 learn how AI works along the way.
@@ -83,8 +98,8 @@ exchange-rate moves separated from real ones, and a budget in two currencies.
 
 Butler was designed so a household can trust it with everything.
 
-- **Your data stays on your Mac.** Config, projects, budget, notes and the email archive are
-  local files. The `.gitignore` excludes all of them, so a fork can't publish them by accident.
+- **Your data lives on your Mac.** Config, projects, budget, notes and the email archive are
+  local files. What goes to Claude, Google and Lunch Money is listed below. The `.gitignore` excludes all of them, so a fork can't publish them by accident.
 - **Secrets live in the macOS Keychain**, never in files, logs or chat.
 - **Nothing listens on the network.** The portal binds to 127.0.0.1. Tailscale makes it
   reachable from your own devices, and only from them.
@@ -106,12 +121,14 @@ Lunch Money and Open-Meteo are read over their APIs.
 ## Requirements
 
 - A Mac that's on most mornings (macOS 14 or later). Butler wakes it for the brief.
-- The Xcode command-line tools, for the Calendar helper. The installer provides Python.
-- A [Lunch Money](https://lunchmoney.app) account (for the money sections).
 - A [Claude API key](https://console.anthropic.com).
 - A new Gmail account for the assistant, with an app password.
 - Calendars in macOS Calendar (Google, iCloud or Exchange all work) and Apple Reminders.
+- Optional: a [Lunch Money](https://lunchmoney.app) account, for the money sections. Without
+  it, the brief leaves money out.
 - Optional: [Tailscale](https://tailscale.com) for the portal on your phones.
+- Only for a git clone: the Xcode command-line tools, for git and to build the Calendar helper.
+  The package and the install script need neither; they provide Python too.
 
 ## Get started
 
@@ -158,14 +175,6 @@ never pass through the chat. Later, `/butler-tune` adjusts the rules from your f
 
 Prefer to do it by hand? Follow [docs/SETUP.md](docs/SETUP.md).
 
-To look around first, Butler runs on an invented example household out of the box:
-
-```
-scripts/bootstrap.sh
-./run.sh preview                      # builds this morning's brief and opens it; sends nothing
-./run.sh portal                       # http://127.0.0.1:8787
-```
-
 ## Staying up to date
 
 Butler updates itself. Every night it checks for a new version, and it installs patches and
@@ -187,9 +196,8 @@ settings changes the behaviour. [docs/UPDATES.md](docs/UPDATES.md) has the detai
 
 ## Support
 
-Butler is free and MIT-licensed. If it saves your household some hours, you can buy us a coffee.
-<!-- TODO: Buy Me a Coffee link -->
-(Link coming soon.)
+Butler is free and MIT-licensed. If it saves your household some hours, you can
+[buy us a coffee](https://buymeacoffee.com/buildyourbutler).
 
 Issues and pull requests are welcome. Please never include real household data in them: use
 invented names, as the examples do.

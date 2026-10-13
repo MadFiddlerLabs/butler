@@ -20,13 +20,13 @@ from . import charts, finance, llm, mailer, networth, projects
 from .agenda import Agenda, load_agenda
 from .config import ROOT, brand, load_settings, people, portal_url, tz
 from .finance import SPEND, Summary, Tx
-from .fmt import money, primary_code
+from .fmt import money, primary_code, scale
 
 log = logging.getLogger("butler")
 IDEAS = ROOT / "data" / "ideas.jsonl"
 QUESTIONS = ROOT / "data" / "questions.json"   # id -> {payee, text, asked}; replies resolve ids
 REPORTS = ROOT / "reports"
-DRIFT_MIN = 15   # in the primary currency
+DRIFT_MIN = 15   # euro-sized; scaled for the primary currency (fmt.scale)
 
 
 # ---------- the day ----------
@@ -73,7 +73,7 @@ class Drift:
 class Week:
     last_day: date                  # the letter's day, the last of the week it covers
     week_spend: float               # daily spending, the seven days just ending
-    typical_week: float             # daily spending, weekly average of the 8 weeks before
+    typical_week: float | None      # daily spending, weekly average of up to 8 weeks before
     rows: list[CategoryRow]
     on_track: list[str]
     drift: list[Drift]
@@ -87,23 +87,32 @@ class Week:
     networth: str = ""
 
 
-def _week_numbers(m: Summary, rules: dict, last_day: date) -> tuple[float, float]:
+def _week_numbers(m: Summary, rules: dict, last_day: date) -> tuple[float, float | None]:
+    """Daily spending this week, and a typical week from up to 8 weeks before: averaged over the
+    days the history covers, None with under a week of it."""
     daily = set(rules["rules"]["day_to_day"])
-    spend = [t for t in m.txs if t.kind == SPEND and not t.one_off and t.category in daily]
+    spend = [t for t in m.txs if t.kind == SPEND and not t.one_off and not t.fixed and t.category in daily]
     first_day = last_day - timedelta(days=6)
     week = sum(t.amount for t in spend if first_day <= t.day <= last_day)
     prior = sum(t.amount for t in spend if first_day - timedelta(days=56) <= t.day < first_day)
-    return week, prior / 8
+    days = finance.covered_days(first_day - timedelta(days=56), first_day - timedelta(days=1),
+                                min((t.day for t in spend), default=None))
+    return week, (prior * 7 / days if days >= 7 else None)
 
 
 def _category_rows(m: Summary, rules: dict) -> tuple[list[CategoryRow], list[str]]:
+    """Categories ahead of plan. One-offs never count: a daily category compares its daily
+    spending with its paced daily budget, any other its spending with its full month's plan."""
     daily = set(rules["rules"]["day_to_day"])
     rows, on_track = [], []
-    for cat in sorted(set(m.budget_by_category) | set(m.mtd_by_category)):
-        budget, spent = m.budget_by_category.get(cat, 0.0), m.mtd_by_category.get(cat, 0.0)
+    for cat in sorted(set(m.budget_by_category) | set(m.against_budget_by_category)):
+        if cat in daily:
+            budget, spent = m.daily_budget_by_category.get(cat, 0.0), m.daily_by_category.get(cat, 0.0)
+        else:
+            budget, spent = m.budget_by_category.get(cat, 0.0), m.against_budget_by_category.get(cat, 0.0)
         expected = budget * m.pace_fraction if cat in daily else budget
         gap = spent - expected
-        threshold = max(100.0, 0.10 * budget)
+        threshold = max(100.0 * scale(), 0.10 * budget)
         if gap > threshold:
             rows.append(CategoryRow(cat, budget, spent, expected, "over"))
         elif budget:
@@ -129,7 +138,7 @@ def _drift(m: Summary, rules: dict, last_day: date) -> list[Drift]:
         before = prior12 / 3
         if prior12 == 0 and recent_count < 2:
             continue  # a single new purchase isn't drift
-        if last4 - before >= max(DRIFT_MIN, 0.3 * before) and last4 >= DRIFT_MIN * 2:
+        if last4 - before >= max(DRIFT_MIN * scale(), 0.3 * before) and last4 >= DRIFT_MIN * 2 * scale():
             out.append(Drift(payee, last4, before, "new" if prior12 == 0 else ""))
     out.sort(key=lambda d: d.before - d.last4)
 
@@ -140,7 +149,7 @@ def _drift(m: Summary, rules: dict, last_day: date) -> list[Drift]:
             series.setdefault(t.recurring_id, []).append(t)
     for txs in series.values():
         txs.sort(key=lambda t: t.day)
-        if len(txs) >= 2 and abs(txs[-1].amount - txs[-2].amount) >= max(2.0, 0.05 * txs[-2].amount):
+        if len(txs) >= 2 and abs(txs[-1].amount - txs[-2].amount) >= max(2.0 * scale(), 0.05 * txs[-2].amount):
             out.append(Drift(txs[-1].payee, txs[-1].amount, txs[-2].amount, "recurring charge changed"))
     return out[:6]
 
@@ -152,10 +161,10 @@ def _questions(m: Summary, rules: dict, last_day: date) -> list[tuple[str, str, 
     year, wk, _ = last_day.isocalendar()
     asks = []
     for t in sorted((t for t in m.txs if week <= t.day <= last_day), key=lambda t: -t.amount):
-        if t.kind == SPEND and t.unmapped and t.amount >= 20:
+        if t.kind == SPEND and t.unmapped and t.amount >= 20 * scale():
             asks.append((f"{t.payee} {money(t.amount)} on {t.day:%a %-d %b} has no category I know. "
                          "What was it?", t.payee))
-        elif t.kind == "transfer" and t.amount >= 20 and not any(o in t.payee.lower() for o in own) \
+        elif t.kind == "transfer" and t.amount >= 20 * scale() and not any(o in t.payee.lower() for o in own) \
                 and not t.payee.lower().startswith(("to ", "from ", "cashback")):
             asks.append((f"{money(t.amount)} to {t.payee} on {t.day:%a %-d %b} counted as a transfer. "
                          "Was it spending? If so, on what?", t.payee))
@@ -266,7 +275,7 @@ def write(settings: dict, w: Week, ps: list[projects.Project]) -> dict:
         "currency": primary_code(),
         "week_ending": w.last_day.isoformat(),
         "daily_spending_this_week": round(w.week_spend),
-        "daily_spending_typical_week": round(w.typical_week),
+        "daily_spending_typical_week": round(w.typical_week) if w.typical_week is not None else None,
         "month": f"{w.last_day:%B}",
         "month_spent": round(m.mtd_total),
         "fixed_monthly_spent": round(sum(e for _, e in m.fixed_paid)),
@@ -340,8 +349,9 @@ focus: three to five things to get done this coming week, chosen from "next_up" 
 week ahead. Each: who ({", ".join(people(settings))} or Both) and what, in one short sentence. Prefer
 high-priority steps and anything the calendar makes timely.
 
-ideas: up to three concrete ways to save or earn, each with a rough amount per month (or null)
-and what it would take. Mix cut / restructure / earn. Skip anything already suggested
+ideas: up to three concrete ways to save or earn, and what each would take. per_month: a rough
+amount per month only when a figure in the numbers gives it (a charge you'd cut, say); else null.
+The letter labels it as your estimate. Mix cut / restructure / earn. Skip anything already suggested
 recently (listed below) unless something changed. Fewer, better ideas beat filler.
 
 project_notes: one sentence per project on where it stands and what's stuck. The steps'
@@ -378,8 +388,8 @@ def sections(w: Week, words: dict) -> list[tuple[str, list[str]]]:
 
     from .render import drawer_lines, split_lines
     para = ([w.networth] if w.networth else []) + [
-        f"Daily spending this week: {money(w.week_spend)}, against a typical "
-        f"{money(w.typical_week)}."] + split_lines(m)
+        f"Daily spending this week: {money(w.week_spend)}"
+        + (f", against a typical {money(w.typical_week)}." if w.typical_week is not None else ".")] + split_lines(m)
     for r in w.rows:
         para.append(f"{r.category}: {money(r.spent)} spent, ahead of the {money(r.expected)} "
                     f"expected by now (month budget {money(r.budget)}).")
@@ -447,8 +457,8 @@ def sections(w: Week, words: dict) -> list[tuple[str, list[str]]]:
 
     if words["ideas"]:
         out.append(("Save or earn", [
-            f"{i['title']}"
-            + (f" (about {money(i['per_month'])} a month)" if i["per_month"] else "")
+            f"{i['title']}"     # Claude's figure, not Python's: the letter says so
+            + (f" (Claude's rough estimate: about {money(i['per_month'])} a month)" if i["per_month"] else "")
             + f". {i['detail']}" for i in words["ideas"]]))
     if w.questions:
         out.append(("Questions for you (reply with the id and your answer)",
@@ -461,8 +471,8 @@ def to_html(w: Week, secs: list[tuple[str, list[str]]], image_src=lambda n: f"ci
             banner: str = "") -> str:
     from html import escape
 
-    from .render import EMAIL_HEAD, EMAIL_TAIL, INK, MUTED, PAPER, RULE, _h2, one_off_note, portal_button
-    parts = [EMAIL_HEAD,
+    from .render import EMAIL_TAIL, INK, MUTED, PAPER, RULE, _h2, email_head, one_off_note, portal_button
+    parts = [email_head(f"{brand()} · your week ending {w.last_day:%A} {w.last_day.day} {w.last_day:%B}"),
              f'<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;'
              f'color:{INK};background:{PAPER};max-width:640px;margin:0 auto;padding:16px;'
              f'font-size:15px;line-height:1.5">',

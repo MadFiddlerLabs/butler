@@ -95,7 +95,7 @@ else
 fi
 printf '%s\n' "$name" > "$home/.butler-name"
 say
-say "Let's get me settled in. It takes about five minutes, and you can't break anything."
+say "Let's get me settled in. It takes about five minutes."
 
 # Python installs while the student checks their email.
 bootstrap_cmd="${BUTLER_BOOTSTRAP:-$home/scripts/bootstrap.sh}"
@@ -125,7 +125,8 @@ if [ "$(json_value terms_version "$(cat "$terms_file" 2>/dev/null)")" != "$terms
 fi
 terms_accepted_at="$(json_value terms_accepted_at "$(cat "$terms_file")")"
 
-say "I'll email you a link to sign in. It keeps your place in the course. Nothing from your household ever leaves this Mac."
+say "I'll email you a link to sign in. It keeps your place in the course."
+say "We never see your household's data. It goes only from this Mac to services you choose, such as Anthropic and Google."
 token=""
 email=""
 while :; do

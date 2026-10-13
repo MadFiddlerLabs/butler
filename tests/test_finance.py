@@ -109,7 +109,8 @@ class SummaryTest(unittest.TestCase):
         # Food: 500 vs 900 * 10/31 = 290 -> over by 210 (> max(100, 72))
         self.assertEqual([c for c, _, _ in s.over_pace], ["Food"])
         self.assertEqual(s.last7, 500)                  # 4–10 Oct, one-off excluded
-        self.assertEqual(s.prior_weekly_avg, 100)       # 400 over 4 weeks
+        self.assertEqual(s.prior_weekly_avg, 200)       # 400 over the 2 weeks the history covers (from 20 Sep)
+        self.assertEqual(s.prior_days, 14)
         self.assertEqual([t.id for t in s.new], [3])
         self.assertEqual(s.lumps_due, [("Property tax", 860.0)])
         self.assertEqual(s.off_book[0][:2], ("Babysitter", 800.0))

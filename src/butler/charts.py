@@ -92,13 +92,21 @@ def month_to_date(m: Summary, theme: str = "light") -> bytes:
     return _png(fig, t)
 
 
+def category_bars(m: Summary, day_to_day: list[str]) -> list[tuple[str, float, float]]:
+    """(category, spent, budget) for each daily category, fullest first. Daily spending only:
+    one-offs and fixed lines paid from a daily category stay out, as the course promises."""
+    spent_by, budget_by = m.daily_by_category, m.daily_budget_by_category
+    cats = [c for c in day_to_day if budget_by.get(c, 0) > 0 or spent_by.get(c, 0) > 0]
+    cats.sort(key=lambda c: -(spent_by.get(c, 0) / (budget_by.get(c) or 1)))
+    return [(c, spent_by.get(c, 0.0), budget_by.get(c, 0.0)) for c in cats]
+
+
 def categories(m: Summary, day_to_day: list[str], theme: str = "light") -> bytes | None:
     """Each daily-spending category: spent vs its monthly budget, with a tick for today's pace."""
-    cats = [c for c in day_to_day
-            if m.budget_by_category.get(c, 0) > 0 or m.mtd_by_category.get(c, 0) > 0]
-    if not cats:
+    bars = category_bars(m, day_to_day)
+    if not bars:
         return None
-    cats.sort(key=lambda c: -(m.mtd_by_category.get(c, 0) / (m.budget_by_category.get(c) or 1)))
+    cats = [c for c, _, _ in bars]
 
     t = THEMES[theme]
     SURFACE, INK, INK_2, SERIES, TRACK = t["SURFACE"], t["INK"], t["INK_2"], t["SERIES"], t["TRACK"]
@@ -109,9 +117,8 @@ def categories(m: Summary, day_to_day: list[str], theme: str = "light") -> bytes
         ax.spines[side].set_visible(False)
     ax.tick_params(left=False, bottom=False, labelbottom=False, labelsize=9, colors=INK)
 
-    top = max(max(m.budget_by_category.get(c, 0), m.mtd_by_category.get(c, 0)) for c in cats)
-    for i, c in enumerate(reversed(cats)):
-        budget, spent = m.budget_by_category.get(c, 0.0), m.mtd_by_category.get(c, 0.0)
+    top = max(max(budget, spent) for _, spent, budget in bars)
+    for i, (c, spent, budget) in enumerate(reversed(bars)):
         if budget:
             ax.barh(i, budget, height=0.5, color=TRACK)                   # the month's budget
         ax.barh(i, spent, height=0.5, color=SERIES)                       # spent so far

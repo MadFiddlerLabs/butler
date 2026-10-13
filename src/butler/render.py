@@ -1,12 +1,13 @@
 """Turns the brief's parts into an HTML email and a plain-text twin."""
 
+import re
 from dataclasses import dataclass, field
 from datetime import date
 from html import escape
 
 from .agenda import Agenda, Event
 from .config import brand, people as adults
-from .fmt import money, primary_code, second_code
+from .fmt import money, primary_code, scale, second_code
 from .finance import Summary
 from .projects import Today as ProjectsToday
 
@@ -41,13 +42,43 @@ class Brief:
 
 
 INK, MUTED, RULE, ACCENT, PAPER = "#1f2328", "#656d76", "#e5e7eb", "#9a3412", "#fcfcfb"
-# Pin the email to light: its colors (and the PNG charts) are designed for a light page, and
-# mail apps in dark mode otherwise put this dark text on a dark background.
-EMAIL_HEAD = ('<!doctype html><html><head><meta charset="utf-8">'
-              '<meta name="color-scheme" content="light only">'
-              '<meta name="supported-color-schemes" content="light only"></head>'
-              f'<body style="margin:0;background:{PAPER}">')
+
+
+def email_head(title: str) -> str:
+    """The emails' <head>: English, titled (the brief also opens as a page in the browser), and
+    pinned to light. Its colors (and the PNG charts) are designed for a light page, and mail apps
+    in dark mode otherwise put this dark text on a dark background."""
+    return ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
+            f'<title>{escape(title)}</title>'
+            '<meta name="color-scheme" content="light only">'
+            '<meta name="supported-color-schemes" content="light only"></head>'
+            f'<body style="margin:0;background:{PAPER}">')
+
+
 EMAIL_TAIL = "</body></html>"
+
+
+def _luminance(color: str) -> float:
+    channels = [int(color[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    r, g, b = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def contrast(a: str, b: str) -> float:
+    """The WCAG contrast ratio of two #rrggbb colors, from 1 to 21."""
+    hi, lo = sorted((_luminance(a), _luminance(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def readable(color: str, on: str = PAPER) -> str:
+    """`color` as text on `on`: darkened in small steps until it reaches 4.5:1 (WCAG AA), so a
+    light person color such as Google's Flamingo stays legible. Anything but #rrggbb is kept."""
+    if not re.fullmatch(r"#[0-9a-fA-F]{6}", color or ""):
+        return color
+    color = color.lower()
+    while contrast(color, on) < 4.5 and color != "#000000":
+        color = "#" + "".join(f"{int(int(color[i:i + 2], 16) * 0.9):02x}" for i in (1, 3, 5))
+    return color
 
 
 def _h2(text: str) -> str:
@@ -67,7 +98,7 @@ def _by_person(brief: Brief, events: list[Event]) -> list[tuple[str, list[Event]
 
 
 def _color(brief: Brief, name: str) -> str:
-    return next((p["color"] for p in brief.people if p["name"] == name), MUTED)
+    return next((readable(p["color"]) for p in brief.people if p["name"] == name), MUTED)
 
 
 def _tag(brief: Brief, e: Event) -> str:
@@ -190,7 +221,7 @@ def split_lines(m: Summary) -> list[str]:
     month_over = m.pace_fraction >= 1
     pace = m.day_to_day_budget * m.pace_fraction
     gap = m.day_to_day_mtd - pace
-    verdict = ("right on pace" if abs(gap) < 25
+    verdict = ("right on pace" if abs(gap) < 25 * scale()
                else f"{money(abs(gap))} {'over' if gap > 0 else 'under'} pace")
     lines = [
         f"Fixed monthly expenses: {money(fixed_paid)} paid of a {money(fixed_plan)} plan. "
@@ -203,6 +234,17 @@ def split_lines(m: Summary) -> list[str]:
     if m.one_offs_total >= 1:
         lines.append(f"One-offs (neither fixed nor daily): {money(m.one_offs_total)}; named below.")
     return lines
+
+
+def trend_text(m: Summary) -> str:
+    """', down from a €80 weekly average over the previous 4 weeks', compared in whole units as
+    shown. Empty when there's less than a week of history before the last seven days."""
+    if not m.prior_days:
+        return ""
+    now, before = round(m.last7), round(m.prior_weekly_avg)
+    trend = "the same as" if now == before else "down from" if now < before else "up from"
+    span = "the previous 4 weeks" if m.prior_days == 28 else f"the {m.prior_days} days before"
+    return f", {trend} a {money(m.prior_weekly_avg)} weekly average over {span}"
 
 
 def money_lines(m: Summary) -> list[str]:
@@ -228,9 +270,7 @@ def money_lines(m: Summary) -> list[str]:
         lines.append(f"Runway: savings ({money(m.savings_balance)}) cover about "
                      f"{m.savings_balance / m.draw_monthly:.0f} months at the recent draw of "
                      f"{money(m.draw_monthly)} a month.")
-    trend = "down" if m.last7 < m.prior_weekly_avg else "up"
-    lines.append(f"Last 7 days: {money(m.last7)} of daily spending, {trend} from a "
-                 f"{money(m.prior_weekly_avg)} weekly average over the previous 4 weeks.")
+    lines.append(f"Last 7 days: {money(m.last7)} of daily spending" + trend_text(m) + ".")
     flows = []
     if m.draw_mtd:
         flows.append(f"savings draw {money(m.draw_mtd)}")
@@ -336,7 +376,7 @@ def portal_button(url: str) -> str:
 def to_html(brief: Brief, image_src=lambda name: f"cid:{name}") -> str:
     """image_src maps a chart name to its <img> src: a cid: for email, a file for previews."""
     parts = [
-        EMAIL_HEAD,
+        email_head(brief.subject),
         f'<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;'
         f'color:{INK};background:{PAPER};max-width:640px;margin:0 auto;padding:16px;'
         f'font-size:15px;line-height:1.5">',
