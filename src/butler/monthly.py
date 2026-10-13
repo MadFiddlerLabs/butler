@@ -255,9 +255,6 @@ def sections(mo: Month, words: dict, by_reply: bool = False) -> list[tuple[str, 
                                                     for a, h, n in acts[:5]) + ".")
     out.append(("Where the time went", time_lines))
     para = [words["money_insight"]] + split_lines(m)
-    if m.one_offs_mtd:
-        from .render import one_offs_text
-        para.append("One-offs: " + one_offs_text(m.one_offs_mtd) + ".")
     flows = ([f"Savings draw: {money(m.draw_mtd)}."] if m.draw_mtd else []) \
         + ([f"Rental income: {money(m.rental_mtd)}."] if m.rental_mtd else []) \
         + [f"{led.label}: {money(led.month)}" + (f" of {money(led.budget)}." if led.budget else ".")

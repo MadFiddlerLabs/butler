@@ -74,6 +74,31 @@ class YenPaceTest(unittest.TestCase):
 
 
 
+class OneOffsLineTest(unittest.TestCase):
+    """One-offs are named once, in the split, not totalled and then listed again. Invented amounts."""
+
+    def lines(self, one_offs):
+        m = SimpleNamespace(fixed_paid=[], fixed_plan=[], fixed_remaining=[], pace_fraction=0.5,
+                            day_to_day_budget=900, day_to_day_mtd=400, today=date(2026, 10, 15),
+                            one_offs_total=sum(t.amount for t in one_offs), one_offs_mtd=one_offs)
+        with mock.patch("butler.fmt._symbols", return_value=("€", "EUR", "USD")):
+            return render.split_lines(m)
+
+    def test_one_payee_is_named_without_a_separate_total(self):
+        ikea = SimpleNamespace(payee="IKEA", amount=349.0, note="furnishing the spare room")
+        self.assertEqual(self.lines([ikea])[-1],
+                         "One-offs (neither fixed nor daily): IKEA €349 (furnishing the spare room).")
+
+    def test_several_payees_get_a_total_then_their_names(self):
+        txs = [SimpleNamespace(payee="IKEA", amount=349.0, note="spare room"),
+               SimpleNamespace(payee="Hardware store", amount=20.0, note="")]
+        self.assertEqual(self.lines(txs)[-1],
+                         "One-offs (neither fixed nor daily): €369 in all. IKEA €349 (spare room); Hardware store €20.")
+
+    def test_no_one_offs_no_line(self):
+        self.assertFalse(any("One-offs" in line for line in self.lines([])))
+
+
 class CurrencyScaleTest(unittest.TestCase):
     """fmt.scale: euro-sized thresholds in the household's currency."""
 
