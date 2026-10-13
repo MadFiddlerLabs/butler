@@ -121,7 +121,7 @@ Lunch Money and Open-Meteo are read over their APIs.
 ## Requirements
 
 - A Mac that's on most mornings (macOS 14 or later). Butler wakes it for the brief.
-- A [Claude API key](https://console.anthropic.com).
+- A [Claude API key](https://platform.claude.com).
 - A new Gmail account for the assistant, with an app password.
 - Calendars in macOS Calendar (Google, iCloud or Exchange all work) and Apple Reminders.
 - Optional: a [Lunch Money](https://lunchmoney.app) account, for the money sections. Without
@@ -134,8 +134,8 @@ Lunch Money and Open-Meteo are read over their APIs.
 
 Go to [buildyourbutler.com](https://buildyourbutler.com), name your butler, and download it.
 The package installs into `~/Butler` without asking for your password. Then a Terminal window
-opens, and your butler says hello. In about five minutes, you sign in by email and paste three
-one-line lessons, and your first brief opens:
+opens, and your butler says hello. In about ten minutes, two of them yours, you sign in by
+email and paste three one-line lessons, and your first brief opens:
 
 ```
 butler town "Lisbon"

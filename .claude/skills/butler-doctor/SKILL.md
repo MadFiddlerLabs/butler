@@ -27,9 +27,14 @@ Run them quietly and collect the results. Don't show raw output.
 | Schedule | `launchctl list \| grep com.buildyourbutler` | the jobs are listed, with exit status 0 |
 | Wake | `pmset -g sched` | a daily wake a minute or so before `email.send_hour` |
 | Log | the last 200 lines of `logs/butler.log` | ticks every few minutes; no ERROR lines today |
+| Replies | `tail -n 300 logs/butler.log \| grep -c "DKIM signature missing or failed"` | 0 |
+| Restarts | `bin/butler doctor`, which compares `sysctl -n kern.boottime` with the first `last -t console $USER` login after it | no "waited at the login screen" line |
 | Last brief | the newest `out/sent-*` marker and `out/brief-*.html` | today's, once past the send hour |
 | Internet | `curl -sI https://api.anthropic.com -o /dev/null -w '%{http_code}'` | any HTTP code |
 | Preview | `BUTLER_NO_OPEN=1 ./run.sh preview` | finishes; the footer shows no "Problems this morning" |
+
+While the Mac waits at the login screen, nothing of Butler runs, this check included. So a restart
+shows up only afterwards: the Restarts row reports how long the Mac waited for a login.
 
 Skip checks for steps they haven't reached yet (`/butler-setup` with no step works out where
 they are). Something not connected yet is normal mid-course, not a problem.
@@ -42,9 +47,11 @@ they are). Something not connected yet is normal mid-course, not a problem.
 | Calendar permission error | macOS isn't letting Butler read Calendar | System Settings > Privacy & Security > Calendars: switch it on. The same for Reminders |
 | `bin/butler-ek` missing | The Calendar step isn't done | `/butler-setup calendar` |
 | A secret is missing | It was never stored, or stored under another name | `scripts/store-secret.sh <name> "..."` |
-| Gmail "Username and Password not accepted" in the log, or "queued" and "outbox" lines | The app password is wrong or was revoked. Built emails wait in `data/outbox/` and go out on their own once Gmail takes them (tried hourly after three refusals; dropped after three days) | Make a new app password; store it again. Don't rebuild or resend by hand |
-| Claude API error 401 | The API key is wrong or was deleted | Make a new key in the Console; store it again |
-| Claude API error 429, or "credit balance" | The spending limit was reached | Raise the limit in the Console, or wait for next month |
+| Gmail "Username and Password not accepted" or "AUTHENTICATIONFAILED" in the log, or "queued" and "outbox" lines | The app password is wrong or was revoked. Changing the butler's Gmail password revokes every app password, so ask whether anyone changed it. Built emails wait in `data/outbox/` and go out on their own once Gmail takes them (tried hourly after three refusals; dropped after three days) | Make a new app password; store it again. Don't rebuild or resend by hand |
+| "ignored mail from … (DKIM signature missing or failed)" in the log | A reply came from a trusted address, but its email signature (DKIM) was missing or didn't match the address's domain. Butler did nothing with it. Work servers, aliases, forwarding and some small providers cause this | Reply from a personal address (Gmail, iCloud, Outlook) and put that address in `email.trusted_senders`. Then they send the reply again |
+| "Your Mac restarted … and waited at the login screen" from `butler doctor` | After a restart, the Mac waits for someone to log in, and Butler's schedule doesn't run until then. FileVault makes every restart wait | Log back in after a restart. Butler catches up on its own |
+| Claude API error 401 | The API key is wrong or was deleted | Make a new key on platform.claude.com; store it again |
+| Claude API error 429, or "credit balance" | The spending limit was reached, or the prepaid credit ran out or expired | On platform.claude.com, Settings > Billing: raise the spend limit or add credit. Or wait for next month |
 | No ticks in the log | The schedule isn't running | `launchd/install.sh` |
 | Ticks, but no brief | The Mac was asleep or offline at send time | Check the wake time and that the Mac is plugged in. A closed laptop may not wake |
 | "I couldn't handle …'s reply after 3 tries", or "gave up on" in the log | One reply failed three times, so Butler stopped sending it to Claude. Nothing in it was done | Read the "replies:" log lines before it and fix the cause. Then they send the reply again |

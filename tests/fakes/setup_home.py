@@ -81,6 +81,8 @@ class SetupHome:
         _script(fakebin / "open", "import sys\nopen(__import__('os').environ['BUTLER_FAKE_OPENED'], 'a')"
                                   ".write(' '.join(sys.argv[1:]) + '\\n')\n")
         _script(fakebin / "launchctl", "print('PID\\tStatus\\tLabel')\n")
+        # No login records, so `butler doctor` never reports this machine's own restarts.
+        _script(fakebin / "last", "")
         self.keychain = self.tmp / "keychain.json"
         self.opened = self.tmp / "opened.txt"
         self.env = {

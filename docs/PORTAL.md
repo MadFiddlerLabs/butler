@@ -12,15 +12,20 @@ open http://127.0.0.1:8787
 ## On your phones, with Tailscale
 
 1. Install [Tailscale](https://tailscale.com) on the Mac and on each phone, signed in to the
-   same tailnet. Invite the other adults from the Tailscale admin console.
-2. In the admin console, turn on MagicDNS and HTTPS certificates (DNS page).
-3. On the Mac:
+   same tailnet with personal logins, not work ones. Invite the other adults from the
+   Tailscale admin console. An iPhone runs one VPN at a time, so Tailscale replaces any other
+   VPN while it's on.
+2. Rename the Mac before HTTPS: the address and its certificate use the machine's name, and
+   certificate names are public. Use Edit machine name in the admin console, or
+   `tailscale set --hostname=butler`.
+3. In the admin console, turn on MagicDNS and HTTPS certificates (DNS page).
+4. On the Mac:
    ```
    tailscale serve --bg 8787
    ```
-   It prints the address, like `https://your-mac.your-tailnet.ts.net`.
-4. Put that address in `portal.url` in `config/settings.yaml`. The emails link to it.
-5. List who may enter in `portal.allowed_logins` (their Tailscale login emails), and map each
+   It prints the address, like `https://butler.your-tailnet.ts.net`.
+5. Put that address in `portal.url` in `config/settings.yaml`. The emails link to it.
+6. List who may enter in `portal.allowed_logins` (their Tailscale login emails), and map each
    to a name in `portal.people` so updates say who made them.
 
 `tailscale serve` tells the portal who is visiting (the `Tailscale-User-Login` header), and the
@@ -56,7 +61,7 @@ brew install caddy lego
    ```
 3. Install Caddy and the daily renewal:
    ```
-   launchd/install.sh --domain butler.example.com --tailnet-host your-mac.your-tailnet.ts.net --email you@example.com
+   launchd/install.sh --domain butler.example.com --tailnet-host butler.your-tailnet.ts.net --email you@example.com
    ```
 4. Forward the tailnet's port 443 to Caddy, replacing the plain `tailscale serve` from above:
    ```

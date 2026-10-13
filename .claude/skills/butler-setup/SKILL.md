@@ -120,16 +120,22 @@ The win: Claude writes the news summaries and notes on what to prepare for.
 
 1. Explain in two sentences: Butler uses Claude through an API key. This is separate from
    their Claude plan and billed by use, so they'll set a spending limit first.
-2. They go to console.anthropic.com, create an account, add billing, and set a monthly spend
-   limit (Settings > Limits). Suggest a low limit to start. Then they create an API key.
-3. Store it: `scripts/store-secret.sh butler-anthropic "Your Claude API key"`.
-4. Check it's there without printing it:
+2. They go to platform.claude.com and create an account.
+3. If they have a Max plan, its monthly API credit can pay for Butler: in Claude (claude.ai or
+   the app), Settings > Billing > API credits > **Link organization**, then pick the Console
+   organization they just made. They can skip buying credit, but still set a spend limit. That
+   credit expires each billing cycle.
+4. They add billing, then set a monthly spend limit: Settings > Billing > Spend limits, then
+   **Set limit**. Suggest a low limit to start. Prepaid credit expires, so suggest buying a
+   small amount and topping up later. Then they create an API key.
+5. Store it: `scripts/store-secret.sh butler-anthropic "Your Claude API key"`.
+6. Check it's there without printing it:
    `security find-generic-password -s butler-anthropic >/dev/null && echo ok`
-5. Ask for two or three sentences about the household for `household.about`: who lives
+7. Ask for two or three sentences about the household for `household.about`: who lives
    there, work, what's going on. Remind them it goes to Claude, so no ID numbers.
-6. Ask for one sentence for `news.interests`. It sits next to news from strangers, so no
+8. Ask for one sentence for `news.interests`. It sits next to news from strangers, so no
    names or personal details.
-7. Check: `./run.sh preview`. The news is summarized, and the footer shows no Claude error.
+9. Check: `./run.sh preview`. The news is summarized, and the footer shows no Claude error.
 
 ## inbox (Module 5: Give your butler an inbox)
 
@@ -138,19 +144,31 @@ The win: the first real morning email, and a daily schedule.
 1. They create a new Gmail account just for the butler. You can't do this for them. Then:
    turn on 2-Step Verification (Google Account > Security), and create an app password at
    myaccount.google.com/apppasswords, named after the butler.
+   If the app password page or the first send fails, the usual causes are:
+   - 2-Step Verification isn't on yet, so the page says the setting isn't available.
+   - The app password was made while signed in to another Google account, not the butler's.
+   - They stored the butler's regular Gmail password instead of the app password.
+   - The account is a work or school account whose admin turned app passwords off, or it uses
+     Advanced Protection. A plain new Gmail account avoids both.
+   - The Gmail password was changed. That revokes every app password, so make a new one and
+     store it again. Tell them this now, so a later password change doesn't surprise them.
 2. Store it: `scripts/store-secret.sh butler-gmail "Your butler's Gmail app password"`.
 3. Ask each adult's email address: the one they'll read and reply from. Fill
    `household.adults[].emails`, `email.recipients` and `email.trusted_senders`, and put the
-   butler's address in `email.sender`.
+   butler's address in `email.sender`. Recommend personal addresses (Gmail, iCloud, Outlook)
+   for `trusted_senders`. Replies count only with a valid email signature (DKIM) from that
+   exact address, and work servers, aliases and forwarding often break it.
 4. **First send.** Ask first. Suggest sending only to the person you're working with: set
    `email.recipients` to them, run `./run.sh daily`, then restore the full list. If it lands
    in spam, they mark it "Not spam" and add the butler to their contacts.
 5. **The schedule.** Ask the send hour (`email.send_hour`). Run `launchd/install.sh`. Then
-   set a daily wake a minute before. This shows a Mac password dialog, and the password
-   never reaches you:
+   set a daily wake a minute before. This needs an administrator's password: a Mac dialog
+   asks for it, and it never reaches you. If their own account isn't an administrator, someone
+   whose account is types theirs:
    `osascript -e 'do shell script "pmset repeat wakeorpoweron MTWRFSU 06:59:00" with administrator privileges'`
    (adjust the time). Tell them: keep the Mac plugged in. A laptop with its lid closed may
-   not wake.
+   not wake. After a restart (an update, a power cut), log back in: the Mac waits at the
+   login screen, and Butler runs only while someone is logged in.
 6. Check: `launchctl list | grep com.buildyourbutler` shows the jobs, and
    `tail -n 5 logs/butler.log` shows a tick within five minutes.
 
@@ -179,7 +197,10 @@ The win: money in the brief, in three kinds of spending.
    `scripts/store-secret.sh butler-lunchmoney "Your Lunch Money access token"`.
 3. Set `currency.primary` (Lunch Money's primary currency) and `currency.second` if some
    budget lines are in another currency.
-4. Read their categories and accounts through the code, so the token stays in Keychain:
+4. Before reading any money data, tell them in one sentence: whatever Claude Code reads in
+   this chat goes to Anthropic, so you'll work out totals in Python and read only the
+   categories, accounts and totals you need.
+5. Read their categories and accounts through the code, so the token stays in Keychain:
    ```
    PYTHONPATH=src .venv/bin/python -c "
    from butler import lunchmoney
@@ -187,10 +208,10 @@ The win: money in the brief, in three kinds of spending.
    print([c['name'] for c in cats if not c.get('is_group')])
    print([(a['institution_name'], a['name'], a['type']) for a in lunchmoney.get('plaid_accounts')['plaid_accounts']])"
    ```
-5. Pull about four months of transactions (`lunchmoney.transactions(start, end)`). Work out
+6. Pull about four months of transactions (`lunchmoney.transactions(start, end)`). Work out
    monthly totals per category and the biggest recurring payees in Python. Don't print
    transaction lists into the chat beyond what you need.
-6. Explain the three kinds of spending in two sentences: fixed monthly expenses against
+7. Explain the three kinds of spending in two sentences: fixed monthly expenses against
    their plan, daily spending paced through the month, and one-offs kept apart. Then draft
    `config/category_map.yaml` with them from the example:
    - `map`: Lunch Money categories to 8–15 budget categories. Work or business categories
@@ -199,22 +220,40 @@ The win: money in the brief, in three kinds of spending.
    - `rules.ignore_accounts` / `ignore_institutions`: investment and retirement accounts.
    - Overrides for payees that need a label, a fixed line or rent timing.
    - Optional sections only if they apply: ledgers, cash drawer, managed fees, rental income.
-7. Copy `budget/budget.example.xlsx` to `budget/budget.xlsx` and replace the example lines
+8. Copy `budget/budget.example.xlsx` to `budget/budget.xlsx` and replace the example lines
    with openpyxl (input cells only: Expenses A–F and I from row 5, Income A–D from row 5,
    Assumptions C5–C6). Propose amounts from the averages and let them adjust. Fixed lines in
    daily categories go in `rules.fixed_lines`. Category names must match the category map.
-8. Check: the full test suite passes, then `./run.sh preview` shows the money section.
+9. Check: the full test suite passes, then `./run.sh preview` shows the money section.
 
 ## projects (Module 8: Projects and paperwork)
 
 The win: one real household project with steps, and document dates tracked.
 
-1. Explain projects in two sentences (see `docs/PROJECTS.md`). Offer to turn one or two
-   things they're working on into a project in `projects/<name>.yaml`. Steps need an owner
-   and, where it applies, a gate (`after`, `not_before`, `every`, `waiting`).
+1. Explain projects in two sentences (see `docs/PROJECTS.md`). Remind them that whatever
+   they tell you, and whatever Claude Code reads here, goes to Anthropic. Offer to turn one or
+   two things they're working on into a project in `projects/<name>.yaml`. Steps need an
+   owner and, where it applies, a gate (`after`, `not_before`, `every`, `waiting`).
 2. If they want the Info page, copy `examples/reference.local.example.yaml` to
    `projects/reference.local.yaml`. You may add names and document expiry dates they tell
-   you. They type any ID numbers themselves, in a text editor. Never ask for them.
+   you. They type any ID numbers themselves, in a text editor. Never ask for them, and don't
+   open the file once they have.
+   - The editor must save plain text with straight quotes. In TextEdit: Format > Make Plain
+     Text, and turn off Edit > Substitutions > Smart Quotes. Smart quotes (“ ” ‘ ’) aren't
+     quotes to YAML, so they end up inside values or break the file.
+   - When they've saved it, check that it parses without printing any of it. The check
+     prints only "ok", or the line to look at:
+     ```
+     .venv/bin/python -c "
+     import yaml
+     try:
+         yaml.safe_load(open('projects/reference.local.yaml'))
+         print('ok')
+     except yaml.YAMLError as e:
+         mark = getattr(e, 'problem_mark', None)
+         print('not valid YAML' + (f' near line {mark.line + 1}' if mark else ''))"
+     ```
+     Never run a plain YAML load or `cat` on it: a YAML error message quotes the line.
 3. Create `data/household_notes.md` with facts they shared that Claude should know.
 4. Check: the project tests pass, and `./run.sh preview` shows "Next up".
 
@@ -235,12 +274,18 @@ The win: the portal on their phone, for their household only.
 1. Explain in two sentences: Tailscale is a private network between their own devices.
    Nothing on the internet can reach the portal.
 2. They install Tailscale on the Mac and each phone, signed in to the same account, and
-   invite the other adults from the Tailscale admin console. In the admin console's DNS page
-   they turn on MagicDNS and HTTPS certificates.
-3. Run `tailscale serve --bg 8787`. Put the address it prints in `portal.url`.
-4. Put each adult's Tailscale login in `portal.allowed_logins`, and map it to a name in
+   invite the other adults from the Tailscale admin console. Everyone signs in with a
+   personal login (a personal Google, Apple or Microsoft account), not a work one: a work
+   login joins the employer's network instead. Tell iPhone users that an iPhone runs one VPN
+   at a time, so turning on Tailscale turns off any other VPN (a work VPN, a privacy app).
+3. **Rename the Mac first.** The portal's address and its HTTPS certificate use the machine's
+   name, and certificate names are public. In the Tailscale admin console, Machines > the Mac
+   > Edit machine name, or run `tailscale set --hostname=butler`. Then, in the admin
+   console's DNS page, they turn on MagicDNS and HTTPS certificates.
+4. Run `tailscale serve --bg 8787`. Put the address it prints in `portal.url`.
+5. Put each adult's Tailscale login in `portal.allowed_logins`, and map it to a name in
    `portal.people`.
-5. Check from their phone: the address opens the portal. On iPhone, Share > Add to Home
+6. Check from their phone: the address opens the portal. On iPhone, Share > Add to Home
    Screen gives it an icon.
 
 ## Where am I?

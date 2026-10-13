@@ -28,7 +28,7 @@ class WrapTest(unittest.TestCase):
         return out
 
     def test_first_run_fits_80_columns(self):
-        proc = self.home.first_run(["", "", "sam@example.com", "", *LESSONS])
+        proc = self.home.first_run(["", "", "", "sam@example.com", "", *LESSONS])
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         for line in self.lines(proc.stdout):
             if " " not in line.strip() or line.startswith("(dry run)"):   # a URL or path stays whole
@@ -36,7 +36,7 @@ class WrapTest(unittest.TestCase):
             self.assertLessEqual(len(line), 80, repr(line))
 
     def test_commands_in_sentences_stay_whole(self):
-        proc = self.home.first_run(["", "", "skip", *LESSONS[:3], ""])
+        proc = self.home.first_run(["", "", "", "skip", *LESSONS[:3], ""])
         for line in self.lines(proc.stdout):
             self.assertFalse(line.rstrip().endswith(" butler") or line.rstrip() == "butler",
                              f"a command was split after 'butler': {line!r}")
