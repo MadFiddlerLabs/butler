@@ -251,12 +251,18 @@ The win: the portal on their phone, for their household only.
 1. Explain in two sentences: Tailscale is a private network between their own devices.
    Nothing on the internet can reach the portal.
 2. They install Tailscale on the Mac and each phone, signed in to the same account, and
-   invite the other adults from the Tailscale admin console. In the admin console's DNS page
-   they turn on MagicDNS and HTTPS certificates.
-3. Run `tailscale serve --bg 8787`. Put the address it prints in `portal.url`.
-4. Put each adult's Tailscale login in `portal.allowed_logins`, and map it to a name in
+   invite the other adults from the Tailscale admin console. Everyone signs in with a
+   personal login (a personal Google, Apple or Microsoft account), not a work one: a work
+   login joins the employer's network instead. Tell iPhone users that an iPhone runs one VPN
+   at a time, so turning on Tailscale turns off any other VPN (a work VPN, a privacy app).
+3. **Rename the Mac first.** The portal's address and its HTTPS certificate use the machine's
+   name, and certificate names are public. In the Tailscale admin console, Machines > the Mac
+   > Edit machine name, or run `tailscale set --hostname=butler`. Then, in the admin
+   console's DNS page, they turn on MagicDNS and HTTPS certificates.
+4. Run `tailscale serve --bg 8787`. Put the address it prints in `portal.url`.
+5. Put each adult's Tailscale login in `portal.allowed_logins`, and map it to a name in
    `portal.people`.
-5. Check from their phone: the address opens the portal. On iPhone, Share > Add to Home
+6. Check from their phone: the address opens the portal. On iPhone, Share > Add to Home
    Screen gives it an icon.
 
 ## Where am I?
