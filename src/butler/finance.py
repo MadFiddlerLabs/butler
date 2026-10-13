@@ -182,7 +182,8 @@ class Summary:
     over_pace: list[tuple[str, float, float]]
     unbudgeted: list[tuple[str, float]]
     last7: float
-    prior_weekly_avg: float
+    prior_weekly_avg: float     # a week's daily spending, over the days before the last seven
+    prior_days: int             # those days: 28, fewer for a new household, 0 under a week
     draw_mtd: float
     funding_mtd: float
     rental_mtd: float
@@ -202,7 +203,7 @@ class Summary:
     managed_fee_rate: float
     managed_balance: float
     savings_balance: float | None
-    draw_monthly: float
+    draw_monthly: float         # 0 until there's a full month of draws
     tx_count: int
     fx_rate_plan: float
     txs: list[Tx]
@@ -327,6 +328,12 @@ def _drawer(txs: list[Tx], rules: dict, today: date) -> tuple[float | None, date
     return est, counted
 
 
+def covered_days(start: date, end: date, first: date | None) -> int:
+    """How many days of [start, end] the data covers when its earliest day is `first`. Averages
+    divide by this, not the whole window, so missing history doesn't count as days of zero."""
+    return 0 if first is None else max(0, (end - max(start, first)).days + 1)
+
+
 def summarize(txs: list[Tx], plan: Plan, rules: dict, today: date, since: datetime) -> Summary:
     r = rules["rules"]
     month_start = today.replace(day=1)
@@ -373,6 +380,14 @@ def summarize(txs: list[Tx], plan: Plan, rules: dict, today: date, since: dateti
     week_start = today - timedelta(days=6)
     last7 = sum(t.amount for t in recurring if week_start <= t.day <= today)
     prior = sum(t.amount for t in recurring if week_start - timedelta(days=28) <= t.day < week_start)
+    prior_days = covered_days(week_start - timedelta(days=28), week_start - timedelta(days=1),
+                              min((t.day for t in recurring), default=None))
+    prior_days = prior_days if prior_days >= 7 else 0      # under a week: nothing to compare with
+    # The savings draw per month, from the first draw over at most the last 90 days. Runway needs
+    # a full month of draws, so a first draw last week doesn't promise years of savings.
+    draws = [t for t in txs if t.kind == DRAW]
+    draw_days = covered_days(today - timedelta(days=89), today, min((t.day for t in draws), default=None))
+    draw_total = sum(t.amount for t in draws if today - timedelta(days=89) <= t.day <= today)
 
     def mtd_sum(kind: str) -> float:
         return sum(t.amount for t in txs if t.kind == kind and month_start <= t.day <= today)
@@ -424,7 +439,7 @@ def summarize(txs: list[Tx], plan: Plan, rules: dict, today: date, since: dateti
         daily_by_category=daily_by_cat,
         lumps_due=[(l.item, l.amount_primary(plan.fx_rate)) for l in plan.lumps_due(today.month)],
         pace_fraction=frac, over_pace=over, unbudgeted=unbudgeted,
-        last7=last7, prior_weekly_avg=prior / 4,
+        last7=last7, prior_weekly_avg=prior * 7 / prior_days if prior_days else 0.0, prior_days=prior_days,
         draw_mtd=mtd_sum(DRAW), funding_mtd=mtd_sum(FUNDING), rental_mtd=-mtd_sum(RENTAL),
         one_offs_mtd=[t for t in mtd if t.one_off],
         one_offs_last_month=[t for t in spend if t.one_off
@@ -443,7 +458,7 @@ def summarize(txs: list[Tx], plan: Plan, rules: dict, today: date, since: dateti
         managed_balance=(_snapshot_sum(lambda n: n.startswith(fees["managed_institution"])) or 0.0)
         if fees.get("managed_institution") else 0.0,
         savings_balance=_snapshot_sum(lambda n: n.endswith(r.get("savings_account") or "\0")),
-        draw_monthly=sum(t.amount for t in txs if t.kind == DRAW and today - timedelta(days=89) <= t.day <= today) / 3,
+        draw_monthly=draw_total * 30 / draw_days if draw_days >= 30 else 0.0,
         tx_count=len(txs), fx_rate_plan=plan.fx_rate, txs=txs,
         daily_this_month=daily(month_start, today),
         daily_last_month=daily(last_month_end.replace(day=1), last_month_end),

@@ -146,10 +146,10 @@ def build_month(settings: dict, start: date) -> Month:
     nw = ((snaps[0]["total"], snaps[-1]["total"], date.fromisoformat(snaps[0]["date"]),
            date.fromisoformat(snaps[-1]["date"])) if len(snaps) >= 2 else None)
 
-    # Runway: the savings account (latest snapshot) over the average monthly draw, last 90 days.
-    draws = sum(t.amount for t in m.txs if t.kind == finance.DRAW and end - timedelta(days=89) <= t.day <= end)
+    # Runway: the savings account (latest snapshot) over the monthly draw finance.py averages
+    # from the first draw over the last 90 days; none until there's a full month of draws.
     savings = m.savings_balance
-    runway = savings / (draws / 3) if savings and draws else None
+    runway = savings / m.draw_monthly if savings and m.draw_monthly else None
 
     return Month(start=start, end=end, money=m, done_steps=done, done_reminders=reminders,
                  shopping_done=shopping, time=time_spent, suggestions=_suggestions(m, rules, end),
@@ -269,7 +269,7 @@ def sections(mo: Month, words: dict, by_reply: bool = False) -> list[tuple[str, 
         para.append(f"Net worth: {money(a)} on {f:%-d %b} → {money(b)} on {t:%-d %b} ({money(b - a)}).")
     if mo.runway_months:
         para.append(f"Runway: savings ({money(mo.savings_balance)}) cover about "
-                    f"{mo.runway_months:.0f} months at the last three months' draw.")
+                    f"{mo.runway_months:.0f} months at the recent draw of {money(mo.money.draw_monthly)} a month.")
     out.append(("Where the money went", para))
     if mo.suggestions:
         lines = [f"{s.category}: budget {money(s.budget)}, trend {money(s.trend)} → suggest {money(s.suggested)}"

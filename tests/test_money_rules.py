@@ -329,6 +329,19 @@ class SummaryWindows(unittest.TestCase):
         s = summarize(txs, PLAN, self.RULES, TODAY, SINCE)
         self.assertEqual(s.draw_monthly, 310)
 
+    def test_a_first_draw_divides_by_the_days_since_it(self):
+        # Draws that began 60 days ago: two months of them, not three.
+        txs = [spend(1, TODAY - timedelta(days=59), "To Everyday", 400, kind=DRAW),
+               spend(2, TODAY - timedelta(days=29), "To Everyday", 400, kind=DRAW)]
+        self.assertEqual(summarize(txs, PLAN, self.RULES, TODAY, SINCE).draw_monthly, 400)
+
+    def test_runway_waits_for_a_full_month_of_draws(self):
+        month = [spend(1, TODAY - timedelta(days=29), "To Everyday", 500, kind=DRAW)]   # 30 days
+        short = [spend(1, TODAY - timedelta(days=28), "To Everyday", 500, kind=DRAW)]   # 29 days
+        self.assertEqual(summarize(month, PLAN, self.RULES, TODAY, SINCE).draw_monthly, 500)
+        self.assertEqual(summarize(short, PLAN, self.RULES, TODAY, SINCE).draw_monthly, 0)
+        self.assertEqual(summarize([], PLAN, self.RULES, TODAY, SINCE).draw_monthly, 0)
+
     def test_cash_over_the_last_eight_weeks(self):
         txs = [spend(1, TODAY - timedelta(days=56), "ATM", 400, kind=CASH_TOPUP),   # outside
                spend(2, TODAY - timedelta(days=55), "ATM", 200, kind=CASH_TOPUP),
@@ -370,6 +383,35 @@ class SummaryWindows(unittest.TestCase):
                spend(5, date(2026, 9, 15), "Grocer", 1000)]       # too early for either
         s = summarize(txs, PLAN, PLAN_RULES, TODAY, SINCE)
         self.assertEqual((s.last7, s.prior_weekly_avg), (30, 75))
+
+    def test_a_short_history_averages_over_the_days_it_covers(self):
+        # Daily spending began on 1 October: 13 days before the last seven, so 130 is 70 a week.
+        txs = [spend(1, date(2026, 10, 1), "Grocer", 60),
+               spend(2, date(2026, 10, 13), "Grocer", 70),
+               spend(3, date(2026, 9, 1), "Sofa Shop", 900, one_off=True),     # one-offs don't start it
+               spend(4, date(2026, 9, 1), "School", 90, fixed=True),           # nor fixed lines
+               spend(5, TODAY, "Grocer", 20)]
+        s = summarize(txs, PLAN, PLAN_RULES, TODAY, SINCE)
+        self.assertEqual((s.prior_weekly_avg, s.prior_days), (70, 13))
+
+    def test_under_a_week_of_history_has_no_weekly_average(self):
+        week = [spend(1, date(2026, 10, 7), "Grocer", 40), spend(2, TODAY, "Grocer", 20)]
+        days = [spend(1, date(2026, 10, 8), "Grocer", 40), spend(2, TODAY, "Grocer", 20)]
+        s = summarize(week, PLAN, PLAN_RULES, TODAY, SINCE)
+        self.assertEqual((s.prior_weekly_avg, s.prior_days), (40, 7))
+        s = summarize(days, PLAN, PLAN_RULES, TODAY, SINCE)
+        self.assertEqual((s.prior_weekly_avg, s.prior_days), (0, 0))
+        s = summarize([], PLAN, PLAN_RULES, TODAY, SINCE)
+        self.assertEqual((s.prior_weekly_avg, s.prior_days), (0, 0))
+
+    def test_covered_days_counts_both_ends_from_the_first_day(self):
+        start, end = date(2026, 9, 1), date(2026, 9, 30)
+        self.assertEqual(finance.covered_days(start, end, date(2026, 8, 1)), 30)
+        self.assertEqual(finance.covered_days(start, end, start), 30)
+        self.assertEqual(finance.covered_days(start, end, date(2026, 9, 21)), 10)
+        self.assertEqual(finance.covered_days(start, end, end), 1)
+        self.assertEqual(finance.covered_days(start, end, date(2026, 10, 2)), 0)
+        self.assertEqual(finance.covered_days(start, end, None), 0)
 
     def test_last_months_one_offs_and_this_months_unmapped(self):
         txs = [spend(1, date(2026, 9, 1), "Sofa Shop", 700, one_off=True),

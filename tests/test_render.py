@@ -35,5 +35,24 @@ class DrawerLineTest(unittest.TestCase):
         self.assertNotIn("is due", drawer(400, self.THURSDAY))
 
 
+
+def trend(last7: float, avg: float, days: int) -> str:
+    return render.trend_text(SimpleNamespace(last7=last7, prior_weekly_avg=avg, prior_days=days))
+
+
+class TrendTest(unittest.TestCase):
+    def test_up_down_or_the_same_as_shown(self):
+        self.assertEqual(trend(120, 100, 28), ", up from a €100 weekly average over the previous 4 weeks")
+        self.assertEqual(trend(80, 100, 28), ", down from a €100 weekly average over the previous 4 weeks")
+        # Equal in whole euros, as the line shows them: never "up".
+        self.assertEqual(trend(100.2, 99.8, 28), ", the same as a €100 weekly average over the previous 4 weeks")
+
+    def test_a_short_history_says_how_short(self):
+        self.assertEqual(trend(80, 70, 13), ", up from a €70 weekly average over the 13 days before")
+
+    def test_no_comparison_under_a_week_of_history(self):
+        self.assertEqual(trend(80, 0, 0), "")
+
+
 if __name__ == "__main__":
     unittest.main()

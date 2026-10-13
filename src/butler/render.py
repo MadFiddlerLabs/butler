@@ -205,6 +205,17 @@ def split_lines(m: Summary) -> list[str]:
     return lines
 
 
+def trend_text(m: Summary) -> str:
+    """', down from a €80 weekly average over the previous 4 weeks', compared in whole units as
+    shown. Empty when there's less than a week of history before the last seven days."""
+    if not m.prior_days:
+        return ""
+    now, before = round(m.last7), round(m.prior_weekly_avg)
+    trend = "the same as" if now == before else "down from" if now < before else "up from"
+    span = "the previous 4 weeks" if m.prior_days == 28 else f"the {m.prior_days} days before"
+    return f", {trend} a {money(m.prior_weekly_avg)} weekly average over {span}"
+
+
 def money_lines(m: Summary) -> list[str]:
     """The Money section as plain sentences, shared by the HTML and text emails."""
     lines = []
@@ -228,9 +239,7 @@ def money_lines(m: Summary) -> list[str]:
         lines.append(f"Runway: savings ({money(m.savings_balance)}) cover about "
                      f"{m.savings_balance / m.draw_monthly:.0f} months at the recent draw of "
                      f"{money(m.draw_monthly)} a month.")
-    trend = "down" if m.last7 < m.prior_weekly_avg else "up"
-    lines.append(f"Last 7 days: {money(m.last7)} of daily spending, {trend} from a "
-                 f"{money(m.prior_weekly_avg)} weekly average over the previous 4 weeks.")
+    lines.append(f"Last 7 days: {money(m.last7)} of daily spending" + trend_text(m) + ".")
     flows = []
     if m.draw_mtd:
         flows.append(f"savings draw {money(m.draw_mtd)}")

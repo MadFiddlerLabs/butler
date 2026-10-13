@@ -73,7 +73,7 @@ class Drift:
 class Week:
     last_day: date                  # the letter's day, the last of the week it covers
     week_spend: float               # daily spending, the seven days just ending
-    typical_week: float             # daily spending, weekly average of the 8 weeks before
+    typical_week: float | None      # daily spending, weekly average of up to 8 weeks before
     rows: list[CategoryRow]
     on_track: list[str]
     drift: list[Drift]
@@ -87,13 +87,17 @@ class Week:
     networth: str = ""
 
 
-def _week_numbers(m: Summary, rules: dict, last_day: date) -> tuple[float, float]:
+def _week_numbers(m: Summary, rules: dict, last_day: date) -> tuple[float, float | None]:
+    """Daily spending this week, and a typical week from up to 8 weeks before: averaged over the
+    days the history covers, None with under a week of it."""
     daily = set(rules["rules"]["day_to_day"])
-    spend = [t for t in m.txs if t.kind == SPEND and not t.one_off and t.category in daily]
+    spend = [t for t in m.txs if t.kind == SPEND and not t.one_off and not t.fixed and t.category in daily]
     first_day = last_day - timedelta(days=6)
     week = sum(t.amount for t in spend if first_day <= t.day <= last_day)
     prior = sum(t.amount for t in spend if first_day - timedelta(days=56) <= t.day < first_day)
-    return week, prior / 8
+    days = finance.covered_days(first_day - timedelta(days=56), first_day - timedelta(days=1),
+                                min((t.day for t in spend), default=None))
+    return week, (prior * 7 / days if days >= 7 else None)
 
 
 def _category_rows(m: Summary, rules: dict) -> tuple[list[CategoryRow], list[str]]:
@@ -266,7 +270,7 @@ def write(settings: dict, w: Week, ps: list[projects.Project]) -> dict:
         "currency": primary_code(),
         "week_ending": w.last_day.isoformat(),
         "daily_spending_this_week": round(w.week_spend),
-        "daily_spending_typical_week": round(w.typical_week),
+        "daily_spending_typical_week": round(w.typical_week) if w.typical_week is not None else None,
         "month": f"{w.last_day:%B}",
         "month_spent": round(m.mtd_total),
         "fixed_monthly_spent": round(sum(e for _, e in m.fixed_paid)),
@@ -378,8 +382,8 @@ def sections(w: Week, words: dict) -> list[tuple[str, list[str]]]:
 
     from .render import drawer_lines, split_lines
     para = ([w.networth] if w.networth else []) + [
-        f"Daily spending this week: {money(w.week_spend)}, against a typical "
-        f"{money(w.typical_week)}."] + split_lines(m)
+        f"Daily spending this week: {money(w.week_spend)}"
+        + (f", against a typical {money(w.typical_week)}." if w.typical_week is not None else ".")] + split_lines(m)
     for r in w.rows:
         para.append(f"{r.category}: {money(r.spent)} spent, ahead of the {money(r.expected)} "
                     f"expected by now (month budget {money(r.budget)}).")
