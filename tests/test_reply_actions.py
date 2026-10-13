@@ -172,7 +172,7 @@ class OtherActions(InAThrowawayHome):
                                side_effect=lambda s, system, prompt, schema: asked.append(prompt) or {"answer": "Friday."}):
             said = self.do("question", "When is the boiler service due?")
         self.assertEqual(said, "Answer: Friday.")
-        facts = json.loads(asked[0].split("Facts: ", 1)[1])
+        facts = json.loads(asked[0].split("<<<facts\n", 1)[1].rsplit("\n>>>", 1)[0])
         self.assertEqual(set(facts), {"projects"})       # what could load, and nothing made up
         self.assertIn("Book the yearly boiler service and send the certificate to the landlord",
                       [p["do"] for p in facts["projects"]])
