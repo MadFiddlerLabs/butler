@@ -142,19 +142,31 @@ The win: the first real morning email, and a daily schedule.
 1. They create a new Gmail account just for the butler. You can't do this for them. Then:
    turn on 2-Step Verification (Google Account > Security), and create an app password at
    myaccount.google.com/apppasswords, named after the butler.
+   If the app password page or the first send fails, the usual causes are:
+   - 2-Step Verification isn't on yet, so the page says the setting isn't available.
+   - The app password was made while signed in to another Google account, not the butler's.
+   - They stored the butler's regular Gmail password instead of the app password.
+   - The account is a work or school account whose admin turned app passwords off, or it uses
+     Advanced Protection. A plain new Gmail account avoids both.
+   - The Gmail password was changed. That revokes every app password, so make a new one and
+     store it again. Tell them this now, so a later password change doesn't surprise them.
 2. Store it: `scripts/store-secret.sh butler-gmail "Your butler's Gmail app password"`.
 3. Ask each adult's email address: the one they'll read and reply from. Fill
    `household.adults[].emails`, `email.recipients` and `email.trusted_senders`, and put the
-   butler's address in `email.sender`.
+   butler's address in `email.sender`. Recommend personal addresses (Gmail, iCloud, Outlook)
+   for `trusted_senders`. Replies count only with a valid email signature (DKIM) from that
+   exact address, and work servers, aliases and forwarding often break it.
 4. **First send.** Ask first. Suggest sending only to the person you're working with: set
    `email.recipients` to them, run `./run.sh daily`, then restore the full list. If it lands
    in spam, they mark it "Not spam" and add the butler to their contacts.
 5. **The schedule.** Ask the send hour (`email.send_hour`). Run `launchd/install.sh`. Then
-   set a daily wake a minute before. This shows a Mac password dialog, and the password
-   never reaches you:
+   set a daily wake a minute before. This needs an administrator's password: a Mac dialog
+   asks for it, and it never reaches you. If their own account isn't an administrator, someone
+   whose account is types theirs:
    `osascript -e 'do shell script "pmset repeat wakeorpoweron MTWRFSU 06:59:00" with administrator privileges'`
    (adjust the time). Tell them: keep the Mac plugged in. A laptop with its lid closed may
-   not wake.
+   not wake. After a restart (an update, a power cut), log back in: the Mac waits at the
+   login screen, and Butler runs only while someone is logged in.
 6. Check: `launchctl list | grep com.buildyourbutler` shows the jobs, and
    `tail -n 5 logs/butler.log` shows a tick within five minutes.
 
