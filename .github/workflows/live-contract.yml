@@ -1,5 +1,6 @@
-# Paid, tiny: one real Claude call per schema through llm._ask_json, so the request shape
-# Butler depends on still works. Needs the ANTHROPIC_API_KEY repository secret.
+# Lunch Money's public v2 spec still matches what Butler calls (free, no token), and one tiny
+# real Claude call per schema through llm._ask_json, so the request shape Butler depends on
+# still works (paid; needs the ANTHROPIC_API_KEY repository secret).
 name: live-contract
 
 on:

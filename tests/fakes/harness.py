@@ -143,6 +143,31 @@ class FakeIMAP:
 # ---------- Lunch Money, weather ----------
 
 _real_urlopen = urllib.request.urlopen
+LUNCH_MONEY = "api.lunchmoney.dev"
+# v2 validates query parameters strictly and answers 400 to any it doesn't know.
+LUNCH_MONEY_PARAMS = {"transactions": {"start_date", "end_date", "limit", "offset"},
+                      "categories": {"format", "is_group"}, "manual_accounts": set(), "plaid_accounts": set()}
+
+
+def _lunch_money(path: str, query: dict, url: str) -> dict:
+    """Lunch Money's v2 API, in the shapes its OpenAPI spec gives (lunchmoney.dev/v2/openapi)."""
+    if path not in LUNCH_MONEY_PARAMS:
+        raise AssertionError(f"unexpected Lunch Money path {path}")
+    unknown = set(query) - LUNCH_MONEY_PARAMS[path]
+    if unknown:
+        raise urllib.error.HTTPError(url, 400, f"unknown query parameters {sorted(unknown)}", {},
+                                     io.BytesIO(b"{}"))
+    if path == "transactions":
+        txs = fixtures.transactions(date.fromisoformat(query["start_date"]), date.fromisoformat(query["end_date"]))
+        offset, limit = int(query.get("offset", 0)), int(query.get("limit", 1000))
+        assert 1 <= limit <= 2000, f"Lunch Money's limit is 1 to 2000, not {limit}"
+        return {"transactions": txs[offset:offset + limit], "has_more": len(txs) > offset + limit}
+    if path == "categories":
+        flat = query.get("format") == "flattened"
+        return {"categories": fixtures.CATEGORIES if flat else fixtures.categories_nested()}
+    if path == "manual_accounts":
+        return {"manual_accounts": fixtures.MANUAL_ACCOUNTS}
+    return {"plaid_accounts": fixtures.PLAID_ACCOUNTS}
 
 
 def fake_urlopen(req, timeout=None, **kwargs):
@@ -153,25 +178,14 @@ def fake_urlopen(req, timeout=None, **kwargs):
         # A fake server a test started on this machine (tests/fakes/account_api.py).
         return _real_urlopen(req, timeout=timeout, **kwargs)
     query = dict(urllib.parse.parse_qsl(parsed.query))
-    service = {"dev.lunchmoney.app": "lunchmoney", "api.open-meteo.com": "weather"}.get(parsed.netloc)
+    service = {LUNCH_MONEY: "lunchmoney", "api.open-meteo.com": "weather"}.get(parsed.netloc)
     if service in DOWN:
         raise urllib.error.HTTPError(url, 503, "Service Unavailable", {}, io.BytesIO(b"{}"))
-    if parsed.netloc == "dev.lunchmoney.app":
+    if parsed.netloc == LUNCH_MONEY:
         auth = req.headers.get("Authorization") if isinstance(req, urllib.request.Request) else None
         assert auth == f"Bearer {fixtures.SECRETS['butler-lunchmoney']}", "Lunch Money call without the token"
-        path = parsed.path.removeprefix("/v1/")
-        if path == "transactions":
-            txs = fixtures.transactions(date.fromisoformat(query["start_date"]), date.fromisoformat(query["end_date"]))
-            offset = int(query.get("offset", 0))
-            body = {"transactions": txs[offset:offset + 500], "has_more": len(txs) > offset + 500}
-        elif path == "categories":
-            body = {"categories": fixtures.CATEGORIES}
-        elif path == "assets":
-            body = {"assets": fixtures.ASSETS}
-        elif path == "plaid_accounts":
-            body = {"plaid_accounts": fixtures.PLAID_ACCOUNTS}
-        else:
-            raise AssertionError(f"unexpected Lunch Money path {path}")
+        assert parsed.path.startswith("/v2/"), f"Lunch Money call off the v2 API: {parsed.path}"
+        body = _lunch_money(parsed.path.removeprefix("/v2/"), query, url)
     elif parsed.netloc == "api.open-meteo.com":
         body = fixtures.WEATHER
     else:

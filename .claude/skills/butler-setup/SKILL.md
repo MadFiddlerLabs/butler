@@ -204,9 +204,9 @@ The win: money in the brief, in three kinds of spending.
    ```
    PYTHONPATH=src .venv/bin/python -c "
    from butler import lunchmoney
-   cats = lunchmoney.get('categories')['categories']
-   print([c['name'] for c in cats if not c.get('is_group')])
-   print([(a['institution_name'], a['name'], a['type']) for a in lunchmoney.get('plaid_accounts')['plaid_accounts']])"
+   print([c['name'] for c in lunchmoney.categories() if not c['is_group']])
+   print([(a['institution_name'], a['name'], a['type']) for a in lunchmoney.plaid_accounts()])
+   print([(a['name'], a['type']) for a in lunchmoney.manual_accounts()])"
    ```
 6. Pull about four months of transactions (`lunchmoney.transactions(start, end)`). Work out
    monthly totals per category and the biggest recurring payees in Python. Don't print
