@@ -494,10 +494,12 @@ def to_html(w: Week, secs: list[tuple[str, list[str]]], image_src=lambda n: f"ci
     return "\n".join(parts)
 
 
-def to_text(w: Week, secs: list[tuple[str, list[str]]]) -> str:
+def to_text(w: Week, secs: list[tuple[str, list[str]]], banner: str = "") -> str:
     from .render import one_off_note
     lines = [f"Your week. Week ending {w.last_day:%A} {w.last_day.day} {w.last_day:%B %Y}",
              f"Open {brand()}: {portal_url()}" if portal_url() else "", ""]
+    if banner:
+        lines += [banner, ""]
     for heading, paras in secs:
         lines += [heading.upper()] + [f"  {p}" for p in paras]
         if heading == "Money" and one_off_note(w.money):
@@ -530,7 +532,9 @@ def preview_to_portal(settings: dict, last_day: date) -> str:
     return stem
 
 
-def run(settings: dict, last_day: date, dry_run: bool) -> None:
+def run(settings: dict, last_day: date, dry_run: bool, late: str = "") -> None:
+    """Builds the letter for the week ending `last_day` and sends it. `late` is a line saying it
+    comes late (tick.py's catch-up), shown at the top."""
     ps = projects.load()
     w = build_week(settings, last_day)
     words = write(settings, w, ps)
@@ -545,14 +549,14 @@ def run(settings: dict, last_day: date, dry_run: bool) -> None:
     folder.mkdir(parents=True, exist_ok=True)
     for name, png in imgs.items():
         (folder / f"{stem}-{name}.png").write_bytes(png)
-    (folder / f"{stem}.html").write_text(to_html(w, secs, lambda n: f"{stem}-{n}.png"))
-    text = to_text(w, secs)
+    (folder / f"{stem}.html").write_text(to_html(w, secs, lambda n: f"{stem}-{n}.png", late))
+    text = to_text(w, secs, late)
     (folder / f"{stem}.txt").write_text(text)
     if dry_run:
         log.info("weekly dry run: wrote out/preview/%s.html", stem)
         return
     mailer.send_or_queue(settings, stem, f"{brand(settings)} · your week ahead, {last_day + timedelta(days=1):%-d %B}",
-                         text, to_html(w, secs), images=imgs)
+                         text, to_html(w, secs, banner=late), images=imgs)
     asked = json.loads(QUESTIONS.read_text()) if QUESTIONS.exists() else {}
     asked.update({qid: {"payee": payee, "text": q, "asked": last_day.isoformat()}
                   for qid, q, payee in w.questions})
