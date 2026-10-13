@@ -142,33 +142,73 @@ TRANSACTIONS = [
 
 
 def transactions(start: date, end: date) -> list[dict]:
+    """Transactions as Lunch Money's v2 API returns them: category and account by id only."""
+    category = {c["name"]: c["id"] for c in CATEGORIES if not c["is_group"]}
+    plaid = {a["name"]: a["id"] for a in PLAID_ACCOUNTS}
+    manual = {a["name"]: a["id"] for a in MANUAL_ACCOUNTS}
     out = []
-    for i, (back, payee, amount, category, account) in enumerate(TRANSACTIONS):
+    for i, (back, payee, amount, name, account) in enumerate(TRANSACTIONS):
         day = end - timedelta(days=back)
         if not start <= day <= end:
             continue
-        out.append({"id": 1000 + i, "date": day.isoformat(), "created_at": f"{day}T09:00:00Z",
-                    "payee": payee, "amount": f"{amount:.2f}", "currency": "eur",
-                    "to_base": amount, "category_name": category, "plaid_account_name": account,
-                    "institution_name": "Banco Exemplo", "status": "cleared", "is_income": False,
-                    "exclude_from_totals": False, "recurring_id": None})
+        out.append({"id": 1000 + i, "date": day.isoformat(), "amount": f"{amount:.4f}", "currency": "eur",
+                    "to_base": amount, "recurring_id": None, "payee": payee, "original_name": payee,
+                    "category_id": category.get(name), "notes": None, "status": "reviewed",
+                    "is_pending": False, "created_at": f"{day}T09:00:00.000Z",
+                    "updated_at": f"{day}T09:00:00.000Z", "split_parent_id": None,
+                    "is_group_parent": False, "group_parent_id": None,
+                    "manual_account_id": manual.get(account), "plaid_account_id": plaid.get(account),
+                    "tag_ids": [], "source": "plaid", "external_id": None})
     return out
 
 
-CATEGORIES = [{"id": i, "name": n, "is_group": False} for i, n in enumerate(
-    ["Groceries", "Restaurants", "Rent, Mortgage", "Utilities", "Transportation", "Childcare",
-     "Health", "Subscriptions", "Household"], start=1)]
+def _category(cid: int, name: str, group_id: int | None = None, is_group: bool = False) -> dict:
+    return {"id": cid, "name": name, "description": None, "is_income": False, "exclude_from_budget": False,
+            "exclude_from_totals": False, "updated_at": "2026-01-05T10:00:00.000Z",
+            "created_at": "2026-01-05T10:00:00.000Z", "group_id": group_id, "is_group": is_group,
+            "archived": False, "archived_at": None, "order": None, "collapsed": False}
 
-ASSETS = [{"id": 1, "name": "Cash drawer", "type_name": "cash", "currency": "eur", "balance": "120.00",
-           "to_base": 120.0, "closed_on": None}]
+
+# v2's flattened format: grouped categories sit at the top level too, with their group_id.
+CATEGORIES = [_category(i, n) for i, n in enumerate(
+    ["Groceries", "Restaurants", "Rent, Mortgage", "Transportation", "Childcare",
+     "Health", "Subscriptions"], start=1)] + [
+    _category(20, "Home", is_group=True),
+    _category(21, "Utilities", group_id=20),
+    _category(22, "Household", group_id=20)]
+
+
+def categories_nested() -> list[dict]:
+    """v2's default format: grouped categories only inside their group's children."""
+    top = [dict(c) for c in CATEGORIES if c["group_id"] is None]
+    for group in top:
+        group["children"] = [c for c in CATEGORIES if c["group_id"] == group["id"]]
+    return top
+
+
+MANUAL_ACCOUNTS = [
+    {"id": 1, "name": "Cash drawer", "institution_name": None, "display_name": "Cash drawer", "type": "cash",
+     "subtype": None, "balance": "120.0000", "currency": "eur", "to_base": 120.0,
+     "balance_as_of": "2026-01-05T10:00:00.000Z", "status": "active", "closed_on": None, "external_id": None,
+     "exclude_from_transactions": False, "created_by_name": "Sam",
+     "created_at": "2026-01-05T10:00:00.000Z", "updated_at": "2026-01-05T10:00:00.000Z"}]
+
+
+def _plaid(pid: int, name: str, institution: str, kind: str, currency: str, balance: float, to_base: float,
+           mask: str) -> dict:
+    return {"id": pid, "plaid_item_id": "item-invented-1", "date_linked": "2026-01-05", "linked_by_name": "Sam",
+            "name": name, "display_name": f"{institution} {name}", "type": kind, "subtype": None,
+            "mask": mask, "institution_name": institution, "status": "active",
+            "allow_transaction_modifications": False, "limit": None, "balance": f"{balance:.4f}",
+            "currency": currency, "to_base": to_base, "balance_last_update": "2026-01-05T10:00:00.000Z",
+            "import_start_date": "2026-01-01", "last_import": None, "last_fetch": None,
+            "plaid_last_successful_update": None}
+
 
 PLAID_ACCOUNTS = [
-    {"id": 11, "name": "Everyday Checking", "institution_name": "Banco Exemplo", "type": "depository",
-     "status": "active", "currency": "eur", "balance": "4210.55", "to_base": 4210.55, "mask": "0001"},
-    {"id": 12, "name": "Savings", "institution_name": "Banco Exemplo", "type": "depository",
-     "status": "active", "currency": "eur", "balance": "18000.00", "to_base": 18000.0, "mask": "0002"},
-    {"id": 13, "name": "Brokerage", "institution_name": "Example Brokerage", "type": "investment",
-     "status": "active", "currency": "usd", "balance": "52000.00", "to_base": 44720.0, "mask": "0003"},
+    _plaid(11, "Everyday Checking", "Banco Exemplo", "depository", "eur", 4210.55, 4210.55, "0001"),
+    _plaid(12, "Savings", "Banco Exemplo", "depository", "eur", 18000.0, 18000.0, "0002"),
+    _plaid(13, "Brokerage", "Example Brokerage", "investment", "usd", 52000.0, 44720.0, "0003"),
 ]
 
 WEATHER = {"daily": {"temperature_2m_max": [24.2], "temperature_2m_min": [15.6],

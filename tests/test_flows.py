@@ -139,9 +139,14 @@ class FullHouseholdTest(unittest.TestCase):
 
     def test_every_portal_page_loads(self):
         for route, r in self.portal["portal"].items():
-            if route.startswith("GET"):
+            if route.startswith("GET") and not route.endswith("unpaired"):
                 self.assertIn(r["status"], (200, 302), route)
         self.assertEqual(self.portal["portal"]["GET /"]["status"], 302)
+
+    def test_a_browser_without_a_device_key_is_sent_to_pair(self):
+        unpaired = self.portal["portal"]["GET /info unpaired"]
+        self.assertEqual(unpaired["status"], 303)
+        self.assertIn("/pair", unpaired["body"])
 
     def test_portal_changes_go_through_and_cross_site_posts_dont(self):
         p = self.portal["portal"]

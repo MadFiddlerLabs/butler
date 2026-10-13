@@ -13,7 +13,7 @@ fails, it opens a GitHub issue.
 | Properties | `tests/test_money_properties.py` | Every push | Money invariants that must hold for any input Hypothesis generates: the three kinds of spending add up and never overlap, one-offs never enter the daily pace, order doesn't matter, ledgers stay apart, the cash drawer, budget changes by reply, exchange-rate moves split from real ones, amounts formatted both ways |
 | Integration | `tests/test_flows.py` | Every push | Any email flow breaking end to end: the brief, replies, the weekly letter, the monthly look-back, every portal page |
 | Failure isolation | `tests/test_failures.py` | Every push | One service down (Lunch Money, the weather, the news, Claude, the Calendar helper, Gmail's SMTP or IMAP) taking the whole brief with it, a vague message where the brief should say "couldn't load" or "not connected yet", a log that doesn't say why, a refused send lost or rebuilt (with new Claude calls) instead of re-sent from the outbox, retries that don't back off, a failing letter stopping the brief; a failing reply sent to Claude more than three times, or its actions repeated because the confirmation was refused; an update's brief check passing a release that crashes, or failing one because a service is down |
-| Security | `tests/test_security.py` | Every push | Fuzzed with hostile input: a forged or misplaced DKIM result passing, a stranger's reply reaching Claude, one mail in an unknown charset stopping every reply after it, a reply doing anything off the allowlist, a payee or calendar title escaping its marked data block in a reply prompt, a link or address from a stranger's invite reaching an email through what Claude wrote, the portal gate letting in a wrong host, login or origin, another page framing the portal, a second listener, the news call seeing the household, an unsigned or tampered update installing |
+| Security | `tests/test_security.py` | Every push | Fuzzed with hostile input: a forged or misplaced DKIM result passing, a stranger's reply reaching Claude, one mail in an unknown charset stopping every reply after it, a reply doing anything off the allowlist, a payee or calendar title escaping its marked data block in a reply prompt, a link or address from a stranger's invite reaching an email through what Claude wrote, the portal gate letting in a wrong host, login or origin, or another account on the Mac with forged login headers and no paired browser's device key, another page framing the portal, a second listener, the news call seeing the household, an unsigned or tampered update installing; a secret on a command line, where every account on the Mac sees it in the process list (a scan of the scripts and Python, and the Keychain helper round-tripping any secret through stdin) |
 | Privacy | `tests/test_privacy.py` | Every push | An ID number, phone or secret reaching an email, a prompt, a log or a file; household details reaching the news call |
 | Account contract | `tests/test_account_contract.py` | Every push | The fake account API drifting from `docs/ACCOUNTS.md`, or the setup app calling something the contract doesn't have |
 | Dependency lock | `tests/test_packaging.py` (`LockTest`), and `scripts/lock.sh --check` in `tests.yml` | Every push | `requirements.txt` changing without `requirements.lock`, a package without hashes, bootstrap installing anything but the lock with hashes required, uv not pinned by checksum, CI testing other versions than the lock's |
@@ -26,7 +26,7 @@ fails, it opens a GitHub issue.
 | macOS end to end | `tests/e2e/macos.sh`, `tests/e2e/update.sh` | Every push; weekly with the hosted installer | The installer, the pinned uv and its Python, the locked packages, the first preview, the helper build and signature, launchd plists, shell scripts; updates with the real Installer, including a release that loads but breaks the brief |
 | Signed update | `tests/e2e/signed-update.sh` | Before every release is published (release.yml), and by hand for a candidate | A signed, notarized release that the latest published one, or the oldest still offered an update, refuses or breaks on: the household's files, the version, the health check, tampered packages |
 | Skill evals | `tests/evals/run_evals.py` | Weekly and on demand (paid) | `/butler-setup install` and `/butler-doctor` not doing their job; Claude repeating or storing a pasted secret; Claude sending email |
-| Live contract | `tests/live/live_contract.py` | Weekly and on demand (paid) | The Claude API no longer accepting Butler's request shape (model, beta, fallbacks, thinking, effort, JSON schema) |
+| Live contract | `tests/live/live_contract.py` | Weekly and on demand (the Claude part is paid) | Lunch Money's v2 spec dropping Butler's base URL, a query parameter Butler sends or a field it reads; the Claude API no longer accepting Butler's request shape (model, beta, fallbacks, thinking, effort, JSON schema) |
 | Model check | `scripts/model_check.py`, tested by `tests/test_model_check.py` | On demand only (paid, at most $5 a run) | Not a pass or fail: a report for choosing the default model. Each of Butler's Claude calls (news, prep notes and the phrase of the day, the weekly letter, the monthly look-back, a reply plan and a reply answer) runs on the invented Johnsons with each candidate model. Claude Opus 5.5 grades every output blind against the rules in `CLAUDE.md`, and the report gives each model's scores, tokens, cost and estimated cost per household per month |
 
 ## How the fakes work
@@ -44,7 +44,11 @@ repo is never touched. Inside it:
 - **Gmail:** a recording SMTP server and an IMAP server holding invented replies, with
   Gmail-style `Authentication-Results` headers.
 - **Lunch Money and Open-Meteo:** answered from `tests/fakes/fixtures.py`, dated relative to
-  the day the test runs.
+  the day the test runs. The Lunch Money fake serves the v2 API's shapes and refuses query
+  parameters v2 doesn't list, as the real one does. `tests/fixtures/lunchmoney_v2.json` is a
+  trimmed copy of the v2 OpenAPI spec; `test_contracts.py` checks the client, the fake and the
+  fixtures against it, and the live contract checks it against the real spec. Refresh it with
+  `PYTHONPATH=src python tests/fakes/lunchmoney_v2.py`.
 - **News:** invented stories, one carrying a prompt injection.
 - **Calendar and Reminders:** a stub `butler-ek` that logs every call and refuses any command
   the real helper doesn't have.
@@ -99,7 +103,7 @@ BUTLER_COVERAGE_DIR=$PWD PYTHONPATH=src python -m coverage run -m unittest disco
 pip install -r requirements-mutation.txt && mutmut run && mutmut results # mutation testing (Linux or macOS)
 tests/e2e/macos.sh                                        # on a Mac; installs into a temp folder
 ANTHROPIC_API_KEY=... python tests/evals/run_evals.py     # paid: skill evals
-ANTHROPIC_API_KEY=... PYTHONPATH=src python tests/live/live_contract.py   # paid: live contract
+ANTHROPIC_API_KEY=... PYTHONPATH=src python tests/live/live_contract.py   # live contract (Claude part paid)
 ANTHROPIC_API_KEY=... python scripts/model_check.py      # paid, at most $5: compare models
 ```
 

@@ -37,7 +37,9 @@ one sentence, and offer the next step.
    goes straight into Keychain. If the dialog is cancelled or doesn't open, still never ask for
    the secret in the chat: offer to open the dialog again, or give them
    `security add-generic-password -U -s <service> -a butler -w` to run themselves with the `!`
-   prefix (it asks for the value without showing it). If they paste a secret into the chat
+   prefix. With `-w` last and no value after it, it asks for the value twice without showing
+   it. Never put the value on that line: a command line shows in the Mac's process list, where
+   other accounts can read it. If they paste a secret into the chat
    anyway, don't repeat it. Tell them to store it with the dialog and to make a new one,
    because chats are kept.
 2. **No ID numbers** (passport, residence, tax, health) in settings, notes or prompts. They
@@ -204,9 +206,9 @@ The win: money in the brief, in three kinds of spending.
    ```
    PYTHONPATH=src .venv/bin/python -c "
    from butler import lunchmoney
-   cats = lunchmoney.get('categories')['categories']
-   print([c['name'] for c in cats if not c.get('is_group')])
-   print([(a['institution_name'], a['name'], a['type']) for a in lunchmoney.get('plaid_accounts')['plaid_accounts']])"
+   print([c['name'] for c in lunchmoney.categories() if not c['is_group']])
+   print([(a['institution_name'], a['name'], a['type']) for a in lunchmoney.plaid_accounts()])
+   print([(a['name'], a['type']) for a in lunchmoney.manual_accounts()])"
    ```
 6. Pull about four months of transactions (`lunchmoney.transactions(start, end)`). Work out
    monthly totals per category and the biggest recurring payees in Python. Don't print
@@ -285,8 +287,16 @@ The win: the portal on their phone, for their household only.
 4. Run `tailscale serve --bg 8787`. Put the address it prints in `portal.url`.
 5. Put each adult's Tailscale login in `portal.allowed_logins`, and map it to a name in
    `portal.people`.
-6. Check from their phone: the address opens the portal. On iPhone, Share > Add to Home
-   Screen gives it an icon.
+6. Explain in one sentence: the portal opens only in browsers they've paired, so other
+   accounts on the Mac can't read it. Run `bin/butler portal`: it opens the portal in the
+   Mac's browser, already paired, and never prints the one-time code.
+7. Pair each phone. On the iPhone, first open the address in Safari and use Share > Add to
+   Home Screen, then open the portal from the new icon: the icon keeps its own pairing, apart
+   from Safari. On the Mac, in the portal, they open Devices > Add a phone or browser, and type
+   the code it shows on the phone. Don't ask for the code and don't read it from the screen:
+   it's a key, so it stays out of the chat. A code works once, within 10 minutes; make a new
+   one if it runs out.
+8. Check from their phone: the address opens the portal, not the pairing page.
 
 ## Where am I?
 

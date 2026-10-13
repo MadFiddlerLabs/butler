@@ -1,3 +1,4 @@
+import re
 import subprocess
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -7,8 +8,9 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 BUTLER_EK = ROOT / "bin" / "butler-ek"
 
-# Keychain service names. Add them with:
-#   security add-generic-password -s <service> -a butler -w
+# Keychain service names. Add them with scripts/store-secret.sh, or by hand with this, which asks
+# for the value (twice) instead of taking it on the command line:
+#   security add-generic-password -U -s <service> -a butler -w
 KEYCHAIN_GMAIL = "butler-gmail"
 KEYCHAIN_ANTHROPIC = "butler-anthropic"
 
@@ -74,6 +76,17 @@ def keychain(service: str) -> str | None:
     if result.returncode != 0:
         return None
     return result.stdout.strip() or None
+
+
+def store_secret(service: str, secret: str) -> None:
+    """Saves a secret in the login Keychain. Never on a command line, where any account on this
+    Mac can read it in the process list: `security -i` reads its command from stdin, and the
+    secret travels in it hex-encoded (-X), so no character in it can break the command.
+    scripts/lib/keychain.sh does the same for the shell scripts."""
+    if not re.fullmatch(r"butler-[a-z]+", service):
+        raise ValueError(f"not a Butler Keychain service: {service}")
+    command = f"add-generic-password -U -s {service} -a butler -X {secret.encode().hex()}\n"
+    subprocess.run(["security", "-i"], input=command, text=True, check=True, capture_output=True)
 
 
 def portal_url(settings: dict | None = None) -> str:

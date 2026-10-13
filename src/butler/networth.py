@@ -16,9 +16,9 @@ from .config import ROOT
 from .fmt import money, name, primary_code, second_code, second_money
 
 SNAPSHOTS = ROOT / "data" / "networth.jsonl"
-LIABILITY_TYPES = {"credit", "loan"}
+LIABILITY_TYPES = {"credit", "loan", "other liability"}
 NEW, GONE = "newly added to Lunch Money", "not in Lunch Money today"
-KIND = {"investment": "investments", "depository": "cash", "credit": "card balance",
+KIND = {"investment": "investments", "depository": "cash", "cash": "cash", "credit": "card balance",
         "real estate": "property value", "other asset": "asset value"}
 
 
@@ -42,12 +42,12 @@ class Change:
 
 def _accounts() -> list[dict]:
     rows = []
-    for a in lunchmoney.get("assets")["assets"]:
-        if a.get("closed_on"):
+    for a in lunchmoney.manual_accounts():
+        if a.get("closed_on") or a.get("status") == "closed":
             continue
-        rows.append({"name": a["name"], "type": a.get("type_name") or "", "currency": a["currency"],
+        rows.append({"name": a["name"], "type": a.get("type") or "", "currency": a["currency"],
                      "balance": float(a["balance"]), "value": float(a.get("to_base") or 0)})
-    plaid = [p for p in lunchmoney.get("plaid_accounts")["plaid_accounts"] if p.get("status") == "active"]
+    plaid = [p for p in lunchmoney.plaid_accounts() if p.get("status") == "active"]
     names = [f'{p.get("institution_name") or ""} {p["name"]}'.strip() for p in plaid]
     for p, label in zip(plaid, names):
         if names.count(label) > 1:         # e.g. two "Joint" accounts at one broker

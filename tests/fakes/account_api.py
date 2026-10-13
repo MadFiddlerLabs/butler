@@ -53,6 +53,7 @@ class FakeAccountAPI:
         self.prefs: list[dict] = []
         self.calls: list[tuple[str, str, dict]] = []
         self.links: list[str] = []               # magic-link tokens "emailed"
+        self.issued: list[str] = []              # every poll secret and session token handed out
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
         self.url = f"http://127.0.0.1:{self._server.server_address[1]}"
 
@@ -157,6 +158,7 @@ class FakeAccountAPI:
                                                 "terms_accepted_at": body.get("terms_accepted_at"),
                                                 "heard": heard}
                     api.links.append(link)
+                    api.issued.append(poll_secret)
                     if api.auto_verify:
                         api._verify(link)
                     return self._send(200, {"request_id": request_id, "poll_secret": poll_secret,
@@ -176,6 +178,7 @@ class FakeAccountAPI:
                     if r["status"] == "verified" and not r["issued"]:
                         r["issued"] = True
                         session = secrets.token_urlsafe(32)
+                        api.issued.append(session)
                         api.sessions[_hash(session)] = r["email"]
                         if r["butler_name"]:
                             api.users.setdefault(r["email"], {})["butler_name"] = r["butler_name"]

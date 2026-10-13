@@ -19,6 +19,7 @@ FLOORS = {
     "replies.py": 92,
     "inbox.py": 90,
     "portal.py": 85,
+    "devices.py": 93,
     "updates.py": 86,
     "progress.py": 94,
     "account.py": 92,

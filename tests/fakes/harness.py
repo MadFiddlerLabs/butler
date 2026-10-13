@@ -143,6 +143,31 @@ class FakeIMAP:
 # ---------- Lunch Money, weather ----------
 
 _real_urlopen = urllib.request.urlopen
+LUNCH_MONEY = "api.lunchmoney.dev"
+# v2 validates query parameters strictly and answers 400 to any it doesn't know.
+LUNCH_MONEY_PARAMS = {"transactions": {"start_date", "end_date", "limit", "offset"},
+                      "categories": {"format", "is_group"}, "manual_accounts": set(), "plaid_accounts": set()}
+
+
+def _lunch_money(path: str, query: dict, url: str) -> dict:
+    """Lunch Money's v2 API, in the shapes its OpenAPI spec gives (lunchmoney.dev/v2/openapi)."""
+    if path not in LUNCH_MONEY_PARAMS:
+        raise AssertionError(f"unexpected Lunch Money path {path}")
+    unknown = set(query) - LUNCH_MONEY_PARAMS[path]
+    if unknown:
+        raise urllib.error.HTTPError(url, 400, f"unknown query parameters {sorted(unknown)}", {},
+                                     io.BytesIO(b"{}"))
+    if path == "transactions":
+        txs = fixtures.transactions(date.fromisoformat(query["start_date"]), date.fromisoformat(query["end_date"]))
+        offset, limit = int(query.get("offset", 0)), int(query.get("limit", 1000))
+        assert 1 <= limit <= 2000, f"Lunch Money's limit is 1 to 2000, not {limit}"
+        return {"transactions": txs[offset:offset + limit], "has_more": len(txs) > offset + limit}
+    if path == "categories":
+        flat = query.get("format") == "flattened"
+        return {"categories": fixtures.CATEGORIES if flat else fixtures.categories_nested()}
+    if path == "manual_accounts":
+        return {"manual_accounts": fixtures.MANUAL_ACCOUNTS}
+    return {"plaid_accounts": fixtures.PLAID_ACCOUNTS}
 
 
 def fake_urlopen(req, timeout=None, **kwargs):
@@ -153,25 +178,14 @@ def fake_urlopen(req, timeout=None, **kwargs):
         # A fake server a test started on this machine (tests/fakes/account_api.py).
         return _real_urlopen(req, timeout=timeout, **kwargs)
     query = dict(urllib.parse.parse_qsl(parsed.query))
-    service = {"dev.lunchmoney.app": "lunchmoney", "api.open-meteo.com": "weather"}.get(parsed.netloc)
+    service = {LUNCH_MONEY: "lunchmoney", "api.open-meteo.com": "weather"}.get(parsed.netloc)
     if service in DOWN:
         raise urllib.error.HTTPError(url, 503, "Service Unavailable", {}, io.BytesIO(b"{}"))
-    if parsed.netloc == "dev.lunchmoney.app":
+    if parsed.netloc == LUNCH_MONEY:
         auth = req.headers.get("Authorization") if isinstance(req, urllib.request.Request) else None
         assert auth == f"Bearer {fixtures.SECRETS['butler-lunchmoney']}", "Lunch Money call without the token"
-        path = parsed.path.removeprefix("/v1/")
-        if path == "transactions":
-            txs = fixtures.transactions(date.fromisoformat(query["start_date"]), date.fromisoformat(query["end_date"]))
-            offset = int(query.get("offset", 0))
-            body = {"transactions": txs[offset:offset + 500], "has_more": len(txs) > offset + 500}
-        elif path == "categories":
-            body = {"categories": fixtures.CATEGORIES}
-        elif path == "assets":
-            body = {"assets": fixtures.ASSETS}
-        elif path == "plaid_accounts":
-            body = {"plaid_accounts": fixtures.PLAID_ACCOUNTS}
-        else:
-            raise AssertionError(f"unexpected Lunch Money path {path}")
+        assert parsed.path.startswith("/v2/"), f"Lunch Money call off the v2 API: {parsed.path}"
+        body = _lunch_money(parsed.path.removeprefix("/v2/"), query, url)
     elif parsed.netloc == "api.open-meteo.com":
         body = fixtures.WEATHER
     else:
@@ -322,9 +336,10 @@ def run(flow: str) -> None:
         from butler import monthly
         monthly.run(settings, (today.replace(day=1) - timedelta(days=1)).replace(day=1), preview=False)
     elif flow == "portal":
-        from butler import portal, projects
-        client = portal.app.test_client()
-        host = {"Host": "127.0.0.1:8787"}
+        from butler import devices, portal, projects
+        client = portal.app.test_client(use_cookies=False)        # each request carries its own Cookie
+        key = devices.pair(devices.new_code(), "Mac, Safari")       # a paired browser on the Mac
+        host = {"Host": "127.0.0.1:8787", "Cookie": f"{devices.COOKIE}={key}"}
         post = {**host, "Origin": "http://127.0.0.1:8787"}
         step = next(s for p in projects.load() for s in p.steps if s.status != "done")
         gets = ["/", f"/brief/{today}", "/week", "/manifest.json", "/month", "/money", "/budget",
@@ -347,6 +362,10 @@ def run(flow: str) -> None:
         r = client.post("/lists/add", data={"list": "Shopping", "title": "x"},
                         headers={**host, "Origin": "https://attacker.example.test"})
         RECORD["portal"]["POST /lists/add cross-site"] = {"status": r.status_code, "cache_control": "", "body": ""}
+        # Another account on the Mac: straight to 127.0.0.1, with no device key.
+        r = client.get("/info", headers={"Host": "127.0.0.1:8787"})
+        RECORD["portal"]["GET /info unpaired"] = {"status": r.status_code, "cache_control": "",
+                                                  "body": r.get_data(as_text=True)}
     elif flow == "tick":
         # What launchd runs every five minutes. The fakes are the network, so the Mac is online.
         from butler import daily, tick

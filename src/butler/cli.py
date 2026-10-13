@@ -9,10 +9,12 @@ a terminal before.
 
 import argparse
 import getpass
+import html
 import logging
 import os
 import shutil
 import re
+import socket
 import subprocess
 import sys
 import textwrap
@@ -279,6 +281,47 @@ def cmd_update(args) -> int:
     return updates.command(args.check, args.yes, say=say)
 
 
+PORTAL_OPENER = ROOT / "data" / "portal-open.html"
+
+
+def _listening(port: int) -> bool:
+    try:
+        socket.create_connection(("127.0.0.1", port), timeout=2).close()
+        return True
+    except OSError:
+        return False
+
+
+def cmd_portal(args) -> int:
+    """Opens the portal in this Mac's browser and pairs that browser on the way. The one-time
+    code travels in a file only this Mac account can read, never on a command line, where other
+    accounts on the Mac could see it."""
+    from . import devices
+    from .config import load_settings
+    port = load_settings()["portal"]["port"]
+    who = _butler(ss.load())
+    if not _listening(port):
+        say("The portal isn't running. Start it with ./run.sh portal, or let launchd/install.sh keep it running.")
+        return 1
+    code = devices.new_code()
+    page = (f'<!doctype html><meta charset="utf-8"><title>Opening {html.escape(who)}</title>'
+            f'<form method="post" action="http://127.0.0.1:{port}/pair">'
+            f'<input type="hidden" name="code" value="{code}"><button>Open {html.escape(who)}</button></form>'
+            "<script>document.forms[0].submit()</script>")
+    PORTAL_OPENER.parent.mkdir(exist_ok=True)
+    PORTAL_OPENER.unlink(missing_ok=True)
+    fd = os.open(PORTAL_OPENER, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(page)
+    if os.environ.get("BUTLER_NO_OPEN"):
+        say(f"The portal is ready to open: {PORTAL_OPENER}")
+        return 0
+    subprocess.run(["open", str(PORTAL_OPENER)], check=False)
+    say(f"{who[0].upper() + who[1:]}'s portal is open in your browser, and this browser is paired. "
+        "To add a phone, open Devices in the portal.")
+    return 0
+
+
 HELP = """The butler command. Each course lesson gives you one line to paste.
 
   butler setup                  the guided first run
@@ -290,6 +333,7 @@ HELP = """The butler command. Each course lesson gives you one line to paste.
   butler progress               what your butler has told the course
   butler claude                 continue in Claude Code
   butler doctor                 check for problems
+  butler portal                 open the portal in this Mac's browser
   butler update                 install a new version, if there is one
 """
 
@@ -310,6 +354,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--yes", action="store_true")
     p.add_argument("--dry-run", action="store_true")
     sub.add_parser("doctor")
+    sub.add_parser("portal")
     p = sub.add_parser("update")
     p.add_argument("--check", action="store_true")
     p.add_argument("--yes", action="store_true")
@@ -321,7 +366,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     handlers = {"name": cmd_name, "town": cmd_town, "adults": cmd_adults, "brief": cmd_brief,
                 "status": cmd_status, "progress": cmd_progress, "claude": cmd_claude, "doctor": cmd_doctor,
-                "update": cmd_update}
+                "update": cmd_update, "portal": cmd_portal}
     if args.cmd not in handlers:
         say(HELP)
         return 0

@@ -19,4 +19,7 @@ uv="$(butler_uv "$root/bin")"
 [ -x .venv/bin/python ] || "$uv" venv --quiet --python 3.13 .venv
 "$uv" pip sync --quiet --python .venv/bin/python --require-hashes --no-build requirements.lock
 mkdir -p data logs out
+# This Mac account only: other accounts can open a home folder's subfolders, and this one holds
+# the household's notes, money and the reference file with its ID numbers.
+chmod 700 "$root"
 echo "Python is ready. Next: ./run.sh preview"

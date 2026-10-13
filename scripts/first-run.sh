@@ -24,6 +24,8 @@ log="$home/logs/setup.log"
 . "$home/scripts/lib/names.sh"
 # shellcheck source-path=SCRIPTDIR source=lib/heard.sh
 . "$home/scripts/lib/heard.sh"
+# shellcheck source-path=SCRIPTDIR source=lib/keychain.sh
+. "$home/scripts/lib/keychain.sh"
 
 # The `butler` command, from any new Terminal window. First, before anything can stop the setup,
 # because every way out says "type: butler setup".
@@ -67,10 +69,16 @@ json_value() {
 }
 post() {
   # post <path> <json> [token]: prints the body, then the HTTP code on the last line.
-  local auth=()
-  [ -n "${3:-}" ] && auth=(-H "Authorization: Bearer $3")
-  curl -sS --max-time 10 -H 'Content-Type: application/json' ${auth[@]+"${auth[@]}"} \
-    -d "$2" -w '\n%{http_code}' "$api$1" 2>>"$log"
+  # The body (it can hold the poll secret) goes in on stdin, and the token through a pipe that
+  # curl reads as a header file, so neither shows in the process list.
+  if [ -n "${3:-}" ]; then
+    printf '%s' "$2" | curl -sS --max-time 10 -H 'Content-Type: application/json' \
+      -H @<(printf 'Authorization: Bearer %s\n' "$3") \
+      --data-binary @- -w '\n%{http_code}' "$api$1" 2>>"$log"
+  else
+    printf '%s' "$2" | curl -sS --max-time 10 -H 'Content-Type: application/json' \
+      --data-binary @- -w '\n%{http_code}' "$api$1" 2>>"$log"
+  fi
 }
 
 # ---------- 1. welcome ----------
@@ -207,7 +215,7 @@ while :; do
     fi
   done
   if [ -n "$token" ]; then
-    security add-generic-password -U -s butler-account -a butler -w "$token" >>"$log" 2>&1 \
+    printf '%s' "$token" | keychain_store butler-account 2>>"$log" \
       || say "I couldn't save your sign-in to Keychain. You can sign in again later with: butler setup"
     post /progress '{"lesson":"setup.email","status":"done"}' "$token" >/dev/null || true
     ok "You're signed in as $email."

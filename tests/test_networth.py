@@ -67,11 +67,15 @@ class NetWorthTest(unittest.TestCase):
 class SnapshotTest(unittest.TestCase):
     """Today's snapshot from Lunch Money's accounts, and comparisons with earlier ones."""
 
-    ASSETS = {"assets": [
-        {"name": "EUR account", "type_name": "cash", "currency": "eur", "balance": "3000", "to_base": "3000"},
-        {"name": "Old card", "type_name": "credit", "currency": "eur", "balance": "50", "to_base": "50",
-         "closed_on": "2026-01-01"},
-        {"name": "Car loan", "type_name": "loan", "currency": "eur", "balance": "8000", "to_base": "8000"}]}
+    MANUAL = {"manual_accounts": [
+        {"name": "EUR account", "type": "cash", "currency": "eur", "balance": "3000", "to_base": 3000,
+         "status": "active", "closed_on": None},
+        {"name": "Old card", "type": "credit", "currency": "eur", "balance": "50", "to_base": 50,
+         "status": "closed", "closed_on": "2026-01-01"},
+        {"name": "Old wallet", "type": "cash", "currency": "eur", "balance": "5", "to_base": 5,
+         "status": "closed", "closed_on": None},
+        {"name": "Car loan", "type": "loan", "currency": "eur", "balance": "8000", "to_base": 8000,
+         "status": "active", "closed_on": None}]}
     PLAID = {"plaid_accounts": [
         {"id": 1, "name": "Joint", "institution_name": "Broker", "mask": "1111", "type": "investment",
          "currency": "usd", "balance": "1000", "to_base": "860", "status": "active"},
@@ -83,7 +87,7 @@ class SnapshotTest(unittest.TestCase):
     def setUp(self):
         self.dir = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.dir, True)
-        answers = {"assets": self.ASSETS, "plaid_accounts": self.PLAID}
+        answers = {"manual_accounts": self.MANUAL, "plaid_accounts": self.PLAID}
         for p in (mock.patch.object(nw, "SNAPSHOTS", self.dir / "networth.jsonl"),
                   mock.patch.object(nw.lunchmoney, "get", side_effect=lambda path: answers[path])):
             p.start()
