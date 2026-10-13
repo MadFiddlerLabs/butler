@@ -142,5 +142,6 @@ version out gradually, set `rollout_percent` there too. See the website's DEPLOY
   - A v0.0.5 whose code loads but whose brief crashes rolls back, on the brief check alone.
   - An unsigned v0.0.4 is refused without the test flag.
 - `tests/e2e/signed-update.sh`, run in release.yml before every release is published: the
-  published release, signed and notarized, updates itself to the signed, notarized candidate with
-  no check relaxed. Tampered copies are refused first. See docs/RELEASING.md.
+  latest release and the oldest still offered an update (`min_version`, else the first signed
+  release), signed and notarized, each update themselves to the signed, notarized candidate
+  with no check relaxed. Tampered copies are refused first. See docs/RELEASING.md.

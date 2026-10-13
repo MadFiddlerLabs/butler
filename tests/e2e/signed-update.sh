@@ -1,6 +1,6 @@
 #!/bin/bash
-# Signed to signed: the update students will really get. Installs the published release (signed,
-# notarized, from GitHub Releases) into this home, adds a household's files, then lets THAT
+# Signed to signed: the update students will really get. Installs a published release (signed,
+# notarized, from GitHub Releases: the latest, or the oldest still offered an update) into this home, adds a household's files, then lets THAT
 # release's own updater install the candidate: a signed, notarized package built by
 # .github/workflows/release.yml. Nothing relaxes a check here: BUTLER_UPDATE_ALLOW_UNSIGNED is
 # never set, and the rollback copy comes from the real GitHub Release.

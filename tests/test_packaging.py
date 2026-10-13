@@ -269,6 +269,19 @@ class ReleaseWorkflowTest(unittest.TestCase):
         steps = " ".join(s.get("run", "") for s in self.jobs["package"]["steps"])
         self.assertNotIn("gh release create", steps, "the package job never publishes")
 
+    def test_signed_update_runs_from_every_origin(self):
+        origins, job = self.jobs["origins"], self.jobs["signed-update"]
+        self.assertIn("origins", job["needs"])
+        self.assertEqual(job["strategy"]["matrix"]["old"], "${{ fromJSON(needs.origins.outputs.versions) }}")
+        self.assertFalse(job["strategy"]["fail-fast"], "each origin reports on its own")
+        self.assertEqual(job["env"]["OLD"], "${{ matrix.old }}")
+        self.assertIn('"$NEW" "$OLD"', " ".join(s.get("run", "") for s in job["steps"]))
+        pick = " ".join(s.get("run", "") for s in origins["steps"])
+        self.assertIn(".github/scripts/update_origins.py", pick)
+        self.assertIn("https://buildyourbutler.com/updates/stable.json", pick)
+        self.assertIn("isPrerelease", pick)
+        self.assertEqual(origins["if"], job["if"])
+
     def test_signed_update_relaxes_nothing(self):
         job = self.jobs["signed-update"]
         steps = " ".join(s.get("run", "") for s in job["steps"])
@@ -276,6 +289,61 @@ class ReleaseWorkflowTest(unittest.TestCase):
         test = (REPO / "tests" / "e2e" / "signed-update.sh").read_text()
         for text in (str(job), test):
             self.assertNotRegex(text, r"BUTLER_UPDATE_ALLOW_UNSIGNED=|BUTLER_RELEASES_URL")
+
+
+class UpdateOriginsTest(unittest.TestCase):
+    """Which published releases a candidate must update from (.github/scripts/update_origins.py)."""
+
+    RELEASES = [{"tagName": t, "isDraft": False, "isPrerelease": False} for t in ("v0.3.1", "v0.3.0", "v0.2.0", "v0.1.0")]
+
+    @classmethod
+    def setUpClass(cls):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("update_origins", REPO / ".github" / "scripts" / "update_origins.py")
+        cls.mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.mod)
+
+    def origins(self, candidate="v0.4.0", releases=None, min_version=None):
+        return self.mod.origins(candidate, self.RELEASES if releases is None else releases,
+                                {"available": True, "version": "v0.3.1", "min_version": min_version})
+
+    def test_the_latest_and_the_first_signed_release(self):
+        self.assertEqual(self.origins(), ["v0.3.1", "v0.1.0"])
+
+    def test_min_version_moves_the_oldest_up(self):
+        self.assertEqual(self.origins(min_version="v0.2.0"), ["v0.3.1", "v0.2.0"])
+        self.assertEqual(self.origins(min_version="v0.2.1"), ["v0.3.1", "v0.3.0"])
+        self.assertEqual(self.origins(min_version="v0.3.1"), ["v0.3.1"], "the same release once")
+        self.assertEqual(self.origins(min_version="v0.9.0"), ["v0.3.1"], "the latest is always tested")
+
+    def test_only_published_signed_releases_older_than_the_candidate(self):
+        releases = self.RELEASES + [{"tagName": "v0.0.0-abc1234", "isDraft": False, "isPrerelease": True},
+                                    {"tagName": "v0.0.9", "isDraft": False, "isPrerelease": True},
+                                    {"tagName": "v0.3.9", "isDraft": True, "isPrerelease": False},
+                                    {"tagName": "v1.0.0", "isDraft": False, "isPrerelease": False},
+                                    {"tagName": "nightly", "isDraft": False, "isPrerelease": False}]
+        self.assertEqual(self.origins("v0.3.2", releases), ["v0.3.1", "v0.1.0"])
+        self.assertEqual(self.origins("v0.1.1"), ["v0.1.0"])
+
+    def test_nothing_to_update_from_is_an_error(self):
+        for candidate, releases in (("v0.3.1", None), ("v0.1.0", None), ("v0.4.0", []), ("main", None)):
+            with self.subTest(candidate=candidate), self.assertRaises(ValueError):
+                self.origins(candidate, releases)
+
+    def test_the_command_prints_json_or_says_why(self):
+        import io
+        import json
+        from contextlib import redirect_stderr, redirect_stdout
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        (tmp / "releases.json").write_text(json.dumps(self.RELEASES))
+        (tmp / "manifest.json").write_text(json.dumps({"min_version": None}))
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            self.assertEqual(self.mod.main(["v0.4.0", str(tmp / "releases.json"), str(tmp / "manifest.json")]), 0)
+            self.assertEqual(self.mod.main(["v0.3.1", str(tmp / "releases.json"), str(tmp / "manifest.json")]), 1)
+        self.assertEqual(json.loads(out.getvalue()), ["v0.3.1", "v0.1.0"])
+        self.assertIn("v0.3.1 is already released", err.getvalue())
 
 
 if __name__ == "__main__":

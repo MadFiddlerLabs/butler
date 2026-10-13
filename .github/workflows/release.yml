@@ -1,7 +1,8 @@
 # Builds the installer package students download: the universal Calendar helper, the package,
-# Developer ID signing, notarization and stapling. Then the published release updates itself to
-# that package, signed to signed (job signed-update), and only after that, on a tag (v*), does
-# the package become a GitHub Release. Run by hand it never publishes: it uploads the package as
+# Developer ID signing, notarization and stapling. Then the published releases update themselves
+# to that package, signed to signed (job signed-update): the latest, and the oldest still offered
+# an update (job origins). Only after both pass, on a tag (v*), does the package become a GitHub
+# Release. Run by hand it never publishes: it uploads the package as
 # a build artifact, and given a version (like v0.2.0) it also runs the signed update to it, so a
 # candidate is proven before it's tagged.
 #
@@ -133,16 +134,49 @@ jobs:
         if: always() && env.SIGNING_KEYCHAIN != ''
         run: security delete-keychain "$SIGNING_KEYCHAIN"
 
-  signed-update:
-    # Signed to signed, with no check relaxed: install the published release from GitHub Releases,
-    # add a household's files, then let that release's own updater install this package. Tampered
-    # copies must be refused first. tests/e2e/signed-update.sh has the details.
+  origins:
+    # The releases installs really update from. Installs skip versions, so not just the latest:
+    # also the oldest still offered an update, the first at or after the website manifest's
+    # min_version, else the first signed release (.github/scripts/update_origins.py).
     needs: package
     if: needs.package.outputs.signed == 'true' && !startsWith(needs.package.outputs.version, 'v0.0.0-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      versions: ${{ steps.pick.outputs.versions }}
+    env:
+      NEW: ${{ needs.package.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: The latest release and the oldest still offered an update
+        id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName,isDraft,isPrerelease > "$RUNNER_TEMP/releases.json"
+          curl -fsSL --retry 3 https://buildyourbutler.com/updates/stable.json > "$RUNNER_TEMP/manifest.json" \
+            || { echo "Couldn't read the update manifest, so min_version is unknown. Run the job again." >&2; exit 1; }
+          versions="$(python3 .github/scripts/update_origins.py "$NEW" "$RUNNER_TEMP/releases.json" "$RUNNER_TEMP/manifest.json")"
+          echo "versions=$versions" >> "$GITHUB_OUTPUT"
+          echo "### Signed update to $NEW from: $versions" >> "$GITHUB_STEP_SUMMARY"
+
+  signed-update:
+    # Signed to signed, with no check relaxed: install a published release from GitHub Releases,
+    # add a household's files, then let that release's own updater install this package. Tampered
+    # copies must be refused first. tests/e2e/signed-update.sh has the details. One runner per
+    # origin, side by side, so testing more origins doesn't make the release slower.
+    needs: [package, origins]
+    if: needs.package.outputs.signed == 'true' && !startsWith(needs.package.outputs.version, 'v0.0.0-')
+    name: signed-update (from ${{ matrix.old }})
+    strategy:
+      fail-fast: false
+      matrix:
+        old: ${{ fromJSON(needs.origins.outputs.versions) }}
     runs-on: macos-latest
     timeout-minutes: 40
     env:
       NEW: ${{ needs.package.outputs.version }}
+      OLD: ${{ matrix.old }}
       PKG_NAME: ${{ needs.package.outputs.pkg }}
     steps:
       - uses: actions/checkout@v4
@@ -150,20 +184,14 @@ jobs:
         with:
           name: butler-pkg-${{ needs.package.outputs.version }}
           path: ${{ runner.temp }}/candidate
-      - name: The release students have now
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          old="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
-          [ "$old" != "$NEW" ] || { echo "$NEW is already the latest release" >&2; exit 1; }
-          echo "OLD=$old" >> "$GITHUB_ENV"
       - name: The published release updates itself to this package
         run: tests/e2e/signed-update.sh "$RUNNER_TEMP/candidate/$PKG_NAME" "$NEW" "$OLD"
       - name: Summary
         run: echo "### Signed to signed, $OLD updated itself to $NEW" >> "$GITHUB_STEP_SUMMARY"
 
   publish:
-    # Tags only. A signed package is published only once signed-update has passed. An unsigned
+    # Tags only. A signed package is published only once signed-update has passed from every
+    # origin (a matrix succeeds only when all its runs do). An unsigned
     # one (secrets missing) goes out only as a prerelease, which students never get.
     needs: [package, signed-update]
     if: >-
