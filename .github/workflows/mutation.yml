@@ -23,7 +23,7 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -r requirements-dev.txt -r requirements-mutation.txt
+      - run: pip install --require-hashes -r requirements.lock && pip install -r requirements-dev.txt -r requirements-mutation.txt
       - name: Mutate finance.py and run the money tests against each change
         run: mutmut run --max-children "$(nproc)"
         env:

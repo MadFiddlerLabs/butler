@@ -32,8 +32,8 @@ and minor versions overnight on its own. A major version waits for a yes: the br
 5. **The install.** Installer puts the package in `~/Butler` for the current user, with no
    admin password and no prompts. Personal files are never in a package, so config, data,
    projects and the budget stay as they are. postinstall sees the household and opens nothing.
-6. **The new code's checks.** In a fresh process, the new version syncs its Python packages
-   (`scripts/bootstrap.sh`), runs any pending settings migrations, checks its modules and the
+6. **The new code's checks.** In a fresh process, the new version syncs its Python packages to
+   its own lock (`scripts/bootstrap.sh`, see [Dependencies](#dependencies)), runs any pending settings migrations, checks its modules and the
    settings load, and restarts the portal.
 7. **Rollback.** If those checks fail, Installer puts the kept package back, and the brief says
    "tried to update … went back to …". The broken package is deleted.
@@ -46,6 +46,35 @@ and minor versions overnight on its own. A major version waits for a yes: the br
 |---|---|---|
 | `updates` | `auto` | `auto`, `notify` or `off` |
 | `update_hour` | `3` | The hour the daily check runs, in the household's timezone |
+
+## Dependencies
+
+Each version installs exactly the Python packages it was tested with. `requirements.lock` pins
+every package, dependencies included, to one version, with the SHA-256 of each of its files on
+PyPI. The lock is in the signed package, so its hashes are as trustworthy as the code.
+
+- `scripts/bootstrap.sh` runs `uv pip sync --require-hashes --no-build requirements.lock`. A file
+  whose hash isn't in the lock is refused, so a changed or hijacked upload on PyPI can't reach a
+  household on its next overnight update. `--no-build` installs only prebuilt wheels: nothing is
+  compiled and no unchecked build tool runs. `sync` also removes anything the lock doesn't list,
+  so a rollback restores the old version's packages too.
+- uv itself is pinned in `scripts/lib/uv.sh`, by version and by the SHA-256 of its download for
+  Apple silicon and Intel. A uv already on the Mac is used only if it is that version; otherwise
+  the pinned build is downloaded into `bin/uv` and checked first. Nothing is piped from the
+  network into a shell. uv checks the Python it downloads against checksums built into it, so the
+  pinned uv also pins Butler's Python (3.13).
+- One lock serves both kinds of Mac and CI's Linux: it is resolved for every platform
+  (`--universal`) from Python 3.12 up, and lists the hashes of every wheel of each version.
+
+To change a dependency, edit `requirements.txt` and run `scripts/lock.sh`; `scripts/lock.sh
+--upgrade` takes the newest versions allowed. Commit both files. `tests/test_packaging.py` fails
+when `requirements.txt` and the lock disagree, and the `tests` workflow runs `scripts/lock.sh
+--check`, which re-resolves and compares the pins. CI installs the lock before the test
+dependencies, so the tests run on the locked versions.
+
+The trade-off: the hash check trusts PyPI on the day the lock was made, and uv's checksums trust
+its GitHub release on the day it was pinned. A newer uv or package arrives only by changing the
+pin in a reviewed commit.
 
 ## Migrations
 
@@ -75,6 +104,8 @@ version out gradually, set `rollout_percent` there too. See the website's DEPLOY
 
 - `tests/test_updates.py`: versions, the policy, rollout, signature refusals, checksums,
   rollback, the daily tick, approvals, and migrations.
+- `tests/test_packaging.py`, `LockTest`: the lock matches `requirements.txt`, every package has
+  hashes, bootstrap installs only the lock with hashes required, and uv is pinned by checksum.
 - `tests/e2e/update.sh`, run in macos-e2e.yml with the real Installer:
   - v0.0.1 → v0.0.2 keeps the household's files byte for byte and runs the migration.
   - A broken v0.0.3 rolls back.

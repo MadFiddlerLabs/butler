@@ -108,6 +108,8 @@ jobs:
           echo "pkg=$(basename "$pkg")" >> "$GITHUB_OUTPUT"
           pkgutil --payload-files "$pkg" | grep -qx './Butler/bin/butler-ek'
           pkgutil --payload-files "$pkg" | grep -qx './Butler/bin/butler'
+          pkgutil --payload-files "$pkg" | grep -qx './Butler/requirements.lock'
+          pkgutil --payload-files "$pkg" | grep -qx './Butler/scripts/lib/uv.sh'
 
       - name: Notarize and staple
         if: steps.mode.outputs.signed == 'true'

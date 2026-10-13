@@ -16,6 +16,7 @@ fails, it opens a GitHub issue.
 | Security | `tests/test_security.py` | Every push | Fuzzed with hostile input: a forged or misplaced DKIM result passing, a stranger's reply reaching Claude, one mail in an unknown charset stopping every reply after it, a reply doing anything off the allowlist, a payee or calendar title escaping its marked data block in a reply prompt, a link or address from a stranger's invite reaching an email through what Claude wrote, the portal gate letting in a wrong host, login or origin, a second listener, the news call seeing the household, an unsigned or tampered update installing |
 | Privacy | `tests/test_privacy.py` | Every push | An ID number, phone or secret reaching an email, a prompt, a log or a file; household details reaching the news call |
 | Account contract | `tests/test_account_contract.py` | Every push | The fake account API drifting from `docs/ACCOUNTS.md`, or the setup app calling something the contract doesn't have |
+| Dependency lock | `tests/test_packaging.py` (`LockTest`), and `scripts/lock.sh --check` in `tests.yml` | Every push | `requirements.txt` changing without `requirements.lock`, a package without hashes, bootstrap installing anything but the lock with hashes required, uv not pinned by checksum, CI testing other versions than the lock's |
 | Contracts | `tests/test_contracts.py` | Every push | Claude schemas that aren't strict, a reply action that could delete, the test stub drifting from the Swift helper, renamed course steps or scripts |
 | Course progress | `tests/test_progress.py` | Every push | A setup step counting before its check passes (each check, step by step); the step-to-lesson map drifting from the skill's steps and modules; lessons queued twice, `started` beating `done`, or something sent twice; the queue losing anything offline, signed out, on a revoked session or a server error; a refused lesson blocking the rest; anything but lesson ids, statuses and times leaving the Mac; `sync()` raising; the tick skipping it. An integration run of the Johnsons' whole household against the fake account API. The website's contract check holds the other end of the map |
 | Dates | `tests/test_dates.py`, and `tests.yml`'s `dates` job | Every push | An email sent twice or never through a DST change, a letter or look-back the Mac slept through not caught up (or caught up too late, twice, or for a household that wasn't set up yet), at a year end where ISO weeks wrap, or in a leap February; the update check skipped on the night its hour doesn't exist. The job reruns the whole suite at such moments with libfaketime |
@@ -86,7 +87,7 @@ Actions > General), it leaves a warning instead, and the branch is ready for one
 ## Running it
 
 ```
-pip install -r requirements-dev.txt                      # or into .venv
+pip install --require-hashes -r requirements.lock && pip install -r requirements-dev.txt   # or into .venv
 PYTHONPATH=src python -m unittest discover tests          # unit, integration, privacy, contracts
 BUTLER_COVERAGE_DIR=$PWD PYTHONPATH=src python -m coverage run -m unittest discover tests \
   && python -m coverage combine -q && python -m coverage report \

@@ -12,13 +12,15 @@ there is no version file to bump in the repository.
 
 1. **Main is green**: the `tests` and `macos-e2e` workflows, including the `package` and
    `updates` jobs.
-2. **Settings need no surprise.** A new setting must default to the old behaviour when it's
+2. **The lock is current.** After any change to `requirements.txt`, run `scripts/lock.sh` and
+   commit `requirements.lock` (docs/UPDATES.md, "Dependencies"). The `tests` workflow checks it.
+3. **Settings need no surprise.** A new setting must default to the old behaviour when it's
    absent. Add a migration in `src/butler/migrations.py` only when a household's file has to
    change (docs/UPDATES.md).
-3. **Pick the version.** Patches and minors install overnight on their own. Use a major version
+4. **Pick the version.** Patches and minors install overnight on their own. Use a major version
    only for a change the household should agree to first: the brief then asks for an "update"
    reply.
-4. **Prove the candidate, signed to signed.** Run the release workflow by hand with the new
+5. **Prove the candidate, signed to signed.** Run the release workflow by hand with the new
    version:
 
    ```
@@ -28,7 +30,7 @@ there is no version file to bump in the repository.
    It builds, signs and notarizes the candidate. Then job `signed-update` installs the release
    students have now, from GitHub Releases, and lets its own updater install the candidate. It
    publishes nothing.
-5. **Tag with the release notes and push.** The annotated tag's message becomes the release
+6. **Tag with the release notes and push.** The annotated tag's message becomes the release
    notes. Write it for households, two or three plain sentences. The first ones show up in the
    brief ("What's new: …"), so lead with what changes for them.
 
@@ -37,7 +39,7 @@ there is no version file to bump in the repository.
    git push origin v0.2.0
    ```
 
-6. **Check the published package** once the workflow finishes:
+7. **Check the published package** once the workflow finishes:
 
    ```
    gh release download v0.2.0 -p Butler.pkg
@@ -131,6 +133,8 @@ notarized". A run by hand only uploads the package as a build artifact. It publi
 - It installs into the current user's home folder (`~/Butler`), with no admin password.
 - It carries only tracked files, so an upgrade never touches the household's settings, data,
   projects or budget.
+- It carries `requirements.lock`, so every install of a version gets the same Python packages,
+  checked by hash, and `scripts/lib/uv.sh`, which pins uv by checksum.
 - It includes the Calendar and Reminders helper (`bin/butler-ek`), prebuilt for Apple silicon and
   Intel and signed. Students never need the Xcode tools.
 - Its `postinstall` takes the butler's name from the package's filename and opens the guided
@@ -139,7 +143,7 @@ notarized". A run by hand only uploads the package as a build artifact. It publi
 ## The tests that guard it
 
 - `tests/test_packaging.py`: names from filenames, postinstall on a first install and an upgrade,
-  and the built package's layout.
+  the built package's layout (the lock included), and the lock matching `requirements.txt`.
 - `tests/test_first_run.py` and `tests/test_cli.py`: the guided first run and the `butler`
   command, against a fake account API.
 - `.github/workflows/macos-e2e.yml`, job `package`: builds the package and installs it into the
