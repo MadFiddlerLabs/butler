@@ -54,6 +54,7 @@ class InAThrowawayHome(unittest.TestCase):
                   mock.patch.object(replies, "NOTES", data / "household_notes.md"),
                   mock.patch.object(replies, "FEEDBACK", data / "feedback.md"),
                   mock.patch.object(replies, "PROCESSED", data / "processed_replies.txt"),
+                  mock.patch.object(replies, "ATTEMPTS", data / "reply_attempts.json"),
                   mock.patch.object(practice, "SCORES", data / "practice_scores.jsonl"),
                   mock.patch.object(replies, "_ek", side_effect=lambda *a: self.ek.append(list(a)) or {})):
             p.start()
@@ -171,7 +172,7 @@ class OtherActions(InAThrowawayHome):
                                side_effect=lambda s, system, prompt, schema: asked.append(prompt) or {"answer": "Friday."}):
             said = self.do("question", "When is the boiler service due?")
         self.assertEqual(said, "Answer: Friday.")
-        facts = json.loads(asked[0].split("Facts: ", 1)[1])
+        facts = json.loads(asked[0].split("<<<facts\n", 1)[1].rsplit("\n>>>", 1)[0])
         self.assertEqual(set(facts), {"projects"})       # what could load, and nothing made up
         self.assertIn("Book the yearly boiler service and send the certificate to the landlord",
                       [p["do"] for p in facts["projects"]])
@@ -182,13 +183,14 @@ class ProcessingReplies(InAThrowawayHome):
         return inbox.Reply(uid=uid, message_id=f"<{uid}@example.test>", sender=sender, subject="Re: Bento",
                            body=body, trusted=True, why_untrusted="")
 
-    def run_with(self, replies_in, actions, dry_run=False):
-        self.sent, self.seen = [], []
+    def run_with(self, replies_in, actions, dry_run=False, send=None):
+        self.sent, self.seen = getattr(self, "sent", []), []
+        plan = actions if callable(actions) else (lambda s, r, t: actions[r.uid])
         with mock.patch.object(inbox, "fetch_unread", return_value=replies_in), \
              mock.patch.object(inbox, "mark_seen", side_effect=lambda s, uids: self.seen.extend(uids)), \
-             mock.patch.object(replies, "plan_actions", side_effect=lambda s, r, t: actions[r.uid]), \
-             mock.patch.object(replies.mailer, "send",
-                               side_effect=lambda *a, **k: self.sent.append((a, k))):
+             mock.patch.object(replies, "plan_actions", side_effect=plan), \
+             mock.patch.object(replies.mailer, "send_or_queue",
+                               side_effect=send or (lambda *a, **k: self.sent.append((a, k)) or True)):
             out = io.StringIO()
             with redirect_stdout(out):
                 handled = replies.process(SETTINGS, dry_run=dry_run)
@@ -209,12 +211,51 @@ class ProcessingReplies(InAThrowawayHome):
             handled, _ = self.run_with([self.reply("1", "note it, and add milk")], actions)
         self.assertEqual(handled, 1)
         self.assertEqual(self.ek, [["add-reminder", "--list", "Shopping", "--title", "milk"]])
-        (_, subject, body), kw = self.sent[0]
+        (_, _, subject, body), kw = self.sent[0]
         self.assertRegex(body, r"- Couldn't do this \(.*no-such-step.*\): x\n")
         self.assertIn("- Added to Shopping: milk", body)
         self.assertEqual((subject, kw["in_reply_to"]), ("Re: Bento", "<1@example.test>"))
         self.assertEqual(kw["to"], ["sam@example.com", "alex@example.com"])
         self.assertEqual((self.seen, replies.PROCESSED.read_text().split()), (["1"], ["<1@example.test>"]))
+
+    def test_a_reply_that_keeps_failing_costs_three_claude_calls_then_one_note(self):
+        calls = []
+
+        def plan(s, r, t):     # Claude answered (and was paid), then something broke
+            calls.append(r.uid)
+            raise ValueError("the plan couldn't be read")
+        with self.assertLogs("butler", "INFO") as logs:
+            for _ in range(6):
+                self.run_with([self.reply("1", "add milk")], plan)
+        self.assertEqual(len(calls), replies.MAX_ATTEMPTS)
+        self.assertEqual(len(self.sent), 1, "the household hears once")
+        (_, _, subject, body), kw = self.sent[0]
+        self.assertIn("I couldn't handle Sam's reply after 3 tries", body)
+        self.assertIn("Nothing in it was done", body)
+        self.assertEqual((subject, kw["to"]), ("Re: Bento", ["sam@example.com", "alex@example.com"]))
+        self.assertEqual(replies.PROCESSED.read_text().split(), ["<1@example.test>"])
+        self.assertEqual(json.loads(replies.ATTEMPTS.read_text()), {}, "nothing left counting")
+        self.assertIn("gave up on <1@example.test>", "\n".join(logs.output))
+
+    def test_a_confirmation_that_fails_never_repeats_the_actions(self):
+        def refuse(*a, **k):
+            raise OSError("Gmail unreachable")
+        with self.assertLogs("butler", "ERROR"):
+            self.run_with([self.reply("1", "add milk")], {"1": [action("add_shopping", "milk")]}, send=refuse)
+        handled, _ = self.run_with([self.reply("1", "add milk")], {"1": [action("add_shopping", "milk")]})
+        self.assertEqual(handled, 0)
+        self.assertEqual(self.ek, [["add-reminder", "--list", "Shopping", "--title", "milk"]], "milk added once")
+
+    def test_one_failing_reply_does_not_stop_the_next(self):
+        def plan(s, r, t):
+            if r.uid == "1":
+                raise ValueError("broken")
+            return [action("add_shopping", "bread")]
+        with self.assertLogs("butler", "ERROR"):
+            handled, _ = self.run_with([self.reply("1", "x"), self.reply("2", "add bread", "alex@example.com")], plan)
+        self.assertEqual(handled, 1)
+        self.assertEqual(self.ek, [["add-reminder", "--list", "Shopping", "--title", "bread"]])
+        self.assertEqual(json.loads(replies.ATTEMPTS.read_text()), {"<1@example.test>": 1})
 
 
 if __name__ == "__main__":

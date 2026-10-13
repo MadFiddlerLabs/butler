@@ -124,7 +124,8 @@ The first command installs three launchd jobs: a tick every five minutes (replie
 email when it's due), a trigger one minute after the send hours, and the portal. The second
 wakes the Mac a minute before the brief. Use your `send_hour`. Scheduled wakes are reliable on
 power; on battery with the lid closed, macOS may skip them, and the brief goes out when the
-Mac next wakes.
+Mac next wakes. The weekly letter and the monthly look-back have no wake of their own. If the Mac
+sleeps through one, it goes out on the first tick in the next two days and says it's late.
 
 The schedule follows `timezone` in your settings, not the Mac's clock, so travel doesn't move
 the brief. Marker files in `out/` (`sent-YYYY-MM-DD`) stop double sends. To resend today,

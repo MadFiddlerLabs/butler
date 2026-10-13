@@ -58,6 +58,9 @@ visit", "that Q-2026-41-1 charge was the plumber, Household", "apply the Transpo
 "less sport in the news please".
 A confirmation comes back to everyone within about five minutes.
 
+If Gmail refuses an email, Butler keeps it and sends it once Gmail takes it again. It never builds
+the same email twice, so a refusal doesn't cost extra Claude calls.
+
 The portal has the same views plus Money (every transaction, by category), Budget (the plan
 as the service reads it), Projects (done, pause, send an update), Lists (Apple Reminders) and
 Info (phones, IDs and document expiry dates, shown only there).
@@ -92,6 +95,9 @@ Butler was designed so a household can trust it with everything.
   Nothing can be deleted by a reply. Only trusted senders with a passing DKIM signature count.
 - **News is quarantined.** The news call sees only your town and a sentence about what news
   you want, and it has no tools. Links always come from the feed, never from the model.
+- **Outsiders can't put links in the butler's mouth.** Calendar invites and bank payees come from
+  other people. In anything Claude writes, a link or email address the household didn't write
+  itself becomes "[link removed]".
 
 What does leave the Mac: calendar titles, project steps, money summaries and household notes
 go to the Claude API to write the emails; email goes through the assistant's Gmail account;

@@ -26,11 +26,29 @@ class Reply:
     why_untrusted: str
 
 
+def _decode(data: bytes, charset: str | None) -> str:
+    """Bytes in the charset the mail names. A charset Python doesn't know falls back to UTF-8
+    with replacements: anyone can send any charset, and one odd mail mustn't stop the inbox."""
+    try:
+        return data.decode(charset or "utf-8", "replace")
+    except (LookupError, UnicodeError):
+        return data.decode("utf-8", "replace")
+
+
+def _header(value: str) -> str:
+    """A header such as Subject as plain text, whatever charsets its encoded words name."""
+    try:
+        return str(make_header(decode_header(value)))
+    except (LookupError, UnicodeError):
+        return "".join(chunk if isinstance(chunk, str) else _decode(chunk, charset)
+                       for chunk, charset in decode_header(value))
+
+
 def _text_body(msg: email.message.Message) -> str:
     part = next((p for p in msg.walk() if p.get_content_type() == "text/plain"), None)
     if part is None:
         return ""
-    text = part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8", "replace")
+    text = _decode(part.get_payload(decode=True) or b"", part.get_content_charset())
     # Keep only what they wrote, not the quoted brief below it.
     text = re.split(r"\n(?:On .+wrote:|El .+escribió:|-----Original Message-----)", text, maxsplit=1)[0]
     return "\n".join(l for l in text.splitlines() if not l.startswith(">")).strip()
@@ -88,16 +106,25 @@ def fetch_unread(settings: dict, mark_read: bool = False) -> list[Reply]:
         replies = []
         for uid in data[0].split():
             _, parts = imap.uid("fetch", uid, "(BODY.PEEK[])" if not mark_read else "(RFC822)")
-            msg = email.message_from_bytes(parts[0][1])
-            sender = parseaddr(msg.get("From", ""))[1].lower()
-            reason = ""
-            if sender not in trusted:
-                reason = "sender not on the trusted list"
-            elif not _dkim_passes(msg, sender):
-                reason = "DKIM signature missing or failed"
-            replies.append(Reply(
-                uid=uid.decode(), message_id=msg.get("Message-ID", ""), sender=sender,
-                subject=str(make_header(decode_header(msg.get("Subject", "")))),
-                body=_text_body(msg), trusted=not reason, why_untrusted=reason,
-            ))
+            replies.append(_parse(uid.decode(), parts, trusted))
         return replies
+
+
+def _parse(uid: str, parts, trusted: set[str]) -> Reply:
+    """One fetched message as a Reply. A message that can't be read comes back untrusted, so
+    replies.process marks it read and moves on instead of failing on it every tick."""
+    sender = ""
+    try:
+        msg = email.message_from_bytes(parts[0][1])
+        sender = parseaddr(str(msg.get("From", "")))[1].lower()
+        reason = ""
+        if sender not in trusted:
+            reason = "sender not on the trusted list"
+        elif not _dkim_passes(msg, sender):
+            reason = "DKIM signature missing or failed"
+        return Reply(uid=uid, message_id=str(msg.get("Message-ID", "")), sender=sender,
+                     subject=_header(str(msg.get("Subject", ""))), body=_text_body(msg),
+                     trusted=not reason, why_untrusted=reason)
+    except Exception as e:
+        return Reply(uid=uid, message_id="", sender=sender or "an unknown sender", subject="", body="",
+                     trusted=False, why_untrusted=f"couldn't read the message ({type(e).__name__})")

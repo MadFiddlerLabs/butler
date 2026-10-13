@@ -54,12 +54,14 @@ class Tick(unittest.TestCase):
         (self.root / "out").mkdir()
         self.addCleanup(shutil.rmtree, self.root, True)
         self.now = [datetime(2026, 1, 1, tzinfo=UTC)]
-        self.weekly, self.monthly = [], []
+        self.weekly, self.monthly, self.notes, self.days = [], [], [], []
         for p in (mock.patch.object(tick, "ROOT", self.root), mock.patch.object(tick, "datetime", clock(self.now)),
                   mock.patch.object(tick.daily, "_online", return_value=True),
-                  mock.patch.object(tick.weekly, "run", side_effect=lambda s, d, dry_run: self.weekly.append(self.local(s))),
-                  mock.patch.object(tick.monthly, "run", side_effect=lambda s, m, preview: self.monthly.append(m)),
-                  mock.patch.object(tick.mailer, "send", side_effect=AssertionError("nothing failed, so no note"))):
+                  mock.patch.object(tick.weekly, "run", side_effect=lambda s, d, dry_run, late="":
+                                    self.weekly.append(self.local(s)) or self.notes.append(late) or self.days.append(d)),
+                  mock.patch.object(tick.monthly, "run", side_effect=lambda s, m, preview, late="":
+                                    self.monthly.append(m) or self.notes.append(late)),
+                  mock.patch.object(tick.mailer, "send_or_queue", side_effect=AssertionError("nothing failed, so no note"))):
             p.start()
             self.addCleanup(p.stop)
 
@@ -134,6 +136,59 @@ class MonthlyTest(Tick):
         self.assertEqual(len(self.weekly), 1)
 
 
+class CatchUpTest(Tick):
+    """The Mac slept through a letter's hour: it goes out on the first tick within two days, says it's
+    late, and still counts for its own week or month. Setup wakes the Mac only at 06:59."""
+
+    def running_since(self, day: str) -> None:
+        (self.root / "out" / f"sent-{day}").touch()
+
+    def test_a_sunday_slept_through_goes_out_monday_morning(self):
+        self.running_since("2026-10-17")
+        # Asleep from Sunday morning; awake again Monday 06:59 Lisbon (05:59 UTC) until Sunday night.
+        self.run_ticks(settings("Europe/Lisbon"), datetime(2026, 10, 19, 5, 59, tzinfo=UTC),
+                       datetime(2026, 10, 25, 23, 0, tzinfo=UTC))
+        self.assertEqual([w.strftime("%a %d %H:%M") for w in self.weekly], ["Mon 19 06:59", "Sun 25 17:04"])
+        self.assertEqual(self.days, [date(2026, 10, 18), date(2026, 10, 25)], "each letter is for its own week")
+        self.assertEqual(self.notes[0], "This letter is late. It was due yesterday, Sunday at 17:00, "
+                                        "but the Mac was asleep or offline then.")
+        self.assertEqual(self.notes[1], "", "the next one is on time and says nothing")
+        markers = sorted(p.name for p in (self.root / "out").glob("weekly-sent-*"))
+        self.assertEqual(markers, ["weekly-sent-2026-42", "weekly-sent-2026-43"])
+
+    def test_two_days_late_still_goes_three_does_not(self):
+        self.running_since("2026-10-17")
+        self.run_ticks(settings("Europe/Lisbon"), datetime(2026, 10, 20, 5, 59, tzinfo=UTC),
+                       datetime(2026, 10, 20, 7, 0, tzinfo=UTC))
+        self.assertEqual(self.notes, ["This letter is late. It was due 2 days ago, Sunday at 17:00, "
+                                      "but the Mac was asleep or offline then."])
+        self.weekly.clear()
+        (self.root / "out" / "weekly-sent-2026-42").unlink()
+        self.run_ticks(settings("Europe/Lisbon"), datetime(2026, 10, 21, 5, 59, tzinfo=UTC),
+                       datetime(2026, 10, 21, 7, 0, tzinfo=UTC))
+        self.assertEqual(self.weekly, [], "three days late is too late: next Sunday's is close")
+
+    def test_no_catch_up_for_a_household_that_set_up_after_it_was_due(self):
+        self.run_ticks(settings("Europe/Lisbon"), datetime(2026, 10, 19, 5, 59, tzinfo=UTC),
+                       datetime(2026, 10, 19, 7, 0, tzinfo=UTC))
+        self.assertEqual(self.weekly, [])
+
+    def test_a_first_of_the_month_slept_through(self):
+        self.running_since("2026-10-30")
+        self.run_ticks(settings("Europe/Lisbon"), datetime(2026, 11, 2, 6, 59, tzinfo=UTC),
+                       datetime(2026, 11, 5, 0, 0, tzinfo=UTC))
+        self.assertEqual(self.monthly, [date(2026, 10, 1)])
+        self.assertIn("This look-back is late. It was due yesterday, Sunday at 8:00, "
+                      "but the Mac was asleep or offline then.", self.notes)
+        self.assertEqual(len(self.weekly), 1, "1 November is a Sunday: that letter catches up too")
+
+    def test_a_month_missed_by_three_days_is_left(self):
+        self.running_since("2026-10-30")
+        self.run_ticks(settings("Europe/Lisbon"), datetime(2026, 11, 4, 6, 59, tzinfo=UTC),
+                       datetime(2026, 11, 5, 0, 0, tzinfo=UTC))
+        self.assertEqual(self.monthly, [])
+
+
 class BriefAcrossDstTest(unittest.TestCase):
     """daily.main --scheduled on every tick: one brief per local day, whatever the clocks do."""
 
@@ -151,7 +206,7 @@ class BriefAcrossDstTest(unittest.TestCase):
                   mock.patch.object(daily, "to_html", return_value="<p>brief</p>"),
                   mock.patch.object(daily, "to_text", return_value="brief"),
                   mock.patch.object(daily.llm, "record_news"),
-                  mock.patch.object(daily.mailer, "send", side_effect=lambda *a, **k: self.sent.append(self.now[0])),
+                  mock.patch.object(daily.mailer, "send_or_queue", side_effect=lambda *a, **k: self.sent.append(self.now[0]) or True),
                   mock.patch.object(sys, "argv", ["daily", "--scheduled"])):
             p.start()
             self.addCleanup(p.stop)
