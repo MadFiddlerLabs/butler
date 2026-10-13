@@ -70,8 +70,9 @@ cp "$b/budget/budget.example.xlsx" "$b/budget/budget.xlsx"
 fingerprint > "$work/household.before"
 "$b/scripts/bootstrap.sh"
 
-# BUTLER_COLUMNS: no wrapping, so the greps below see whole sentences.
-export BUTLER_UPDATE_MANIFEST="$work/stable.json" BUTLER_COLUMNS=1000
+# BUTLER_COLUMNS: no wrapping, so the greps below see whole sentences. BUTLER_API: nothing listens
+# there, so these test updates never report an outcome to the real website (update_report.py).
+export BUTLER_UPDATE_MANIFEST="$work/stable.json" BUTLER_COLUMNS=1000 BUTLER_API=http://127.0.0.1:9/api
 
 step "what $old's updater decides about $new under updates: auto"
 manifest "$candidate"

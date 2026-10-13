@@ -20,6 +20,7 @@ Plus the budget workbook, `budget/budget.xlsx`, and the household notes Claude r
 | `timezone` | IANA name, e.g. `Europe/Lisbon`. All schedules follow it |
 | `updates` | `auto` (default): install new versions overnight; a major version still asks. `notify`: always ask. `off`: never check. See [UPDATES.md](UPDATES.md) |
 | `update_hour` | The hour the daily update check runs, in your timezone (default 3). A Mac asleep then checks when it next wakes |
+| `update_report` | `true` (default): after each update, tell buildyourbutler.com the version updated from, the version updated to, and whether it worked, so a broken release can be stopped. Nothing else, and linked to no one. `false` turns it off. See [UPDATES.md](UPDATES.md#telling-the-website-how-it-went) |
 | `currency.primary` | Lunch Money's primary currency |
 | `currency.second` | Optional second currency for budget lines (converted at Assumptions!C5) |
 | `currency.scale` | Optional. How many units of your currency Butler's money thresholds count as one euro, such as "100 over pace" or "right on pace within 25". Set from `currency.primary` when absent: 150 for JPY, 20 for MXN, 10 for SEK and NOK, 7 for DKK, 1 otherwise. A rough size, not an exchange rate |

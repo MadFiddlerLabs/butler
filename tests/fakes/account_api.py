@@ -32,12 +32,18 @@ def _hash(token: str) -> str:
 
 class FakeAccountAPI:
     LESSON = re.compile(r"^[a-z0-9][a-z0-9.-]{0,63}$")
+    VERSION = re.compile(r"^v(\d{1,4})\.(\d{1,4})\.(\d{1,4})$")
+    # POST /api/updates/outcome: each outcome and the reasons it may carry, as the real API takes them.
+    OUTCOMES = {"updated": (), "rolled_back": ("install", "check"), "failed": ("checksum", "signature", "rollback")}
 
     def __init__(self, auto_verify: bool = False, expire: bool = False, unavailable: bool = False,
                  known_lessons: set[str] | None = None):
         self.auto_verify = auto_verify
         self.known_lessons = known_lessons   # when set, other lesson ids get 400 bad_lesson, like the real API
         self.progress_down = False           # /progress answers 503, like a server having a bad minute
+        self.outcomes_down = False           # /updates/outcome answers 503
+        self.outcomes: list[dict] = []           # every update outcome reported, as sent
+        self.outcome_auth: list[str | None] = [] # the Authorization header of each (it must be None)
         self.unavailable = unavailable   # sign-in down: /auth/start answers 503, like the real API without Resend
         self.expire = expire
         self.requests: dict[str, dict] = {}      # request_id -> {email, butler_name, poll_hash, token, status}
@@ -78,6 +84,17 @@ class FakeAccountAPI:
         nudges = [p["nudges"] for p in self.prefs if p["email"] == email]
         return {"email": email, "butler_name": self.users.get(email, {}).get("butler_name", ""),
                 "nudges": nudges[-1] if nudges else False, "progress": list(lessons.values())}
+
+    def valid_outcome(self, body: dict) -> bool:
+        """The real API's rules: exactly these fields, release versions, a newer `to`, a known
+        outcome, and a reason only from that outcome's list."""
+        if not isinstance(body, dict) or not set(body) <= {"from", "to", "outcome", "reason"}:
+            return False
+        versions = [self.VERSION.match(v) if isinstance(v, str) else None for v in (body.get("from"), body.get("to"))]
+        if not all(versions) or tuple(map(int, versions[1].groups())) <= tuple(map(int, versions[0].groups())):
+            return False
+        reasons = self.OUTCOMES.get(body.get("outcome"))
+        return reasons is not None and ("reason" not in body or body["reason"] in reasons)
 
     def _handler(self):
         api = self
@@ -177,6 +194,14 @@ class FakeAccountAPI:
                     if status not in ("started", "done"):
                         return self._send(400, {"error": "bad status", "code": "bad_status"})
                     api.progress.append({"email": email, "lesson": lesson, "status": status, "at": body.get("at")})
+                    return self._send(200, {"ok": True})
+                if url.path == "/api/updates/outcome":
+                    if api.outcomes_down:
+                        return self._send(503, {"error": "server", "code": "server"})
+                    if not api.valid_outcome(body):
+                        return self._send(400, {"error": "That isn't an update outcome.", "code": "bad_outcome"})
+                    api.outcomes.append(body)
+                    api.outcome_auth.append(self.headers.get("Authorization"))
                     return self._send(200, {"ok": True})
                 if url.path == "/api/prefs":
                     email = self._session()

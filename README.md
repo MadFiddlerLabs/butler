@@ -182,7 +182,10 @@ minor versions on its own. It installs only packages signed and notarized by But
 publisher, keeps the previous version, and goes back to it if anything doesn't check out. A
 major version waits for you to reply "update". The next morning's brief says what happened.
 `butler update` installs a new version straight away, and `updates: notify` or `off` in your
-settings changes the behaviour. [docs/UPDATES.md](docs/UPDATES.md) has the details.
+settings changes the behaviour. After each update, Butler tells buildyourbutler.com the two
+version numbers and whether it worked, so a broken release can be stopped for everyone else.
+Nothing else goes, and it isn't linked to you; `update_report: false` turns it off.
+[docs/UPDATES.md](docs/UPDATES.md) has the details.
 
 ## Documentation
 

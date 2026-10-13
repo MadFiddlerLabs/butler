@@ -1,4 +1,5 @@
-"""The student's Build Your Butler account: sign-in by magic link and course progress.
+"""The student's Build Your Butler account: sign-in by magic link and course progress, plus the
+anonymous update report (update_report.py), which needs no account.
 
 Everything here is best effort. Butler works fully offline and without an account. The account
 only keeps the student's place in the course. The session lives in Keychain (`butler-account`),
@@ -32,14 +33,15 @@ class AccountError(RuntimeError):
         self.status = status
 
 
-def _call(method: str, path: str, body: dict | None = None, token: str | None = None) -> dict:
+def _call(method: str, path: str, body: dict | None = None, token: str | None = None,
+          timeout: float = TIMEOUT) -> dict:
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(f"{API}{path}", data=data, method=method)
     req.add_header("Content-Type", "application/json")
     if token:
         req.add_header("Authorization", f"Bearer {token}")
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.load(r)
     except urllib.error.HTTPError as e:
         try:
@@ -105,6 +107,13 @@ def me() -> dict | None:
 def send_progress(token: str, lesson: str, status: str, at: str | None = None) -> None:
     """One lesson's progress, with when it happened (ISO 8601). Raises AccountError."""
     _call("POST", "/progress", {"lesson": lesson, "status": status, **({"at": at} if at else {})}, token=token)
+
+
+def send_update_outcome(previous: str, new: str, outcome: str, reason: str | None = None,
+                        timeout: float = TIMEOUT) -> None:
+    """How one update went (update_report.py). Anonymous: no session, nothing from the household.
+    Raises AccountError."""
+    _call("POST", "/updates/outcome", {"from": previous, "to": new, "outcome": outcome, **({"reason": reason} if reason else {})}, timeout=timeout)
 
 
 def record(lesson: str, status: str = "done") -> bool:
