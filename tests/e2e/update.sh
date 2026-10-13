@@ -1,7 +1,8 @@
 #!/bin/bash
 # Over-the-air updates end to end on a Mac, with the real Installer: install an old package into
 # this home, add a household's files, update to a new package from a local manifest, then try a
-# broken package (rolled back) and an unsigned one without the test flag (refused).
+# package that doesn't load and one that loads but breaks the brief (both rolled back), and an
+# unsigned one without the test flag (refused).
 #
 # CI only: it installs into ~/Butler. Packages are unsigned test builds, so the signature check
 # is relaxed with BUTLER_UPDATE_ALLOW_UNSIGNED, which works only for a test build's own version
@@ -31,12 +32,18 @@ fingerprint() {  # the household's own files, byte for byte
   (cd "$b" && shasum -a 256 data/household_notes.md projects/home.yaml budget/budget.xlsx)
 }
 
-step "build v0.0.1, v0.0.2, a broken v0.0.3 and a good v0.0.4"
+step "build v0.0.1, v0.0.2, a broken v0.0.3, a good v0.0.4 and a v0.0.5 that breaks the brief"
 v1="$(build "$repo" v0.0.1)"; v2="$(build "$repo" v0.0.2)"; v4="$(build "$repo" v0.0.4)"
 git clone -q "$repo" "$work/broken"
 printf '\ndef broken(:\n' >> "$work/broken/src/butler/render.py"
 git -C "$work/broken" -c user.name=ci -c user.email=ci@example.com commit -qam "a broken release"
 v3="$(build "$work/broken" v0.0.3)"
+# Every module loads, but the brief crashes as it's made: only the brief check catches it.
+git clone -q "$repo" "$work/crashes"
+printf '\n\ndef to_text(*args, **kwargs):\n    raise TypeError("a release that breaks at run time")\n' \
+  >> "$work/crashes/src/butler/render.py"
+git -C "$work/crashes" -c user.name=ci -c user.email=ci@example.com commit -qam "a release that crashes"
+v5="$(build "$work/crashes" v0.0.5)"
 release v0.0.1 "$v1"
 
 step "install v0.0.1 with Installer, then a household's files"
@@ -84,6 +91,23 @@ fingerprint | diff - "$work/household.before" || fail "the household's files cha
 test ! -e "$b/data/updates/Butler-v0.0.3.pkg" || fail "the broken package was kept"
 line="$(cd "$b" && PYTHONPATH=src .venv/bin/python -c 'from butler import updates; print(updates.brief_lines("Bento"))')"
 [[ "$line" == *"went back to v0.0.2"* ]] || fail "brief line after rollback: $line"
+
+step "a v0.0.5 that loads but breaks the brief fails its check and goes back to v0.0.2"
+cd "$b" && PYTHONPATH=src .venv/bin/python -c 'from butler import updates; updates.mark_announced()' && cd - >/dev/null
+manifest v0.0.5 "$v5"
+if BUTLER_UPDATE_ALLOW_UNSIGNED=1 "$b/bin/butler" update --yes > "$work/crashes.log" 2>&1; then
+  cat "$work/crashes.log"; fail "the update that breaks the brief reported success"
+fi
+cat "$work/crashes.log"
+grep -q "went back to v0.0.2" "$work/crashes.log" || fail "no rollback message"
+[ "$(cat "$b/.butler-version")" = "v0.0.2" ] || fail "not back on v0.0.2"
+problem="$(cd "$b" && PYTHONPATH=src .venv/bin/python -c 'from butler import updates; print(updates.load_state()["last_result"]["problem"])')"
+[[ "$problem" == *"the morning brief didn't build: the brief (TypeError: a release that breaks at run time)"* ]] \
+  || fail "the problem recorded: $problem"
+fingerprint | diff - "$work/household.before" || fail "the household's files changed during rollback"
+(cd "$b" && PYTHONPATH=src .venv/bin/python -c 'from butler import daily; assert not daily.brief_check()["failures"]') \
+  || fail "v0.0.2's brief doesn't build after going back"
+test ! -e "$b/data/updates/brief-baseline.json" || fail "the baseline was left behind"
 
 step "an unsigned v0.0.4 without the test flag is refused"
 manifest v0.0.4 "$v4"

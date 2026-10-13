@@ -29,14 +29,39 @@ and minor versions overnight on its own. A major version waits for a yes: the br
 4. **A copy to go back to.** The package of the version installed now is kept in
    `data/updates/`. If it isn't there yet, it's fetched from that version's GitHub Release and
    checked the same way. With no copy, the update waits until tomorrow.
-5. **The install.** Installer puts the package in `~/Butler` for the current user, with no
+5. **A baseline.** The version installed now builds today's brief the way the check in step 7
+   will (`butler.updates --brief-check`), and keeps what failed in
+   `data/updates/brief-baseline.json` until the update is over.
+6. **The install.** Installer puts the package in `~/Butler` for the current user, with no
    admin password and no prompts. Personal files are never in a package, so config, data,
    projects and the budget stay as they are. postinstall sees the household and opens nothing.
-6. **The new code's checks.** In a fresh process, the new version syncs its Python packages to
-   its own lock (`scripts/bootstrap.sh`, see [Dependencies](#dependencies)), runs any pending settings migrations, checks its modules and the
-   settings load, and restarts the portal.
-7. **Rollback.** If those checks fail, Installer puts the kept package back, and the brief says
-   "tried to update … went back to …". The broken package is deleted.
+7. **The new code's checks.** In a fresh process, the new version:
+   - syncs its Python packages to its own lock (`scripts/bootstrap.sh`, see
+     [Dependencies](#dependencies)),
+   - runs any pending settings migrations,
+   - checks that its modules load and the settings have `timezone`, `email` and `household`,
+   - builds today's brief from the household's own settings and services (`daily.brief_check`),
+     and only then restarts the portal.
+
+   The brief check is `daily --dry-run --no-llm` without its side effects: no Claude, nothing
+   sent, no file in `out/`, no net worth snapshot and no budget change. Lunch Money's answers are
+   cached in `data/raw/` as on any brief. It fails when the brief itself breaks, or when a section
+   fails with an error only code makes (`AttributeError`, `ImportError`, `KeyError`, `NameError`,
+   `SyntaxError`, `TypeError`) that the baseline didn't have. A service that's down or slow fails
+   with something else, and doesn't stop an update. Neither does a failure the old version had
+   too, so a household whose data trips a bug still gets the release that fixes it. Without a
+   baseline (an update from a version before this check), every such failure counts.
+8. **Rollback.** If any check fails, or Installer stops halfway, Installer puts the kept package
+   back and that version runs its own checks. The brief says "tried to update … went back to …".
+   The broken package is deleted.
+9. **A way back that fails.** If reinstalling the kept package fails, or its own checks don't
+   pass, the brief says so and says to download Butler again from the website. A plain email
+   says the same straight away, to every recipient, because the code left on disk may be too
+   broken to send a brief. It's sent by the process that ran the update, which loaded the old
+   version's code and the household's settings before installing anything.
+10. **Updates that don't happen.** A refused or failed download, a signature that doesn't check
+    out, or no copy to go back to stops the update before anything is installed. The next brief
+    says so once ("couldn't update to … It tries again tomorrow.").
 
 `butler update --check` shows what's available. `butler update` installs it now, after a yes.
 
@@ -93,8 +118,8 @@ version out gradually, set `rollout_percent` there too. See the website's DEPLOY
 ## What updates never do
 
 - Touch `config/`, `projects/`, `budget/`, `out/` or `logs/` beyond appending to the log, or
-  `data/` beyond `data/updates/` and `data/migrations.json`. Settings migrations are the one
-  exception, and they only append.
+  `data/` beyond `data/updates/`, `data/migrations.json` and the brief check's Lunch Money cache
+  in `data/raw/`. Settings migrations are the one exception, and they only append.
 - Update a git checkout (use `git pull`) or a copy outside `~/Butler`.
 - Install anything unsigned. Test builds carry a `.butler-unsigned-build` marker naming their
   own version. Only that marker together with `BUTLER_UPDATE_ALLOW_UNSIGNED=1` relaxes the
@@ -103,12 +128,18 @@ version out gradually, set `rollout_percent` there too. See the website's DEPLOY
 ## Tests
 
 - `tests/test_updates.py`: versions, the policy, rollout, signature refusals, checksums,
-  rollback, the daily tick, approvals, and migrations.
+  rollback, a failed way back (reported by brief and by email), an Installer that stops halfway,
+  the brief check against its baseline, updates that didn't happen, the daily tick, approvals,
+  and migrations.
+- `tests/test_failures.py`, `UpdateBriefCheckTest`: the brief check on the invented Johnsons
+  passes and writes nothing, passes with services down, and fails on a section that crashes on
+  code and on a brief that can't render.
 - `tests/test_packaging.py`, `LockTest`: the lock matches `requirements.txt`, every package has
   hashes, bootstrap installs only the lock with hashes required, and uv is pinned by checksum.
 - `tests/e2e/update.sh`, run in macos-e2e.yml with the real Installer:
   - v0.0.1 → v0.0.2 keeps the household's files byte for byte and runs the migration.
-  - A broken v0.0.3 rolls back.
+  - A broken v0.0.3, whose code doesn't load, rolls back.
+  - A v0.0.5 whose code loads but whose brief crashes rolls back, on the brief check alone.
   - An unsigned v0.0.4 is refused without the test flag.
 - `tests/e2e/signed-update.sh`, run in release.yml before every release is published: the
   published release, signed and notarized, updates itself to the signed, notarized candidate with

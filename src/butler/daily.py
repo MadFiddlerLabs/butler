@@ -5,6 +5,8 @@
     python -m butler.daily --no-llm     # skip Claude: raw headlines, no prep notes
     python -m butler.daily --scheduled  # launchd: send once per day, after send_hour in your timezone
 
+brief_check() builds today's brief for an update's health check (updates.py), sending nothing.
+
 Each section fails on its own. A broken section becomes a line in the footer, and
 if the whole run breaks, a short failure email still goes out.
 """
@@ -37,7 +39,7 @@ def _short(e: Exception) -> str:
 
 
 def build(settings: dict, day: date, use_llm: bool, preview_projects: bool = False,
-          update_budget: bool = False) -> Brief:
+          update_budget: bool = False, snapshot: bool = True) -> Brief:
     zone = tz(settings)
     now = datetime.now(zone)
     problems: list[str] = []
@@ -102,8 +104,8 @@ def build(settings: dict, day: date, use_llm: bool, preview_projects: bool = Fal
         problems.append(f"money section unavailable ({_short(e)})")
 
     nw_line = ""
-    # Snapshots are real history: only take one for today, never for a --date preview.
-    if money and day == datetime.now(zone).date():
+    # Snapshots are real history: only take one for today, never for a --date preview or a check.
+    if snapshot and money and day == datetime.now(zone).date():
         try:
             cfg = settings.get("networth", {})
             now, ch = networth.change_since(day, 1)
@@ -170,6 +172,53 @@ def build(settings: dict, day: date, use_llm: bool, preview_projects: bool = Fal
                  charts=chart_pngs, networth=nw_line, todos=todos,
                  portal_url=settings.get("portal", {}).get("url", ""),
                  problems=problems, not_set_up=not_set_up, updates=update_lines)
+
+
+# Errors only code makes. A section that can't reach its service (a timeout, a refused
+# connection, a bad answer) fails with something else: that's the world's problem, not a release's.
+CODE_ERRORS = (AttributeError, ImportError, KeyError, NameError, SyntaxError, TypeError)
+
+
+class _Failures(logging.Handler):
+    """Every section logs its exception before the brief moves on; this keeps those records."""
+
+    def __init__(self):
+        super().__init__(logging.ERROR)
+        self.records: list[logging.LogRecord] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if record.exc_info and record.exc_info[1] is not None:
+            self.records.append(record)
+
+
+def brief_check() -> dict:
+    """Builds and renders today's brief from the household's own settings and services, for an
+    update's health check (updates.py). No Claude, nothing sent, no files in out/, no net worth
+    snapshot, no budget change; Lunch Money's answers are cached in data/raw/ as on any brief.
+    Returns {"failures": [{"where", "error", "detail"}]}: the brief itself breaking, or a section
+    failing with one of CODE_ERRORS."""
+    caught = _Failures()
+    log.addHandler(caught)
+    failures = []
+    try:
+        settings = load_settings()
+        day = datetime.now(tz(settings)).date()
+        brief = build(settings, day, use_llm=False, preview_projects=True, snapshot=False)
+        to_text(brief)
+        to_html(brief)
+        to_html(brief, image_src=lambda name: f"chart-{day}-{name}.png")
+    except Exception as e:  # noqa: BLE001 - whatever breaks the brief breaks the update
+        log.exception("brief check failed")
+        failures.append(_failure("the brief", e))
+    finally:
+        log.removeHandler(caught)
+    failures += [_failure(r.getMessage(), r.exc_info[1]) for r in caught.records
+                 if r.getMessage() != "brief check failed" and isinstance(r.exc_info[1], CODE_ERRORS)]
+    return {"failures": failures}
+
+
+def _failure(where: str, e: BaseException) -> dict:
+    return {"where": where, "error": type(e).__name__, "detail": _short(e)}
 
 
 def _last_brief_time(day: date, zone) -> datetime:

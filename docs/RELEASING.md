@@ -154,8 +154,8 @@ notarized". A run by hand only uploads the package as a build artifact. It publi
   that release's own updater installs the new signed, notarized package, with no check relaxed.
   First it must refuse three tampered copies: a checksum mismatch, a changed byte and a repacked,
   unsigned package. Afterwards the household's files are byte for byte the same, `butler update
-  --check` reports the new version, the health check passes, and the Calendar helper is signed by
-  the team.
+  --check` reports the new version, the health check passes (today's brief included), and the
+  Calendar helper is signed by the team.
 
 Apple's notarization can only run with the real secrets, so it is checked by the release workflow
 itself: `stapler validate`, `pkgutil --check-signature` and `spctl --assess` must all pass. For

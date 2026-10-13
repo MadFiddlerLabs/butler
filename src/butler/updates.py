@@ -14,9 +14,12 @@ An update is the same signed, notarized Butler.pkg the website serves. Before it
 - pkgutil must show the Developer ID Installer chain for Team ID VB9CHJM4AN,
 - Gatekeeper (spctl) must accept it, and stapler must validate it when Xcode tools exist,
 - and the package of the version installed now is kept (downloaded if need be), for rollback.
+Before installing, the code running now builds today's brief without sending it, as a baseline.
 Then Installer puts it in ~/Butler (no admin password; personal files are never in a package),
-the NEW code runs its migrations and a health check, and a failure reinstalls the kept package.
-The next brief says what happened, in a line.
+the NEW code syncs its locked packages, runs its migrations and a health check (its modules,
+the settings, and today's brief built from the household's own settings, sending nothing), and
+a failure reinstalls the kept package. The next brief says what happened, in a line. If going
+back fails too, a plain email says so straight away, since the code left may not send a brief.
 
 The website's manifest is the kill switch: a held version is never offered. See docs/UPDATES.md.
 """
@@ -37,7 +40,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .config import ROOT
+from . import mailer
+from .config import ROOT, brand, load_settings
 
 log = logging.getLogger("butler")
 
@@ -278,21 +282,53 @@ def can_update() -> str | None:
 def install_package(pkg: Path) -> None:
     """Installer, into the current user's home: no admin password, no prompts. postinstall sees
     an existing household and opens nothing."""
-    result = _run(["installer", "-pkg", str(pkg), "-target", "CurrentUserHomeDirectory"], timeout=900)
+    try:
+        result = _run(["installer", "-pkg", str(pkg), "-target", "CurrentUserHomeDirectory"], timeout=900)
+    except (subprocess.TimeoutExpired, OSError) as e:
+        raise UpdateError(f"Installer didn't finish ({e})") from None
     if result.returncode != 0:
         raise UpdateError(f"Installer didn't finish ({(result.stderr or result.stdout).strip()[-200:]})")
 
 
-def post_install(previous: str) -> dict:
-    """Runs the NEW code in a fresh process: dependencies, migrations, restarts, health check."""
+def _fresh_process(args: list[str], timeout: int) -> dict:
+    """Runs `python -m butler.updates <args>` with the code on disk now, in a fresh process, and
+    reads the JSON line it prints last."""
     python = ROOT / ".venv" / "bin" / "python"
     env = {**os.environ, "PYTHONPATH": str(ROOT / "src")}
-    result = subprocess.run([str(python), "-m", "butler.updates", "--post-install", previous],
-                            capture_output=True, text=True, env=env, cwd=ROOT, timeout=900)
+    try:
+        result = subprocess.run([str(python), "-m", "butler.updates", *args],
+                                capture_output=True, text=True, env=env, cwd=ROOT, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "problem": f"its checks took longer than {timeout // 60} minutes"}
+    except OSError as e:
+        return {"ok": False, "problem": f"its Python didn't start ({e})"}
     try:
         return json.loads(result.stdout.strip().splitlines()[-1])
     except (ValueError, IndexError):
         return {"ok": False, "problem": (result.stderr or result.stdout).strip()[-300:] or "no answer"}
+
+
+def post_install(previous: str) -> dict:
+    """Runs the NEW code in a fresh process: dependencies, migrations, restarts, health check."""
+    return _fresh_process(["--post-install", previous], timeout=1200)
+
+
+def baseline_path() -> Path:
+    return UPDATES / "brief-baseline.json"
+
+
+def record_baseline() -> None:
+    """Today's brief, built by the code running now, before anything is installed. The new code's
+    check then fails only on what's new: a section the household's own data already breaks
+    shouldn't stop the update that may fix it. An older version can't build one, and the new code
+    then counts every failure."""
+    found = _fresh_process(["--brief-check"], timeout=600)
+    path = baseline_path()
+    if isinstance(found.get("failures"), list):
+        path.write_text(json.dumps(found))
+    else:
+        path.unlink(missing_ok=True)
+        log.info("update: no baseline brief (%s)", found.get("problem"))
 
 
 def apply(entry: dict, now: datetime | None = None) -> dict:
@@ -312,9 +348,16 @@ def apply(entry: dict, now: datetime | None = None) -> dict:
         rollback_pkg = ensure_rollback_package(previous)
         pkg = download(entry["pkg_url"], kept_package(new), entry.get("sha256"), entry.get("size"))
         verify_signature(pkg)
+        # Loaded now, while the code on disk is still this version's: if the update and the way
+        # back both fail, this process can still tell the household.
+        settings = _settings_or_none()
+        record_baseline()
         log.info("update: installing %s over %s", new, previous)
-        install_package(pkg)
-        outcome = post_install(previous)
+        try:
+            install_package(pkg)
+            outcome = post_install(previous)
+        except UpdateError as e:
+            outcome = {"ok": False, "problem": str(e)}
         if outcome.get("ok") and installed_version() == new:
             result = {"status": "updated", "from": previous, "to": new,
                       "notes": _short_notes(entry.get("notes", "")), "at": now.isoformat()}
@@ -323,18 +366,65 @@ def apply(entry: dict, now: datetime | None = None) -> dict:
         else:
             problem = outcome.get("problem") or f"the version file says {installed_version()}"
             log.error("update to %s failed its check (%s); going back to %s", new, problem, previous)
-            install_package(rollback_pkg)
-            back = post_install(previous)
             result = {"status": "rolled_back", "from": previous, "to": new, "problem": problem,
-                      "restored": installed_version(), "restored_ok": bool(back.get("ok")),
-                      "at": now.isoformat()}
+                      **_roll_back(rollback_pkg, previous), "at": now.isoformat()}
             kept_package(new).unlink(missing_ok=True)
+            if not result["restored_ok"]:
+                log.error("update: going back to %s failed too (%s)", previous, result["rollback_problem"])
+                _tell_household(settings, result)
+        baseline_path().unlink(missing_ok=True)
     state = load_state()
     state.update(last_result=result, announced=False)
     state.pop("waiting", None)
     state.pop("approved", None)
+    state.pop("last_error", None)
     save_state(state)
     return result
+
+
+def _roll_back(rollback_pkg: Path, previous: str) -> dict:
+    """Reinstalls the kept package and runs its own checks. Never raises: a way back that fails
+    is reported, not lost."""
+    try:
+        install_package(rollback_pkg)
+        back = post_install(previous)
+    except UpdateError as e:
+        back = {"ok": False, "problem": str(e)}
+    restored = installed_version()
+    ok = bool(back.get("ok")) and restored == previous
+    out = {"restored": restored, "restored_ok": ok}
+    if not ok:
+        out["rollback_problem"] = back.get("problem") or f"the version file says {restored}"
+    return out
+
+
+def _settings_or_none() -> dict | None:
+    try:
+        return load_settings()
+    except Exception:  # noqa: BLE001 - the update itself doesn't need them
+        log.exception("update: settings didn't load")
+        return None
+
+
+def _tell_household(settings: dict | None, result: dict) -> None:
+    """A plain email when the way back failed: the code now on disk may be too broken to send
+    the brief that would otherwise say so."""
+    if not settings:
+        return
+    name = brand(settings)
+    try:
+        mailer.send(settings, f"{name} · an update needs you", rollback_failed_text(name, result))
+        log.info("update: told the household the way back failed")
+    except Exception:  # noqa: BLE001 - nothing else to try; the log has it
+        log.exception("update: couldn't send the email about the failed rollback")
+
+
+def rollback_failed_text(name: str, result: dict) -> str:
+    return (f"{name} tried to update itself to {result['to']}, but the new version didn't pass its "
+            f"check ({result.get('problem')}). Going back to {result['from']} didn't work either "
+            f"({result.get('rollback_problem')}), so {name} may not run until it's reinstalled.\n\n"
+            f"To fix it, download {name} again from buildyourbutler.com and open it. Your settings, "
+            "data, projects and budget stay as they are.\n\nThe details are in logs/butler.log.")
 
 
 def _short_notes(notes: str, limit: int = 200) -> str:
@@ -391,7 +481,8 @@ def _apply_logged(entry: dict, now: datetime) -> None:
     except UpdateError as e:
         log.warning("update to %s didn't happen: %s", entry.get("version"), e)
         state = load_state()
-        state["last_error"] = {"to": entry.get("version"), "problem": str(e), "at": now.isoformat()}
+        state["last_error"] = {"to": entry.get("version"), "problem": str(e), "at": now.isoformat(),
+                               "announced": False}
         save_state(state)
 
 
@@ -417,9 +508,17 @@ def brief_lines(name: str) -> list[str]:
         if result["status"] == "updated":
             notes = f" What's new: {result['notes']}" if result.get("notes") else ""
             lines.append(f"{name} updated overnight to {result['to']}.{notes}")
+        elif result.get("restored_ok") is False:
+            lines.append(f"{name} tried to update to {result['to']} overnight, but its check didn't pass, and "
+                         f"going back to {result['from']} didn't work either ({result.get('rollback_problem')}). "
+                         f"Download {name} again from buildyourbutler.com and open it: your settings and data stay.")
         else:
             lines.append(f"{name} tried to update to {result['to']} overnight, but its check didn't pass, "
                          f"so it went back to {result.get('restored') or result['from']}. Nothing changed for you.")
+    error = state.get("last_error")
+    if error and not error.get("announced"):
+        lines.append(f"{name} couldn't update to {error.get('to')} overnight: {error.get('problem')}. "
+                     "It tries again tomorrow.")
     waiting = state.get("waiting")
     if waiting:
         if waiting.get("kind") == "reinstall":
@@ -430,10 +529,14 @@ def brief_lines(name: str) -> list[str]:
 
 
 def mark_announced() -> None:
-    """After a brief really went out with the update line."""
+    """After a brief really went out with the update lines."""
     state = load_state()
+    changed = False
     if state.get("last_result") and not state.get("announced"):
-        state["announced"] = True
+        state["announced"] = changed = True
+    if state.get("last_error") and not state["last_error"].get("announced"):
+        state["last_error"]["announced"] = changed = True
+    if changed:
         save_state(state)
 
 
@@ -491,8 +594,31 @@ def run_post_install() -> dict:
     problems = health()
     if problems:
         return {"ok": False, "problem": "; ".join(problems)}
+    problem = brief_problem()
+    if problem:
+        return {"ok": False, "problem": problem}
     _restart_jobs()
     return {"ok": True, "migrations": applied}
+
+
+def brief_problem() -> str | None:
+    """Builds today's brief with the new code, from the household's own settings and services,
+    without Claude and sending nothing (daily.brief_check). The update fails if the brief breaks,
+    or if a section fails with an error only code makes that the baseline didn't have."""
+    from . import daily
+    try:
+        found = daily.brief_check()["failures"]
+    except Exception as e:  # noqa: BLE001 - a check that can't run is a failed check
+        return f"the morning brief check didn't run ({type(e).__name__}: {e})"
+    try:
+        known = {(f["where"], f["error"]) for f in json.loads(baseline_path().read_text())["failures"]}
+    except (OSError, ValueError, KeyError, TypeError):
+        known = set()
+    new = [f for f in found if (f["where"], f["error"]) not in known]
+    if not new:
+        return None
+    return "the morning brief didn't build: " + "; ".join(
+        f"{f['where']} ({f['error']}: {f['detail']})" for f in new)
 
 
 # ---------- `butler update` ----------
@@ -502,9 +628,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--yes", action="store_true")
     parser.add_argument("--post-install", metavar="PREVIOUS")
+    parser.add_argument("--brief-check", action="store_true")
     args = parser.parse_args(argv)
     if args.post_install:
         print(json.dumps(run_post_install()), flush=True)
+        return 0
+    if args.brief_check:
+        from . import daily
+        print(json.dumps(daily.brief_check()), flush=True)
         return 0
     return command(args.check, args.yes)
 
@@ -550,6 +681,11 @@ def command(check: bool, yes: bool, say=print) -> int:
     if result["status"] == "updated":
         say(f"Done. You're on version {result['to']}.")
         return 0
+    if result.get("restored_ok") is False:
+        say(f"The new version didn't pass its check, and going back to {result.get('from')} didn't work "
+            f"either ({result.get('rollback_problem')}). Download Butler again from buildyourbutler.com "
+            "and open it: your settings and data stay. Details are in logs/butler.log.")
+        return 1
     say(f"The new version didn't pass its check, so I went back to {result.get('restored')}. "
         "Nothing changed for you. Details are in logs/butler.log.")
     return 1
