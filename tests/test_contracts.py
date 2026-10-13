@@ -121,6 +121,15 @@ class CourseContractTest(unittest.TestCase):
         for step in COURSE_STEPS:
             self.assertIn(f"`/butler-setup {step}`", readme)
 
+    def test_readme_shows_the_no_account_demo_first_and_has_no_placeholders(self):
+        readme = (REPO / "README.md").read_text()
+        demo = readme.index("## Try it in two commands, no account")
+        self.assertLess(demo, readme.index("## Get started"))
+        self.assertIn("scripts/bootstrap.sh", readme[demo:demo + 600])
+        self.assertIn("./run.sh preview", readme[demo:demo + 600])
+        self.assertNotIn("TODO", readme)
+        self.assertNotIn("coming soon", readme.lower())
+
     def test_named_scripts_and_skills_exist(self):
         for path in ("scripts/install.sh", "scripts/bootstrap.sh", "scripts/store-secret.sh",
                      "helpers/butler-ek/build.sh", "launchd/install.sh",
