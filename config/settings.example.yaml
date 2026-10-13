@@ -13,9 +13,13 @@ timezone: Europe/Lisbon
 
 # Updates: auto installs new versions overnight (a major version still asks first), notify
 # always asks ("Reply 'update'" in the brief), off never checks. update_hour is when, in your
-# timezone (a Mac asleep then checks when it wakes). See docs/UPDATES.md.
+# timezone (a Mac asleep then checks when it wakes). After each update, Butler tells
+# buildyourbutler.com the two version numbers and whether it worked, so a broken release can be
+# stopped. Nothing else, and not linked to you. update_report: false turns that off.
+# See docs/UPDATES.md.
 updates: auto
 update_hour: 3
+update_report: true
 
 currency:
   primary: EUR     # what Lunch Money reports in (its "primary currency")

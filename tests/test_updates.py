@@ -4,16 +4,18 @@ code's post-install. The real install-and-update runs on a Mac in macos-e2e.yml.
 Run with: PYTHONPATH=src .venv/bin/python -m unittest discover tests"""
 
 import hashlib
+import json
 import os
 import shutil
 import subprocess
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
-from butler import migrations, updates
+from butler import account, migrations, update_report, updates
+from fakes.account_api import FakeAccountAPI
 
 GOOD_PKGUTIL = """Package "Butler.pkg":
    Status: signed by a developer certificate issued by Apple for distribution
@@ -48,6 +50,10 @@ class Sandbox(unittest.TestCase):
         env = mock.patch.dict(os.environ, {"BUTLER_UPDATE_ANY_ROOT": "1"})
         env.start()
         self.addCleanup(env.stop)
+        # Nothing listens on port 9: an outcome report never reaches the real website from a test.
+        api = mock.patch.object(account, "API", "http://127.0.0.1:9/api")
+        api.start()
+        self.addCleanup(api.stop)
         os.environ.pop("BUTLER_UPDATE_ALLOW_UNSIGNED", None)
 
     def pkg(self, name: str, content: bytes = b"a package") -> tuple[Path, str]:
@@ -179,7 +185,9 @@ class DownloadTest(Sandbox):
         self.assertEqual(dest.read_bytes(), b"a package")
 
 
-class ApplyTest(Sandbox):
+class ApplySandbox(Sandbox):
+    """apply() with Installer, the signature check and the post-install faked. No tests of its own."""
+
     def setUp(self):
         super().setUp()
         self.new, self.digest = self.pkg("new.pkg", b"version two")
@@ -209,6 +217,8 @@ class ApplyTest(Sandbox):
             raise updates.UpdateError("Installer didn't finish (the disk is full)")
         self.version_file.write_text("v0.2.0\n" if content == b"version two" else "v0.1.0\n")
 
+
+class ApplyTest(ApplySandbox):
     def test_success(self):
         with mock.patch.object(updates, "post_install", return_value={"ok": True}):
             result = updates.apply(self.entry)
@@ -305,6 +315,153 @@ class ApplyTest(Sandbox):
         (self.root / ".git").mkdir()
         with self.assertRaisesRegex(updates.UpdateError, "git checkout"):
             updates.apply(self.entry)
+
+
+class ReportTest(ApplySandbox):
+    """The outcome report (update_report.py) against the fake account API: each outcome once, with
+    the documented fields only and no session; nothing with the setting off; offline, it waits."""
+
+    def setUp(self):
+        super().setUp()
+        self.api = FakeAccountAPI().start()
+        self.addCleanup(self.api.stop)
+        p = mock.patch.object(account, "API", self.api.url + "/api")
+        p.start()
+        self.addCleanup(p.stop)
+        self.queue = updates.UPDATES / updates.REPORTS
+
+    def apply(self, *post_install, entry=None):
+        answers = iter(post_install or [{"ok": True}])
+        with mock.patch.object(updates, "post_install", side_effect=lambda prev: next(answers)):
+            return updates.apply(entry or self.entry)
+
+    def offline(self):
+        return mock.patch.object(account, "API", "http://127.0.0.1:9/api")
+
+    def test_an_update_reports_once_with_nothing_else(self):
+        self.assertEqual(self.apply()["status"], "updated")
+        self.assertEqual(self.api.outcomes, [{"from": "v0.1.0", "to": "v0.2.0", "outcome": "updated"}])
+        self.assertEqual(self.api.outcome_auth, [None], "anonymous: no session goes with it")
+        self.assertFalse(self.queue.exists(), "nothing left waiting")
+        updates.tick({"updates": "off"}, datetime(2026, 10, 12, 2, 0))
+        self.assertEqual(len(self.api.outcomes), 1, "sent once")
+
+    def test_each_way_an_update_resolves(self):
+        cases = [
+            ("the new code's checks failed", (), ({"ok": False, "problem": "x"}, {"ok": True}),
+             {"outcome": "rolled_back", "reason": "check"}),
+            ("Installer stopped halfway", (b"version two",), ({"ok": True},),
+             {"outcome": "rolled_back", "reason": "install"}),
+            ("the way back failed too", (b"version one",), ({"ok": False, "problem": "x"},),
+             {"outcome": "failed", "reason": "rollback"}),
+        ]
+        for why, broken, answers, expected in cases:
+            with self.subTest(why):
+                self.api.outcomes.clear()
+                self.broken_installs = set(broken)
+                self.version_file.write_text("v0.1.0\n")
+                self.new.write_bytes(b"version two")
+                self.apply(*answers)
+                self.assertEqual(self.api.outcomes, [{"from": "v0.1.0", "to": "v0.2.0", **expected}])
+
+    def test_a_package_that_doesnt_check_out_is_the_releases_fault(self):
+        with self.assertRaises(updates.UpdateError):
+            self.apply(entry={**self.entry, "sha256": "f" * 64})
+        def refuse_the_new_one(pkg):
+            if pkg == updates.kept_package("v0.2.0"):
+                raise updates.UpdateError("the new version isn't signed by Butler's publisher", "signature")
+        with mock.patch.object(updates, "verify_signature", side_effect=refuse_the_new_one), \
+                self.assertRaisesRegex(updates.UpdateError, "isn't signed"):
+            self.apply()
+        self.assertEqual([o.get("reason") for o in self.api.outcomes], ["checksum", "signature"])
+        self.assertEqual({o["outcome"] for o in self.api.outcomes}, {"failed"})
+        self.assertEqual(self.installed, [], "nothing was installed")
+
+    def test_the_macs_own_problems_report_nothing(self):
+        with self.assertRaisesRegex(updates.UpdateError, "couldn't download"):
+            self.apply(entry={**self.entry, "pkg_url": str(self.root / "missing.pkg")})
+        updates.kept_package("v0.1.0").unlink()
+        os.environ["BUTLER_RELEASES_URL"] = str(self.root / "nowhere")
+        with self.assertRaisesRegex(updates.UpdateError, "couldn't keep a copy"):
+            self.apply()
+        self.assertEqual(self.api.outcomes, [])
+        self.assertFalse(self.queue.exists())
+
+    def test_off_sends_and_keeps_nothing(self):
+        self.settings = {**self.settings, "update_report": False}
+        self.apply()
+        self.assertEqual(self.api.outcomes, [])
+        self.assertFalse(self.queue.exists())
+
+    def test_offline_it_waits_then_the_tick_sends_it(self):
+        with self.offline():
+            self.assertEqual(self.apply()["status"], "updated", "an unreachable website changes nothing")
+        waiting = update_report.load(self.queue)["queued"]
+        self.assertEqual([(q["from"], q["to"], q["outcome"]) for q in waiting], [("v0.1.0", "v0.2.0", "updated")])
+        self.assertEqual(set(waiting[0]), {"from", "to", "outcome", "at"}, "nothing else is kept")
+        failed_at = update_report._parse(update_report.load(self.queue)["last_try"])
+        update_report.flush({}, self.queue, failed_at + update_report.RETRY_AFTER / 2)
+        self.assertEqual(self.api.outcomes, [], "waits 30 minutes after a failure")
+        update_report.flush({}, self.queue, failed_at + update_report.RETRY_AFTER)
+        self.assertEqual(self.api.outcomes, [{"from": "v0.1.0", "to": "v0.2.0", "outcome": "updated"}])
+        self.assertFalse(self.queue.exists())
+
+    def test_the_tick_sends_what_waits(self):
+        with self.offline():
+            self.apply()
+        state = update_report.load(self.queue)
+        state["last_try"] = None
+        self.queue.write_text(json.dumps(state))
+        updates.tick({"updates": "off"}, datetime(2026, 10, 12, 2, 0))
+        self.assertEqual(len(self.api.outcomes), 1, "updates: off still sends what an earlier update left")
+
+    def test_a_server_error_keeps_it_and_a_refusal_drops_it(self):
+        self.api.outcomes_down = True
+        self.apply()
+        self.assertEqual(len(update_report.load(self.queue)["queued"]), 1)
+        state = update_report.load(self.queue)
+        state["queued"][0]["to"] = "v0.0.9"         # older than `from`: the API refuses it
+        self.queue.write_text(json.dumps(state))
+        self.api.outcomes_down = False
+        update_report.flush({}, self.queue, datetime.now(timezone.utc) + update_report.RETRY_AFTER)
+        self.assertEqual(self.api.outcomes, [])
+        self.assertFalse(self.queue.exists(), "a refusal can't block what comes after it")
+
+    def test_too_old_is_dropped_and_off_deletes_what_waits(self):
+        with self.offline():
+            self.apply()
+        later = datetime.now(timezone.utc) + update_report.MAX_AGE + update_report.RETRY_AFTER
+        update_report.flush({}, self.queue, later)
+        self.assertEqual(self.api.outcomes, [])
+        self.assertFalse(self.queue.exists(), "three days old: dropped")
+        with self.offline():
+            self.version_file.write_text("v0.1.0\n")
+            self.apply()
+        self.assertTrue(self.queue.exists())
+        update_report.flush({"update_report": False}, self.queue)
+        self.assertFalse(self.queue.exists(), "turned off: what waits is deleted")
+        self.assertEqual(self.api.outcomes, [])
+
+    def test_unreadable_settings_wait_for_the_tick_to_decide(self):
+        self.settings = None
+        self.apply()
+        self.assertEqual(self.api.outcomes, [], "can't tell if the household said no: not sent yet")
+        self.assertTrue(self.queue.exists())
+        update_report.flush(None, self.queue)
+        self.assertEqual(self.api.outcomes, [])
+        update_report.flush({}, self.queue)
+        self.assertEqual(len(self.api.outcomes), 1)
+
+    def test_only_release_versions_and_known_outcomes(self):
+        b = update_report.body
+        self.assertEqual(b("v0.1.0", "v0.2.0", "failed", "rollback"),
+                         {"from": "v0.1.0", "to": "v0.2.0", "outcome": "failed", "reason": "rollback"})
+        for bad in (("v0.0.0-d78f91e", "v0.1.0", "updated", None), ("0.1.0", "v0.2.0", "updated", None),
+                    (None, "v0.2.0", "updated", None), ("v0.1.0", "v0.2.0", "broke", None),
+                    ("v0.1.0", "v0.2.0", "updated", "check"), ("v0.1.0", "v0.2.0", "rolled_back", "disk full")):
+            self.assertIsNone(b(*bad), bad)
+        for outcome, reasons in update_report.REASONS.items():
+            self.assertEqual(reasons, FakeAccountAPI.OUTCOMES[outcome], "the fake takes what the engine sends")
 
 
 class TickTest(Sandbox):

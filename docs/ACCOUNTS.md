@@ -39,6 +39,7 @@ All bodies are JSON. Return clear `error` strings. Rate-limit by email and IP.
 | `POST /api/prefs` | Bearer + `{nudges: true|false}` | `{ok:true}`; the weekly lesson email, asked once after sign-in, off unless the student says yes |
 | `POST /api/auth/logout` | Bearer | `{ok:true}`; revokes the session |
 | `POST /api/account/delete` | Bearer + `{confirm: true}` | `{ok:true}`; deletes the account, its progress and every session |
+| `POST /api/updates/outcome` | `{from, to, outcome:"updated"|"rolled_back"|"failed", reason?}` | `{ok:true}`; anonymous, no session. See [Update outcomes](#update-outcomes) |
 
 The website also signs students in itself (`client:"web"`, no butler name, the session as an
 HttpOnly cookie instead of a token), takes lists of lessons and an `undone` status for its
@@ -54,6 +55,7 @@ checkboxes, and has a page to delete the account. The setup app doesn't use thos
 - The magic-link email is plain and warm, names the butler, and says "If you didn't ask for
   this, ignore it."
 - Privacy: we hold emails, butler names and lesson progress. Nothing from the household.
+  Update outcomes are daily counts per version, linked to no one.
 
 ## The Terms
 
@@ -143,3 +145,37 @@ offline: "I'll try again").
 **The website's side.** When the setup app's report completes a module on the account, the site
 counts `module_completed` with `via: "butler"` in its analytics (no email, no account key), and
 the weekly lesson email skips ahead past the modules the butler finished.
+
+## Update outcomes
+
+After every update that resolves, Butler tells the website how it went, so the owner sees a
+release that breaks installs and holds it (the kill switch in docs/UPDATES.md). Decided by the
+owner, 2026-10-13: versions from and to, and the outcome. No household data.
+`src/butler/update_report.py` does it.
+
+**What leaves the Mac.** `POST /api/updates/outcome {from, to, outcome, reason?}` and nothing else:
+no session, no install id, no email, no name. So a Butler that never signed in reports too.
+
+| `outcome` | `reason` | When |
+|---|---|---|
+| `updated` | (none) | The new version passed its checks |
+| `rolled_back` | `install` | Installer stopped halfway; the kept package went back in and passed its checks |
+| `rolled_back` | `check` | The new code's checks failed (dependencies, migrations, health, the brief); it went back |
+| `failed` | `checksum` | The download's SHA-256 or size didn't match the manifest; nothing was installed |
+| `failed` | `signature` | The package wasn't signed by Butler's publisher, or Gatekeeper or the notarization ticket refused it |
+| `failed` | `rollback` | The update failed and going back failed too: the household has to reinstall |
+
+`from` and `to` are release versions (`v1.2.3`), and `to` is newer than `from`. A test build's
+version never reports. An update that didn't happen for the Mac's own reasons (the download
+didn't arrive, no copy of the old version to go back to, another update running) reports nothing.
+
+**Off switch.** `update_report: false` in `config/settings.yaml`. On when absent.
+
+**Offline.** The report waits in `data/updates/outcomes.json` (the fields above and when it
+happened). Each tick sends what waits, oldest first, and tries again 30 minutes after a failure.
+A report older than three days is dropped. A refusal (`400`, `404`) drops it too. Errors are
+logged without detail, and the update itself never fails because of a report.
+
+**The website's side.** It refuses any other field or value with `400`, rate-limits by IP, and
+keeps only daily counts per version and outcome, never the IP or a record per install. Its uptime
+check emails the owner when the version on offer gets too many rollbacks and failures.

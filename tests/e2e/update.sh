@@ -58,8 +58,9 @@ cp "$b/config/settings.yaml" "$work/settings.before"
 fingerprint > "$work/household.before"
 "$b/scripts/bootstrap.sh"
 
-# BUTLER_COLUMNS: no wrapping, so the greps below see whole sentences.
-export BUTLER_RELEASES_URL="$work/releases" BUTLER_UPDATE_MANIFEST="$work/stable.json" BUTLER_COLUMNS=1000
+# BUTLER_COLUMNS: no wrapping, so the greps below see whole sentences. BUTLER_API: nothing listens
+# there, so these test updates never report an outcome to the real website (update_report.py).
+export BUTLER_RELEASES_URL="$work/releases" BUTLER_UPDATE_MANIFEST="$work/stable.json" BUTLER_COLUMNS=1000 BUTLER_API=http://127.0.0.1:9/api
 
 step "update to v0.0.2"
 manifest v0.0.2 "$v2"

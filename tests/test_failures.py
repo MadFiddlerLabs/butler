@@ -1,21 +1,25 @@
 """Failure isolation, end to end: each part of the brief fails on its own. With Lunch Money, the
 weather, the news, Claude, the Calendar helper, Gmail's SMTP or its IMAP down, the brief still
 builds, says plainly what's missing ("couldn't load" or "not connected yet"), and the log says
-why. Nothing leaks a secret on the way. Uses the fakes in tests/fakes; nothing is real.
+why. Nothing leaks a secret on the way. An update's outcome report never stops the update. Uses
+the fakes in tests/fakes; nothing is real.
 Run with: PYTHONPATH=src .venv/bin/python -m unittest discover tests"""
 
 import shutil
 import smtplib
+import socket
 import sys
 import tempfile
 import time
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
-from butler import mailer, tick
+from butler import mailer, tick, update_report, updates
 from fakes import fixtures
 from fakes.home import Home
+from test_updates import ApplySandbox
 
 SETTINGS = {"email": {"sender_name": "Bento", "sender": "bento@example.com", "recipients": ["sam@example.com"]}}
 
@@ -395,6 +399,53 @@ class UpdateBriefCheckTest(unittest.TestCase):
     def test_a_brief_that_cant_render_fails_it(self):
         failures = self.check(env={"BUTLER_FAKE_BUG": "render"})
         self.assertEqual([(f["where"], f["error"]) for f in failures], [("the brief", "AttributeError")])
+
+
+class UpdateReportIsolationTest(ApplySandbox):
+    """The outcome report (update_report.py) is a nicety. Whatever happens to it, the update
+    succeeds, is recorded for the brief, and the log names no detail of what went wrong."""
+
+    def update(self):
+        with mock.patch.object(updates, "post_install", return_value={"ok": True}), \
+                self.assertLogs("butler", "INFO") as logs:
+            result = updates.apply(self.entry)
+        self.assertEqual(result["status"], "updated")
+        self.assertEqual(updates.installed_version(), "v0.2.0")
+        self.assertEqual(updates.load_state()["last_result"], result, "recorded for the next brief")
+        self.assertNotIn("boom", "\n".join(logs.output))
+        return logs.output
+
+    def test_a_send_that_raises_anything(self):
+        with mock.patch.object(update_report.account, "send_update_outcome", side_effect=RuntimeError("boom")):
+            self.update()
+
+    def test_a_report_that_cant_be_written(self):
+        with mock.patch.object(update_report, "_save", side_effect=PermissionError("boom")):
+            self.update()
+
+    def test_a_reporter_with_a_bug(self):
+        with mock.patch.object(update_report, "record", side_effect=RuntimeError("boom")):
+            self.update()
+
+    def test_a_website_that_never_answers(self):
+        quiet = socket.socket()
+        quiet.bind(("127.0.0.1", 0))
+        quiet.listen(1)                 # connects, then never says a word
+        self.addCleanup(quiet.close)
+        started = time.monotonic()
+        with mock.patch.object(update_report.account, "API", f"http://127.0.0.1:{quiet.getsockname()[1]}/api"), \
+                mock.patch.object(update_report, "TIMEOUT", 0.5):
+            self.update()
+        self.assertLess(time.monotonic() - started, 5, "the update waits a short timeout at most")
+        self.assertEqual(len(update_report.load(updates.UPDATES / updates.REPORTS)["queued"]), 1, "it waits for the tick")
+
+    def test_a_tick_whose_report_fails_still_checks_for_updates(self):
+        with mock.patch.object(update_report, "_send", side_effect=RuntimeError("boom")), \
+                mock.patch.object(updates, "fetch_manifest", return_value={"available": False}) as fetch:
+            (updates.UPDATES / updates.REPORTS).parent.mkdir(parents=True, exist_ok=True)
+            (updates.UPDATES / updates.REPORTS).write_text('{"queued": [{"at": "2026-10-12T03:00:00Z"}]}')
+            updates.tick({"updates": "auto", "update_hour": 3}, datetime(2026, 10, 12, 3, 0))
+        fetch.assert_called_once()
 
 
 if __name__ == "__main__":

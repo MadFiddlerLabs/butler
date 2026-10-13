@@ -21,7 +21,9 @@ the settings, and today's brief built from the household's own settings, sending
 a failure reinstalls the kept package. The next brief says what happened, in a line. If going
 back fails too, a plain email says so straight away, since the code left may not send a brief.
 
-The website's manifest is the kill switch: a held version is never offered. See docs/UPDATES.md.
+The website's manifest is the kill switch: a held version is never offered. To tell the owner when
+to pull it, each update's outcome goes to the website, anonymously (update_report.py), unless
+`update_report: false`. See docs/UPDATES.md.
 """
 
 import argparse
@@ -40,7 +42,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import mailer
+from . import mailer, update_report
 from .config import ROOT, brand, load_settings
 
 log = logging.getLogger("butler")
@@ -50,6 +52,7 @@ MANIFEST_URL = "https://buildyourbutler.com/updates/stable.json"
 RELEASES_URL = "https://github.com/nerolabs/butler/releases/download"
 UPDATES = ROOT / "data" / "updates"
 STATE = UPDATES / "state.json"
+REPORTS = "outcomes.json"      # in UPDATES: update outcomes waiting to be sent (update_report.py)
 INSTALL_ID = UPDATES / "install-id"
 VERSION_FILE = ROOT / ".butler-version"
 # Written into unsigned test packages only (packaging/macos/build-pkg.sh), holding that build's
@@ -61,7 +64,12 @@ PORTAL_LABEL = "com.buildyourbutler.portal"
 
 
 class UpdateError(RuntimeError):
-    """Something stopped an update. The message is plain words for the household."""
+    """Something stopped an update. The message is plain words for the household. `code` is set
+    when the new version's package itself was refused ("checksum", "signature"): that's reported."""
+
+    def __init__(self, message: str, code: str | None = None):
+        super().__init__(message)
+        self.code = code
 
 
 # ---------- versions ----------
@@ -206,14 +214,15 @@ def verify_signature(pkg: Path) -> None:
     out = sig.stdout + sig.stderr
     if (sig.returncode != 0 or "signed by a developer certificate issued by Apple" not in out
             or not re.search(rf"(?m)^\s*1\. Developer ID Installer: [^\n]*\({TEAM_ID}\)\s*$", out)):
-        raise UpdateError("the new version isn't signed by Butler's publisher, so I didn't install it")
+        raise UpdateError("the new version isn't signed by Butler's publisher, so I didn't install it", "signature")
     gate = _run(["spctl", "--assess", "-vv", "--type", "install", str(pkg)])
     if gate.returncode != 0 or "accepted" not in (gate.stdout + gate.stderr):
-        raise UpdateError("macOS didn't approve the new version, so I didn't install it")
+        raise UpdateError("macOS didn't approve the new version, so I didn't install it", "signature")
     if shutil.which("xcode-select") and _run(["xcode-select", "-p"]).returncode == 0:
         staple = _run(["xcrun", "stapler", "validate", str(pkg)])
         if staple.returncode != 0:
-            raise UpdateError("the new version's notarization ticket didn't check out, so I didn't install it")
+            raise UpdateError("the new version's notarization ticket didn't check out, so I didn't install it",
+                              "signature")
 
 
 def download(url: str, dest: Path, sha256: str | None = None, size: int | None = None) -> Path:
@@ -232,10 +241,10 @@ def download(url: str, dest: Path, sha256: str | None = None, size: int | None =
         raise UpdateError(f"couldn't download the new version ({e})") from None
     if size and part.stat().st_size != int(size):
         part.unlink(missing_ok=True)
-        raise UpdateError("the download was the wrong size, so I deleted it")
+        raise UpdateError("the download was the wrong size, so I deleted it", "checksum")
     if sha256 and sha256_of(part).lower() != sha256.lower():
         part.unlink(missing_ok=True)
-        raise UpdateError("the download didn't match its checksum, so I deleted it")
+        raise UpdateError("the download didn't match its checksum, so I deleted it", "checksum")
     part.replace(dest)
     return dest
 
@@ -345,19 +354,27 @@ def apply(entry: dict, now: datetime | None = None) -> dict:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
             raise UpdateError("another update is already running") from None
-        rollback_pkg = ensure_rollback_package(previous)
-        pkg = download(entry["pkg_url"], kept_package(new), entry.get("sha256"), entry.get("size"))
-        verify_signature(pkg)
         # Loaded now, while the code on disk is still this version's: if the update and the way
         # back both fail, this process can still tell the household.
         settings = _settings_or_none()
+        rollback_pkg = ensure_rollback_package(previous)
+        try:
+            pkg = download(entry["pkg_url"], kept_package(new), entry.get("sha256"), entry.get("size"))
+            verify_signature(pkg)
+        except UpdateError as e:
+            # A package that doesn't check out is the release's fault: report it. A download that
+            # didn't arrive is the network's, and the Mac tries again tomorrow.
+            if e.code:
+                _report(settings, previous, new, "failed", e.code)
+            raise
         record_baseline()
         log.info("update: installing %s over %s", new, previous)
         try:
             install_package(pkg)
-            outcome = post_install(previous)
         except UpdateError as e:
-            outcome = {"ok": False, "problem": str(e)}
+            outcome, stage = {"ok": False, "problem": str(e)}, "install"
+        else:
+            outcome, stage = post_install(previous), "check"
         if outcome.get("ok") and installed_version() == new:
             result = {"status": "updated", "from": previous, "to": new,
                       "notes": _short_notes(entry.get("notes", "")), "at": now.isoformat()}
@@ -379,7 +396,22 @@ def apply(entry: dict, now: datetime | None = None) -> dict:
     state.pop("approved", None)
     state.pop("last_error", None)
     save_state(state)
+    if result["status"] == "updated":
+        _report(settings, previous, new, "updated")
+    elif result["restored_ok"]:
+        _report(settings, previous, new, "rolled_back", stage)
+    else:
+        _report(settings, previous, new, "failed", "rollback")
     return result
+
+
+def _report(settings: dict | None, previous: str, new: str, outcome: str, reason: str | None = None) -> None:
+    """Tells the website how the update went (update_report.py). Whatever happens there, the update
+    has already been recorded, and it never fails because of this."""
+    try:
+        update_report.record(settings, UPDATES / REPORTS, previous, new, outcome, reason)
+    except Exception:  # noqa: BLE001 - record() never raises; this is the second lock
+        log.info("update report: skipped")
 
 
 def _roll_back(rollback_pkg: Path, previous: str) -> dict:
@@ -437,6 +469,7 @@ def _short_notes(notes: str, limit: int = 200) -> str:
 def tick(settings: dict, now: datetime) -> None:
     """Called by the tick every 5 minutes; checks at most once a day, on the first tick at or after
     update_hour, and installs an approved update straight away."""
+    update_report.flush(settings, UPDATES / REPORTS)     # an outcome that couldn't be sent at the time
     if can_update():
         return
     state = load_state()

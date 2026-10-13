@@ -98,7 +98,8 @@ class DocParseTest(unittest.TestCase):
     def test_every_call_is_read(self):
         self.assertEqual(set(CALLS), {"POST /api/auth/start", "POST /api/auth/verify", "POST /api/auth/poll",
                                       "GET /api/me", "POST /api/progress", "POST /api/prefs",
-                                      "POST /api/auth/logout", "POST /api/account/delete"})
+                                      "POST /api/auth/logout", "POST /api/account/delete",
+                                      "POST /api/updates/outcome"})
         self.assertEqual(CALLS["POST /api/auth/poll"].answer.keys["status"], {"pending", "verified", "expired"})
         self.assertEqual(CALLS["POST /api/progress"].body.optional, {"at"})
         self.assertIsInstance(CALLS["GET /api/me"].answer.keys["progress"], list)
@@ -106,6 +107,10 @@ class DocParseTest(unittest.TestCase):
         self.assertTrue(CALLS["GET /api/me"].bearer)
         self.assertFalse(CALLS["POST /api/auth/start"].bearer)
         self.assertEqual(CALLS["POST /api/auth/start"].body.optional, {"heard"})
+        outcome = CALLS["POST /api/updates/outcome"]
+        self.assertFalse(outcome.bearer, "anonymous: no session")
+        self.assertEqual(outcome.body.keys["outcome"], {"updated", "rolled_back", "failed"})
+        self.assertEqual(outcome.body.optional, {"reason"})
 
 
 class EngineCallsAreDocumentedTest(unittest.TestCase):
@@ -152,6 +157,17 @@ class FakeFollowsTheDocTest(unittest.TestCase):
                                      data=json.dumps(body).encode() if body is not None else None,
                                      headers={"Content-Type": "application/json",
                                               **({"Authorization": f"Bearer {token}"} if token else {})})
+        try:
+            with urllib.request.urlopen(req, timeout=5) as r:
+                return r.status, json.load(r)
+        except urllib.error.HTTPError as e:
+            with e:
+                return e.code, json.load(e)
+
+    def call_raw(self, path: str, body: dict) -> tuple[int, dict]:
+        """A POST the doc doesn't describe: for refusals."""
+        req = urllib.request.Request(self.api.url + path, method="POST", data=json.dumps(body).encode(),
+                                     headers={"Content-Type": "application/json"})
         try:
             with urllib.request.urlopen(req, timeout=5) as r:
                 return r.status, json.load(r)
@@ -220,6 +236,20 @@ class FakeFollowsTheDocTest(unittest.TestCase):
         code, answer = self.call("POST /api/auth/logout", None, token)
         self.assertEqual((code, answer), (200, {"ok": True}))
         self.assertEqual(self.call("GET /api/me", None, token)[0], 401, "logout revokes the session")
+
+    def test_update_outcomes(self):
+        for body in ({"from": "v0.1.0", "to": "v0.2.0", "outcome": "updated"},
+                     {"from": "v0.1.0", "to": "v0.2.0", "outcome": "rolled_back", "reason": "check"},
+                     {"from": "v0.2.0", "to": "v1.0.0", "outcome": "failed", "reason": "rollback"}):
+            code, answer = self.call("POST /api/updates/outcome", body)
+            self.assertEqual((code, answer), (200, {"ok": True}), body)
+            self.assert_shape(answer, CALLS["POST /api/updates/outcome"].answer, "updates/outcome")
+        self.assertEqual(self.api.outcome_auth, [None] * 3)
+        good = {"from": "v0.1.0", "to": "v0.2.0", "outcome": "updated"}
+        for bad in ({**good, "install_id": "abc"}, {**good, "outcome": "broke"}, {**good, "to": "v0.1.0"},
+                    {**good, "from": "0.1.0"}, {**good, "reason": "check"}, {"to": "v0.2.0", "outcome": "updated"}):
+            code, answer = self.call_raw("/api/updates/outcome", bad)
+            self.assertEqual((code, answer.get("code")), (400, "bad_outcome"), bad)
 
     def test_refusals(self):
         token = self.sign_in()

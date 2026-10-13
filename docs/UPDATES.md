@@ -71,6 +71,7 @@ and minor versions overnight on its own. A major version waits for a yes: the br
 |---|---|---|
 | `updates` | `auto` | `auto`, `notify` or `off` |
 | `update_hour` | `3` | The hour the daily check runs, in the household's timezone |
+| `update_report` | `true` | Tell the website how each update went (below). `false` turns it off |
 
 ## Dependencies
 
@@ -115,6 +116,27 @@ reaching anyone else, add it to `updates/hold.json` in the website repo and push
 then points at the newest release that isn't held, or says no update is available. To roll a
 version out gradually, set `rollout_percent` there too. See the website's DEPLOY.md.
 
+## Telling the website how it went
+
+The kill switch needs a signal. After every update that resolves, Butler sends the website the
+version it updated from, the version it updated to, and the outcome: `updated`, `rolled_back` or
+`failed`, with a fixed reason code (`src/butler/update_report.py`).
+
+- **What goes:** `{from, to, outcome, reason?}`, and nothing else. No session, no install id, no
+  email, nothing from the household. A Butler that never signed in reports too.
+- **When:** once, right after the update, from the process that ran it. A package refused for its
+  checksum or signature reports `failed` too. A download that didn't arrive, or no copy to go back
+  to, is the Mac's problem, not the release's, and reports nothing.
+- **Offline:** it waits in `data/updates/outcomes.json`, and the tick sends it, at most every 30
+  minutes, for up to three days.
+- **Never in the way:** a five-second timeout, errors logged without detail, and an update never
+  fails because of it.
+- **Off:** `update_report: false`. A report waiting to be sent is deleted on the next tick.
+
+The website keeps daily counts per version and outcome, and its uptime check emails the owner
+when the version on offer rolls back or fails too often. The contract is in
+[ACCOUNTS.md](ACCOUNTS.md#update-outcomes).
+
 ## What updates never do
 
 - Touch `config/`, `projects/`, `budget/`, `out/` or `logs/` beyond appending to the log, or
@@ -130,7 +152,10 @@ version out gradually, set `rollout_percent` there too. See the website's DEPLOY
 - `tests/test_updates.py`: versions, the policy, rollout, signature refusals, checksums,
   rollback, a failed way back (reported by brief and by email), an Installer that stops halfway,
   the brief check against its baseline, updates that didn't happen, the daily tick, approvals,
-  and migrations.
+  migrations, and the outcome report against the fake account API (each outcome once, nothing
+  with the setting off, offline queueing and its limits).
+- `tests/test_failures.py`, `UpdateReportIsolationTest`: an update succeeds and is recorded when
+  the report raises, hangs up or can't be written.
 - `tests/test_failures.py`, `UpdateBriefCheckTest`: the brief check on the invented Johnsons
   passes and writes nothing, passes with services down, and fails on a section that crashes on
   code and on a brief that can't render.
