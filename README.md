@@ -58,6 +58,9 @@ visit", "that Q-2026-41-1 charge was the plumber, Household", "apply the Transpo
 "less sport in the news please".
 A confirmation comes back to everyone within about five minutes.
 
+If Gmail refuses an email, Butler keeps it and sends it once Gmail takes it again. It never builds
+the same email twice, so a refusal doesn't cost extra Claude calls.
+
 The portal has the same views plus Money (every transaction, by category), Budget (the plan
 as the service reads it), Projects (done, pause, send an update), Lists (Apple Reminders) and
 Info (phones, IDs and document expiry dates, shown only there).

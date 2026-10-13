@@ -59,7 +59,7 @@ class Tick(unittest.TestCase):
                   mock.patch.object(tick.daily, "_online", return_value=True),
                   mock.patch.object(tick.weekly, "run", side_effect=lambda s, d, dry_run: self.weekly.append(self.local(s))),
                   mock.patch.object(tick.monthly, "run", side_effect=lambda s, m, preview: self.monthly.append(m)),
-                  mock.patch.object(tick.mailer, "send", side_effect=AssertionError("nothing failed, so no note"))):
+                  mock.patch.object(tick.mailer, "send_or_queue", side_effect=AssertionError("nothing failed, so no note"))):
             p.start()
             self.addCleanup(p.stop)
 
@@ -151,7 +151,7 @@ class BriefAcrossDstTest(unittest.TestCase):
                   mock.patch.object(daily, "to_html", return_value="<p>brief</p>"),
                   mock.patch.object(daily, "to_text", return_value="brief"),
                   mock.patch.object(daily.llm, "record_news"),
-                  mock.patch.object(daily.mailer, "send", side_effect=lambda *a, **k: self.sent.append(self.now[0])),
+                  mock.patch.object(daily.mailer, "send_or_queue", side_effect=lambda *a, **k: self.sent.append(self.now[0]) or True),
                   mock.patch.object(sys, "argv", ["daily", "--scheduled"])):
             p.start()
             self.addCleanup(p.stop)

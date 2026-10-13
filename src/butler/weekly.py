@@ -551,8 +551,8 @@ def run(settings: dict, last_day: date, dry_run: bool) -> None:
     if dry_run:
         log.info("weekly dry run: wrote out/preview/%s.html", stem)
         return
-    mailer.send(settings, f"{brand(settings)} · your week ahead, {last_day + timedelta(days=1):%-d %B}",
-                text, to_html(w, secs), images=imgs)
+    mailer.send_or_queue(settings, stem, f"{brand(settings)} · your week ahead, {last_day + timedelta(days=1):%-d %B}",
+                         text, to_html(w, secs), images=imgs)
     asked = json.loads(QUESTIONS.read_text()) if QUESTIONS.exists() else {}
     asked.update({qid: {"payee": payee, "text": q, "asked": last_day.isoformat()}
                   for qid, q, payee in w.questions})

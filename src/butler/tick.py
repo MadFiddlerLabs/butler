@@ -1,6 +1,6 @@
-"""What launchd runs every 5 minutes: handle replies, check for updates once a day (see
-updates.py), report finished setup steps to the course (progress.py), send the weekly letter if
-it's due, then send the daily brief if it's due.
+"""What launchd runs every 5 minutes: re-send anything Gmail refused earlier (mailer.py), handle
+replies, check for updates once a day (see updates.py), report finished setup steps to the course
+(progress.py), send the weekly letter and the monthly look-back if due, then the daily brief if due.
 Calendar copying and colors live in Apps Script (apps-script/butler-calendar.gs)."""
 
 import logging
@@ -19,6 +19,10 @@ def main() -> None:
     logging.basicConfig(filename=ROOT / "logs" / "butler.log", level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s")
     try:
+        mailer.flush(load_settings())   # anything Gmail refused earlier; hourly while it keeps refusing
+    except Exception:
+        log.exception("outbox failed")
+    try:
         replies.process(load_settings())
     except Exception:
         log.exception("replies failed")  # never let replies block the brief
@@ -28,8 +32,11 @@ def main() -> None:
     except Exception:
         log.exception("update check failed")  # never let updates block the brief
     progress.sync()  # never raises; queues whatever can't be sent yet
-    _weekly_if_due()
-    _monthly_if_due()
+    for name, letter in (("weekly letter", _weekly_if_due), ("monthly look-back", _monthly_if_due)):
+        try:
+            letter()
+        except Exception:
+            log.exception("%s failed", name)  # never let a letter block the brief
     sys.argv = [sys.argv[0], "--scheduled"]
     daily.main()
 
@@ -49,8 +56,9 @@ def _weekly_if_due() -> None:
         weekly.run(settings, now.date(), dry_run=False)
     except Exception as e:
         log.exception("weekly failed")
-        mailer.send(settings, f"{brand(settings)} · {now:%A} letter failed {now:%-d %B}",
-                    f"This week's letter failed to build or send ({e}). Details are in logs/butler.log.")
+        mailer.send_or_queue(settings, f"weekly-failed-{year}-{week:02d}",
+                             f"{brand(settings)} · {now:%A} letter failed {now:%-d %B}",
+                             f"This week's letter failed to build ({e}). Details are in logs/butler.log.")
     marker.touch()
 
 
@@ -68,8 +76,8 @@ def _monthly_if_due() -> None:
         monthly.run(settings, last, preview=False)
     except Exception as e:
         log.exception("monthly failed")
-        mailer.send(settings, f"{brand(settings)} · monthly look-back failed",
-                    f"The {last:%B} look-back failed ({e}). Details are in logs/butler.log.")
+        mailer.send_or_queue(settings, f"monthly-failed-{last:%Y-%m}", f"{brand(settings)} · monthly look-back failed",
+                             f"The {last:%B} look-back failed ({e}). Details are in logs/butler.log.")
     marker.touch()
 
 

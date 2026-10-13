@@ -348,7 +348,8 @@ def run(settings: dict, start: date, preview: bool) -> str:
     text = to_text(mo, secs)
     (ROOT / "out" / f"{stem}.txt").write_text(text)
     if not preview:
-        mailer.send(settings, f"{brand(settings)} · {start:%B} looking back", text, to_html(mo, secs), images=imgs)
+        mailer.send_or_queue(settings, stem, f"{brand(settings)} · {start:%B} looking back", text,
+                             to_html(mo, secs), images=imgs)
         budget_changes.save(start, mo.suggestions, datetime.now(tz(settings)).date())
         log.info("monthly: sent %s", stem)
     return stem

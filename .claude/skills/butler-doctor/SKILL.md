@@ -39,7 +39,7 @@ they are). Something not connected yet is normal mid-course, not a problem.
 | Calendar permission error | macOS isn't letting Butler read Calendar | System Settings > Privacy & Security > Calendars: switch it on. The same for Reminders |
 | `bin/butler-ek` missing | The Calendar step isn't done | `/butler-setup calendar` |
 | A secret is missing | It was never stored, or stored under another name | `scripts/store-secret.sh <name> "..."` |
-| Gmail "Username and Password not accepted" in the log | The app password is wrong or was revoked | Make a new app password; store it again |
+| Gmail "Username and Password not accepted" in the log, or "queued" and "outbox" lines | The app password is wrong or was revoked. Built emails wait in `data/outbox/` and go out on their own once Gmail takes them (tried hourly after three refusals; dropped after three days) | Make a new app password; store it again. Don't rebuild or resend by hand |
 | Claude API error 401 | The API key is wrong or was deleted | Make a new key in the Console; store it again |
 | Claude API error 429, or "credit balance" | The spending limit was reached | Raise the limit in the Console, or wait for next month |
 | No ticks in the log | The schedule isn't running | `launchd/install.sh` |

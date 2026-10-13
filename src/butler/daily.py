@@ -244,19 +244,24 @@ def main() -> None:
         if args.dry_run:
             log.info("dry run: wrote out/preview/brief-%s.html", day)
             return
-        mailer.send(settings, brief.subject, text, html, images=brief.charts)
+        # The brief is built once a day. If Gmail refuses it, it waits in the outbox and a
+        # later tick re-sends it as built (mailer.flush), with no new Claude calls.
+        sent = mailer.send_or_queue(settings, f"brief-{day}", brief.subject, text, html, images=brief.charts)
         sent_marker.touch()
         if brief.updates:
             updates.mark_announced()
         llm.record_news(day, [n for n in brief.news if n.get("summary") is not None])
-        log.info("sent to %s", ", ".join(settings["email"]["recipients"]))
+        if sent:
+            log.info("sent to %s", ", ".join(settings["email"]["recipients"]))
+        else:
+            log.info("brief queued; it goes out when Gmail takes it")
     except Exception:
         log.exception("brief failed")
         if args.dry_run:
             raise
         # Silence is the worst failure: tell them something broke.
-        mailer.send(settings, f"{brand(settings)} · brief failed {day}",
-                    "This morning's brief failed to build or send.\n\n" + traceback.format_exc())
+        mailer.send_or_queue(settings, f"brief-failed-{day}", f"{brand(settings)} · brief failed {day}",
+                             "This morning's brief failed to build.\n\n" + traceback.format_exc())
         sent_marker.touch()
         raise
 
