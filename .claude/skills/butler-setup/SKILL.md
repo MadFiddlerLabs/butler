@@ -120,20 +120,22 @@ The win: Claude writes the news summaries and notes on what to prepare for.
 
 1. Explain in two sentences: Butler uses Claude through an API key. This is separate from
    their Claude plan and billed by use, so they'll set a spending limit first.
-2. They go to platform.claude.com and create an account. If they have a Max plan, sign-up
-   offers a **Link organization** option. Either choice works for Butler: the API key is
-   billed by use, separately from the plan.
-3. They add billing, then set a monthly spend limit: Settings > Billing > Spend limits, then
+2. They go to platform.claude.com and create an account.
+3. If they have a Max plan, its monthly API credit can pay for Butler: in Claude (claude.ai or
+   the app), Settings > Billing > API credits > **Link organization**, then pick the Console
+   organization they just made. They can skip buying credit, but still set a spend limit. That
+   credit expires each billing cycle.
+4. They add billing, then set a monthly spend limit: Settings > Billing > Spend limits, then
    **Set limit**. Suggest a low limit to start. Prepaid credit expires, so suggest buying a
    small amount and topping up later. Then they create an API key.
-4. Store it: `scripts/store-secret.sh butler-anthropic "Your Claude API key"`.
-5. Check it's there without printing it:
+5. Store it: `scripts/store-secret.sh butler-anthropic "Your Claude API key"`.
+6. Check it's there without printing it:
    `security find-generic-password -s butler-anthropic >/dev/null && echo ok`
-6. Ask for two or three sentences about the household for `household.about`: who lives
+7. Ask for two or three sentences about the household for `household.about`: who lives
    there, work, what's going on. Remind them it goes to Claude, so no ID numbers.
-7. Ask for one sentence for `news.interests`. It sits next to news from strangers, so no
+8. Ask for one sentence for `news.interests`. It sits next to news from strangers, so no
    names or personal details.
-8. Check: `./run.sh preview`. The news is summarized, and the footer shows no Claude error.
+9. Check: `./run.sh preview`. The news is summarized, and the footer shows no Claude error.
 
 ## inbox (Module 5: Give your butler an inbox)
 
