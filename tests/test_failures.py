@@ -175,6 +175,59 @@ class GmailSendDownTest(Case):
         self.assert_no_secrets()
 
 
+class ReplyWhenClaudeKeepsFailingTest(Case):
+    """A trusted reply whose Claude call keeps failing: three calls, then one note to everyone, then
+    silence. Before, it went to Claude every five minutes with no end."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.home = h = Home()
+        h.add_reply("sam@example.com", "Re: Bento · Saturday", "add milk", "example.com")
+        cls.runs = [h.run("replies", down=("claude",)) for _ in range(4)] + [h.run("replies")]
+
+    def test_three_claude_calls_at_most(self):
+        calls = [len([p for p in r["prompts"] if p["schema"] == "actions"]) for r in self.runs]
+        self.assertEqual(calls, [1, 1, 1, 0, 0])
+
+    def test_the_household_hears_once(self):
+        mails = [m for r in self.runs for m in r["mails"]]
+        self.assertEqual(len(mails), 1, [m["subject"] for m in mails])
+        self.assertIn("I couldn't handle Sam's reply after 3 tries", mails[0]["text"])
+        self.assertEqual(mails[0]["to"], ["sam@example.com", "alex@example.com"])
+        self.assertIn("1", self.runs[3]["imap_seen"], "marked read once given up on")
+
+
+class ReplyWhenGmailRefusesTest(Case):
+    """Gmail refuses the confirmation: the actions happen once, the confirmation waits in the outbox,
+    and the next tick sends it without asking Claude again."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.home = h = Home()
+        h.add_reply("sam@example.com", "Re: Bento · Saturday", "add milk", "example.com")
+        h.set_actions({"Re: Bento · Saturday": [{"type": "add_shopping", "text": "milk"}]})
+
+        def nothing_due(settings):
+            for hour in ("send_hour", "weekly_hour", "monthly_hour"):
+                settings["email"][hour] = 24
+        h.edit_settings(nothing_due)
+        cls.first = h.run("replies", down=("smtp",))
+        cls.again = h.run("tick")
+
+    def test_the_actions_happen_once(self):
+        self.assertIsNone(self.first["error"], self.first["error"])
+        self.assertEqual([p["schema"] for p in self.first["prompts"]], ["actions"])
+        self.assertEqual(self.again["prompts"], [])
+        adds = [c for c in self.home.ek_calls() if c["command"] == "add-reminder"]
+        self.assertEqual(len(adds), 1)
+
+    def test_the_confirmation_goes_out_on_the_next_tick(self):
+        self.assertEqual(self.first["mails"], [])
+        self.assertEqual(len(self.again["mails"]), 1)
+        self.assertIn("Added to Shopping: milk", self.again["mails"][0]["text"])
+        self.assertEqual(self.again["mails"][0]["in_reply_to"], "<reply-1@example.com>")
+
+
 class OutboxBackoffTest(unittest.TestCase):
     """While Gmail keeps refusing, the outbox is tried on the next two ticks, then once an hour, and
     new mail waits with it. Nothing waits more than three days. The clock is simulated."""

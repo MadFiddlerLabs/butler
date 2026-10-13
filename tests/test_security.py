@@ -191,7 +191,8 @@ class WhoCanReplyTest(unittest.TestCase):
              mock.patch.object(inbox, "mark_seen", side_effect=lambda s, uids: seen.extend(uids)), \
              mock.patch.object(replies, "plan_actions", side_effect=lambda s, r, t: planned.append(r) or []), \
              mock.patch.object(replies, "_confirm"), mock.patch.object(replies, "_append"), \
-             mock.patch.object(replies, "PROCESSED", Path("/nonexistent/processed")):
+             mock.patch.object(replies, "PROCESSED", Path("/nonexistent/processed")), \
+             mock.patch.object(replies, "_attempt", return_value=1), mock.patch.object(replies, "_settle"):
             replies.process(SETTINGS)
         for reply in planned:
             self.assertTrue(reply.trusted)
@@ -246,7 +247,8 @@ class UnreadableMailTest(unittest.TestCase):
              mock.patch.object(inbox, "mark_seen", side_effect=lambda s, uids: seen.extend(uids)), \
              mock.patch.object(replies, "plan_actions", side_effect=lambda s, r, t: planned.append(r) or []), \
              mock.patch.object(replies, "_confirm"), \
-             mock.patch.object(replies, "PROCESSED", Path(tmp) / "processed"):
+             mock.patch.object(replies, "PROCESSED", Path(tmp) / "processed"), \
+             mock.patch.object(replies, "ATTEMPTS", Path(tmp) / "attempts.json"):
             replies.process(SETTINGS)
         self.assertEqual(sorted(seen), ["1", "2", "3"], "every message is marked read, the unreadable one too")
         self.assertEqual([r.sender for r in planned], ["sam@example.com"])

@@ -44,6 +44,7 @@ they are). Something not connected yet is normal mid-course, not a problem.
 | Claude API error 429, or "credit balance" | The spending limit was reached | Raise the limit in the Console, or wait for next month |
 | No ticks in the log | The schedule isn't running | `launchd/install.sh` |
 | Ticks, but no brief | The Mac was asleep or offline at send time | Check the wake time and that the Mac is plugged in. A closed laptop may not wake |
+| "I couldn't handle …'s reply after 3 tries", or "gave up on" in the log | One reply failed three times, so Butler stopped sending it to Claude. Nothing in it was done | Read the "replies:" log lines before it and fix the cause. Then they send the reply again |
 | "brief failed" emails | A section broke | Read the log lines around the error. Explain it, then fix the config |
 | The brief is in spam | Gmail doesn't know the butler yet | Mark it "Not spam" and add the butler to contacts |
 
