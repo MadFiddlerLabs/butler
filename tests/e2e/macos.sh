@@ -53,6 +53,11 @@ for cmd in delete-event update-event rename-reminder; do
   if bin/butler-ek "$cmd" --id x 2> "$work/ek.err"; then fail "butler-ek accepted $cmd"; fi
   grep -q "unknown command" "$work/ek.err" || fail "butler-ek $cmd: unexpected error"
 done
+# The helper answers for its own Calendar access (docs/SETUP.md): it re-runs itself once with
+# responsibility disclaimed, and the second run must behave exactly like the first.
+strings bin/butler-ek | grep -q responsibility_spawnattrs_setdisclaim || fail "butler-ek doesn't disclaim"
+if BUTLER_EK_DISCLAIMED=1 bin/butler-ek delete-event 2> "$work/ek.err"; then fail "butler-ek accepted delete-event"; fi
+grep -q "unknown command" "$work/ek.err" || fail "butler-ek, already disclaimed: unexpected error"
 
 step "Secrets helper refuses anything but Butler's own entries"
 if scripts/store-secret.sh some-other-service "x" 2>/dev/null; then fail "store-secret accepted another service"; fi

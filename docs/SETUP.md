@@ -35,6 +35,18 @@ bin/butler-ek calendars
 The first time it runs, macOS asks for Calendar access, and `bin/butler-ek reminder-lists` asks
 for Reminders. Allow both.
 
+The grant belongs to `butler-ek` itself, whatever starts it. By default macOS asks the app that
+started a command-line tool, so a grant made in Terminal might not cover the 07:00 run that
+launchd starts. To avoid that, `butler-ek` runs itself again once at startup with
+responsibility disclaimed (`responsibility_spawnattrs_setdisclaim`, a private libSystem call
+that other calendar tools use too). The dialog then names `butler-ek`, and so does its entry in
+System Settings > Privacy & Security > Calendars. If a future macOS drops the call, the helper
+runs as before and macOS asks the app that started it.
+
+A helper signed ad hoc (built here, or packaged without the Developer ID secrets) looks new to
+macOS after each rebuild, so macOS asks again. A Developer ID signature keeps the same identity
+from one build to the next.
+
 ## 2. Create the assistant's mailbox
 
 Butler sends from its own Gmail account and reads replies there.
