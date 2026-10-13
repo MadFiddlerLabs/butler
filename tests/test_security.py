@@ -201,6 +201,57 @@ class WhoCanReplyTest(unittest.TestCase):
         self.assertEqual(len(seen), len(mails), "every reply is marked read")
 
 
+def odd_charset(sender: str, signed_by: str | None, where: str, charset: str = "x-nonexistent") -> bytes:
+    """A reply that names a charset Python doesn't know, in its Subject or its body."""
+    auth = f"Authentication-Results: mx.google.com; dkim=pass header.i=@{signed_by}\r\n" if signed_by else ""
+    subject = f"=?{charset}?q?Re=3A_Bento?=" if where == "subject" else "Re: Bento"
+    ctype = f"text/plain; charset={charset}" if where == "body" else "text/plain; charset=utf-8"
+    return (auth + f"From: {sender}\r\nSubject: {subject}\r\nMessage-ID: <odd-{where}@example.test>\r\n"
+            f"Content-Type: {ctype}\r\nContent-Transfer-Encoding: 8bit\r\n\r\nadd milk\r\n").encode()
+
+
+class UnreadableMailTest(unittest.TestCase):
+    """Anyone can send a charset Python doesn't know. One such mail, from a stranger or not, must not
+    stop reply processing: it's read with a fallback, or marked read and skipped, and the rest go on."""
+
+    def fetch(self, *raw: bytes):
+        with mock.patch.object(inbox.imaplib, "IMAP4_SSL", FakeMailbox(list(raw))), \
+             mock.patch.object(inbox, "keychain", return_value="fake-app-password"):
+            return inbox.fetch_unread(SETTINGS)
+
+    @given(st.sampled_from(["subject", "body"]),
+           st.sampled_from(["x-nonexistent", "utf-99", "unicode-1-1-utf-7-evil", "iso-8859-99"]))
+    def test_an_unknown_charset_still_reads(self, where, charset):
+        reply = self.fetch(odd_charset("sam@example.com", "example.com", where, charset))[0]
+        self.assertTrue(reply.trusted, reply.why_untrusted)
+        self.assertEqual(reply.body, "add milk")
+        self.assertIn("Bento", reply.subject)
+
+    def test_a_message_that_cant_be_parsed_is_untrusted_not_fatal(self):
+        good = raw_reply("sam@example.com", "example.com")
+        with mock.patch.object(inbox, "_text_body", side_effect=[ValueError("broken"), "add milk"]):
+            bad, ok = self.fetch(good, good)
+        self.assertFalse(bad.trusted)
+        self.assertIn("couldn't read the message (ValueError)", bad.why_untrusted)
+        self.assertTrue(ok.trusted)
+
+    def test_process_marks_it_read_and_handles_the_rest(self):
+        raw = [odd_charset("stranger@attacker.test", None, "subject"), odd_charset("stranger@attacker.test", None, "body"),
+               raw_reply("sam@example.com", "example.com")]
+        planned, seen = [], []
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.object(inbox.imaplib, "IMAP4_SSL", FakeMailbox(raw)), \
+             mock.patch.object(inbox, "keychain", return_value="fake-app-password"), \
+             mock.patch.object(inbox, "_text_body", side_effect=[LookupError("unknown encoding"), "add milk", "add milk"]), \
+             mock.patch.object(inbox, "mark_seen", side_effect=lambda s, uids: seen.extend(uids)), \
+             mock.patch.object(replies, "plan_actions", side_effect=lambda s, r, t: planned.append(r) or []), \
+             mock.patch.object(replies, "_confirm"), \
+             mock.patch.object(replies, "PROCESSED", Path(tmp) / "processed"):
+            replies.process(SETTINGS)
+        self.assertEqual(sorted(seen), ["1", "2", "3"], "every message is marked read, the unreadable one too")
+        self.assertEqual([r.sender for r in planned], ["sam@example.com"])
+
+
 def swift_option(name: str, args: list[str]) -> str | None:
     """butler-ek's own option parser (helpers/butler-ek/main.swift: the first --name wins)."""
     flag = f"--{name}"
