@@ -299,8 +299,8 @@ def sections(mo: Month, words: dict, by_reply: bool = False) -> list[tuple[str, 
 def to_html(mo: Month, secs, image_src=lambda n: f"cid:{n}", banner: str = "") -> str:
     from html import escape
 
-    from .render import EMAIL_HEAD, EMAIL_TAIL, INK, MUTED, PAPER, RULE, _h2, portal_button
-    parts = [EMAIL_HEAD,
+    from .render import EMAIL_TAIL, INK, MUTED, PAPER, RULE, _h2, email_head, portal_button
+    parts = [email_head(f"{brand()} · {mo.start:%B %Y} looking back"),
              f'<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:{INK};'
              f'background:{PAPER};max-width:640px;margin:0 auto;padding:16px;font-size:15px;line-height:1.5">',
              f'<h1 style="font-size:22px;margin:0 0 4px">{mo.start:%B %Y}: looking back</h1>',

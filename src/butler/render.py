@@ -1,5 +1,6 @@
 """Turns the brief's parts into an HTML email and a plain-text twin."""
 
+import re
 from dataclasses import dataclass, field
 from datetime import date
 from html import escape
@@ -41,13 +42,43 @@ class Brief:
 
 
 INK, MUTED, RULE, ACCENT, PAPER = "#1f2328", "#656d76", "#e5e7eb", "#9a3412", "#fcfcfb"
-# Pin the email to light: its colors (and the PNG charts) are designed for a light page, and
-# mail apps in dark mode otherwise put this dark text on a dark background.
-EMAIL_HEAD = ('<!doctype html><html><head><meta charset="utf-8">'
-              '<meta name="color-scheme" content="light only">'
-              '<meta name="supported-color-schemes" content="light only"></head>'
-              f'<body style="margin:0;background:{PAPER}">')
+
+
+def email_head(title: str) -> str:
+    """The emails' <head>: English, titled (the brief also opens as a page in the browser), and
+    pinned to light. Its colors (and the PNG charts) are designed for a light page, and mail apps
+    in dark mode otherwise put this dark text on a dark background."""
+    return ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
+            f'<title>{escape(title)}</title>'
+            '<meta name="color-scheme" content="light only">'
+            '<meta name="supported-color-schemes" content="light only"></head>'
+            f'<body style="margin:0;background:{PAPER}">')
+
+
 EMAIL_TAIL = "</body></html>"
+
+
+def _luminance(color: str) -> float:
+    channels = [int(color[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    r, g, b = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def contrast(a: str, b: str) -> float:
+    """The WCAG contrast ratio of two #rrggbb colors, from 1 to 21."""
+    hi, lo = sorted((_luminance(a), _luminance(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def readable(color: str, on: str = PAPER) -> str:
+    """`color` as text on `on`: darkened in small steps until it reaches 4.5:1 (WCAG AA), so a
+    light person color such as Google's Flamingo stays legible. Anything but #rrggbb is kept."""
+    if not re.fullmatch(r"#[0-9a-fA-F]{6}", color or ""):
+        return color
+    color = color.lower()
+    while contrast(color, on) < 4.5 and color != "#000000":
+        color = "#" + "".join(f"{int(int(color[i:i + 2], 16) * 0.9):02x}" for i in (1, 3, 5))
+    return color
 
 
 def _h2(text: str) -> str:
@@ -67,7 +98,7 @@ def _by_person(brief: Brief, events: list[Event]) -> list[tuple[str, list[Event]
 
 
 def _color(brief: Brief, name: str) -> str:
-    return next((p["color"] for p in brief.people if p["name"] == name), MUTED)
+    return next((readable(p["color"]) for p in brief.people if p["name"] == name), MUTED)
 
 
 def _tag(brief: Brief, e: Event) -> str:
@@ -345,7 +376,7 @@ def portal_button(url: str) -> str:
 def to_html(brief: Brief, image_src=lambda name: f"cid:{name}") -> str:
     """image_src maps a chart name to its <img> src: a cid: for email, a file for previews."""
     parts = [
-        EMAIL_HEAD,
+        email_head(brief.subject),
         f'<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;'
         f'color:{INK};background:{PAPER};max-width:640px;margin:0 auto;padding:16px;'
         f'font-size:15px;line-height:1.5">',

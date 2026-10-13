@@ -20,11 +20,11 @@ const CONFIG = {
   target: 'family-calendar-id@group.calendar.google.com', // the family calendar's ID
   daysAhead: 60,
   maxDeletesPerRun: 10,
-  // Google Calendar color ids: 9 Blueberry, 4 Flamingo, 10 Basil, 5 Banana, 6 Tangerine, 3 Grape.
+  // Google Calendar color ids: 9 Blueberry, 11 Tomato, 4 Flamingo, 10 Basil, 5 Banana, 6 Tangerine, 3 Grape.
   // The first person owns the source calendar: copied events get their color.
   people: [
     { name: 'Sam', aliases: ['Sam'], color: '9' },
-    { name: 'Alex', aliases: ['Alex'], color: '4' },
+    { name: 'Alex', aliases: ['Alex'], color: '11' },
     { name: 'Mia', aliases: ['Mia', 'Pat'], color: '10' },
   ],
 };

@@ -81,9 +81,9 @@ people:
   - name: Alex
     aliases: [Alex]
     calendars: [Alex]
-    color: "#e67c73"          # Google "Flamingo"
-    color_dark: "#f4a199"
-    google_color_id: "4"
+    color: "#d50000"          # Google "Tomato"; text colors need 4.5:1 on the light page
+    color_dark: "#ff8a80"
+    google_color_id: "11"
   - name: Mia
     aliases: [Mia, Pat]
     calendars: []

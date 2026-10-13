@@ -471,8 +471,8 @@ def to_html(w: Week, secs: list[tuple[str, list[str]]], image_src=lambda n: f"ci
             banner: str = "") -> str:
     from html import escape
 
-    from .render import EMAIL_HEAD, EMAIL_TAIL, INK, MUTED, PAPER, RULE, _h2, one_off_note, portal_button
-    parts = [EMAIL_HEAD,
+    from .render import EMAIL_TAIL, INK, MUTED, PAPER, RULE, _h2, email_head, one_off_note, portal_button
+    parts = [email_head(f"{brand()} · your week ending {w.last_day:%A} {w.last_day.day} {w.last_day:%B}"),
              f'<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;'
              f'color:{INK};background:{PAPER};max-width:640px;margin:0 auto;padding:16px;'
              f'font-size:15px;line-height:1.5">',

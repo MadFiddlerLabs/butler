@@ -24,7 +24,7 @@ from urllib.parse import quote, urlparse
 
 from . import charts, finance, networth, projects, replies
 from .config import BUTLER_EK, ROOT, brand, load_settings, people, tz
-from .render import money_lines, one_off_note
+from .render import money_lines, one_off_note, readable
 from .fmt import SYMBOLS, money, primary_code, second_code
 
 OUT = ROOT / "out"
@@ -115,16 +115,19 @@ def _no_framing(resp: Response) -> Response:
 # ---------- layout ----------
 
 CSS = """
-:root{--bg:#fcfcfb;--card:#ffffff;--ink:#1f2328;--ink2:#52514e;--muted:#8a8984;--rule:#e8e7e3;
---accent:#9a3412;--blue:#2a78d6;--chip:#f1f0ec}
+/* Text tokens reach 4.5:1 (WCAG AA) on --bg and --card in both modes; --chipblue carries white. */
+:root{--bg:#fcfcfb;--card:#ffffff;--ink:#1f2328;--ink2:#52514e;--muted:#6e6d68;--rule:#e8e7e3;
+--accent:#9a3412;--blue:#1f66c1;--chipblue:#1f66c1;--chip:#f1f0ec}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1a1a19;--card:#232321;
---ink:#f2f1ec;--ink2:#c3c2b7;--muted:#8f8e86;--rule:#3a3936;--accent:#f0a070;--blue:#3987e5;
---chip:#2e2d2a}}
+--ink:#f2f1ec;--ink2:#c3c2b7;--muted:#8f8e86;--rule:#3a3936;--accent:#f0a070;--blue:#4f94ea;
+--chipblue:#2a6fc4;--chip:#2e2d2a}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);
 font:15px/1.5 -apple-system,Segoe UI,Helvetica,Arial,sans-serif}
 header{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--rule);z-index:2}
 nav{max-width:760px;margin:0 auto;padding:10px 16px;display:flex;gap:14px;overflow-x:auto;white-space:nowrap}
-nav a{color:var(--ink2);text-decoration:none;font-weight:600}nav a.on{color:var(--accent)}
+nav a{color:var(--ink2);text-decoration:none;font-weight:600}
+nav a[aria-current=page]{color:var(--accent);text-decoration:underline;text-underline-offset:5px;text-decoration-thickness:2px}
+.vh{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 main{max-width:760px;margin:0 auto;padding:16px}
 h1{font-size:22px;margin:4px 0 2px}h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;
 color:var(--accent);margin:28px 0 8px;border-bottom:1px solid var(--rule);padding-bottom:6px}
@@ -149,7 +152,7 @@ details.step .body{margin:6px 0 4px 14px}details.step ul{margin:2px 0 6px 18px;p
 details.parked{margin:8px 0;padding:6px 0;border-bottom:1px solid var(--rule)}
 details.parked>summary{cursor:pointer}
 .grp{font-size:12px;font-weight:600;color:var(--muted);margin:14px 0 2px}
-.chip.c-now{background:var(--blue);color:#fff}.acts{margin-top:6px}.upd{margin-top:4px}
+.chip.c-now{background:var(--chipblue);color:#fff}.acts{margin-top:6px}.upd{margin-top:4px}
 textarea{font:inherit;font-size:14px;width:100%;min-height:54px;padding:6px 8px;border-radius:6px;
 border:1px solid var(--rule);background:var(--card);color:var(--ink);margin-top:4px}
 details.step>summary{color:var(--ink)}
@@ -177,11 +180,12 @@ def _people_css() -> str:
     for i, p in enumerate(load_settings().get("people", [])):
         if not p.get("color"):
             continue
-        light.append(f"--p{i}:{p['color']}")
+        color = readable(p["color"])          # as the emails draw it: 4.5:1 on the light page
+        light.append(f"--p{i}:{color}")
         dark.append(f"--p{i}:{p.get('color_dark', p['color'])}")
         cls = re.sub(r"\W", "", p["name"])
         rules.append(f".who-{cls}{{color:var(--p{i})}}"
-                     f'.brief [style*="color:{p["color"]}"]{{color:var(--p{i})!important}}')
+                     f'.brief [style*="color:{color}"]{{color:var(--p{i})!important}}')
     if not light:
         return ""
     return (f":root{{{';'.join(light)}}}@media (prefers-color-scheme:dark){{:root:not([data-theme=\"light\"])"
@@ -193,7 +197,8 @@ NAV = [("/", "Today"), ("/week", "Week"), ("/month", "Last month"), ("/money", "
 
 
 def page(title: str, body: str, active: str) -> str:
-    links = "".join(f'<a href="{h}" class="{"on" if h == active else ""}">{n}</a>' for h, n in NAV)
+    links = "".join(f'<a href="{h}"' + (' aria-current="page"' if h == active else "") + f'>{n}</a>'
+                    for h, n in NAV)
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8">'
             f'<meta name="viewport" content="width=device-width,initial-scale=1">'
             f'<title>{escape(title)} · {escape(brand())}</title>'
@@ -465,7 +470,8 @@ def budget_download(name: str):
 def _buttons(s: projects.Step) -> str:
     def b(action: str, label: str) -> str:
         return (f'<form class=inline method=post action="/projects/{s.id}">'
-                f'<input type=hidden name=action value="{action}"><button>{label}</button></form>')
+                f'<input type=hidden name=action value="{action}">'
+                f'<button aria-label="{escape(label, quote=True)}: {escape(s.do, quote=True)}">{label}</button></form>')
     if s.status == "done":
         return b("todo", "Reopen")
     out = b("done", "Done")
@@ -483,7 +489,8 @@ def _who() -> str:
 
 def _update_form(s: projects.Step) -> str:
     return (f'<form method=post action="/projects/{s.id}/update" class=upd>'
-            f'<textarea name=text required placeholder="Send an update: what\'s happening? e.g. '
+            f'<label class=vh for="upd-{s.id}">Send an update on {escape(s.do)}</label>'
+            f'<textarea id="upd-{s.id}" name=text required placeholder="Send an update: what\'s happening? e.g. '
             f'\'Asked the office again, nothing to do but wait\' or \'booked for 12 Nov\'"></textarea>'
             f'<button>Send update</button></form>')
 
@@ -704,13 +711,15 @@ def lists():
         for it in items:
             due = f' <span class=chip>due {it["due"]}</span>' if it.get("due") else ""
             body.append(f'<div class=step><form class=inline method=post action="/lists/complete">'
-                        f'<input type=hidden name=id value="{escape(it["id"])}"><button>✓</button></form> '
+                        f'<input type=hidden name=id value="{escape(it["id"])}">'
+                        f'<button aria-label="Done: {escape(it["title"], quote=True)}">✓</button></form> '
                         f'{escape(it["title"])}{due}</div>')
         if not items:
             body.append("<p class=sub>Nothing here.</p>")
         body.append(f'<form method=post action="/lists/add" style="margin-top:8px">'
                     f'<input type=hidden name=list value="{escape(name)}">'
-                    f'<input type=text name=title placeholder="Add to {escape(name)}" required> '
+                    f'<label class=vh for="add-{key}">Add to {escape(name)}</label>'
+                    f'<input type=text id="add-{key}" name=title placeholder="Add to {escape(name)}" required> '
                     f'<button>Add</button></form>')
     return page("Lists", "".join(body), "/lists")
 

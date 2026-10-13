@@ -35,7 +35,7 @@ Plus the budget workbook, `budget/budget.xlsx`, and the household notes Claude r
 | `calendar.include` | Calendar titles to read, as `bin/butler-ek calendars` lists them |
 | `calendar.holidays` | Holiday calendars, shown as a note on the day |
 | `calendar.write_to` | Where replies add events |
-| `people` | Everyone events can belong to (children too), with aliases, owned calendars and a color |
+| `people` | Everyone events can belong to (children too), with aliases, owned calendars and a color (`color`, optional `color_dark` for the portal in dark mode). Names are drawn in their color, so a light one such as Google's Flamingo is darkened until it reaches 4.5:1 against the page |
 | `projects.in_brief` | Show "Next up" in the morning brief |
 | `projects.appointment_keywords` | Optional: words that mark a project step as an appointment or document note. Those steps go to Claude when it flags what to prepare. Write them in your steps' language. Default: `bring, appointment, document, passport, visa, permit, office`. An empty list sends none |
 | `reminders.todo_list`, `shopping_list` | Apple Reminders lists |

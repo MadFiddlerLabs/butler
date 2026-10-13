@@ -94,5 +94,35 @@ class CurrencyScaleTest(unittest.TestCase):
         self.assertEqual(self.scale({"primary": "JPY", "scale": 100}), 100)
 
 
+
+class ReadableTest(unittest.TestCase):
+    """Accessibility: text colors reach 4.5:1 on the email's paper, and the email page has a
+    language and a title."""
+
+    def test_contrast_is_the_wcag_ratio(self):
+        self.assertAlmostEqual(render.contrast("#ffffff", "#000000"), 21)
+        self.assertAlmostEqual(render.contrast("#777777", "#777777"), 1)
+
+    def test_a_light_person_color_is_darkened_to_4_5(self):
+        flamingo = render.readable("#e67c73")
+        self.assertNotEqual(flamingo, "#e67c73")
+        self.assertGreaterEqual(render.contrast(flamingo, render.PAPER), 4.5)
+        self.assertLess(render.contrast(flamingo, render.PAPER), 5.2)     # darkened only as far as needed
+
+    def test_a_passing_color_is_kept(self):
+        self.assertEqual(render.readable("#3F51B5"), "#3f51b5")
+        self.assertEqual(render.readable("#d50000"), "#d50000")
+        self.assertEqual(render.readable("rebeccapurple"), "rebeccapurple")
+
+    def test_darkening_stops_at_black(self):
+        self.assertEqual(render.readable("#ffffff", on="#000000"), "#ffffff")
+        self.assertEqual(render.readable("#333333", on="#000000"), "#000000")
+
+    def test_the_email_has_a_language_and_a_title(self):
+        head = render.email_head("Bento · Monday 19 October <invented>")
+        self.assertIn('<html lang="en">', head)
+        self.assertIn("<title>Bento · Monday 19 October &lt;invented&gt;</title>", head)
+
+
 if __name__ == "__main__":
     unittest.main()
