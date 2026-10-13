@@ -232,7 +232,11 @@ def split_lines(m: Summary) -> list[str]:
          f"{m.today.day}{_ordinal(m.today.day)} ({verdict}; {money(m.day_to_day_budget)} for the month)."),
     ]
     if m.one_offs_total >= 1:
-        lines.append(f"One-offs (neither fixed nor daily): {money(m.one_offs_total)}; named below.")
+        # One line that names them: a separate total and list said the same thing twice.
+        names = one_offs_text(m.one_offs_mtd)
+        payees = {t.payee for t in m.one_offs_mtd}
+        lines.append("One-offs (neither fixed nor daily): "
+                     + (f"{names}." if len(payees) == 1 else f"{money(m.one_offs_total)} in all. {names}."))
     return lines
 
 
@@ -261,8 +265,6 @@ def money_lines(m: Summary) -> list[str]:
     if m.over_pace:
         lines.append("Daily categories running over: " + "; ".join(
             f"{c} {money(a)} vs {money(e)}" for c, a, e in m.over_pace[:2]) + ".")
-    if m.one_offs_mtd:
-        lines.append("One-offs: " + one_offs_text(m.one_offs_mtd) + ".")
     if m.unbudgeted:
         lines.append("No budget line yet: " + ", ".join(
             f"{c} {money(a)}" for c, a in m.unbudgeted) + ".")
