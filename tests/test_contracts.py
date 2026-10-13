@@ -98,6 +98,19 @@ class HelperContractTest(unittest.TestCase):
         self.assertEqual(listed, self.swift_commands())
         self.assertLess(SWIFT.index("guard commands.contains(command)"), SWIFT.index("\nrequestAccess()"))
 
+    def test_the_stubs_events_have_the_helpers_fields(self):
+        """The stub's `events` rows carry exactly the keys the Swift helper emits, organiser too."""
+        swift_event = SWIFT.split('let events = store.events(matching: predicate).map')[1].split("emit(events)")[0]
+        swift_organizer = SWIFT.split("func organizer(")[1].split("\n}\n")[0]
+        start = fixtures.datetime.combine(fixtures.today(), fixtures.time.min, fixtures.ZONE)
+        rows = fixtures.events(start, start + timedelta(days=7))
+        self.assertEqual({k for r in rows for k in r}, set(re.findall(r'"([a-z_]+)":', swift_event)))
+        organizers = [r["organizer"] for r in rows if r["organizer"]]
+        self.assertTrue(organizers)
+        self.assertTrue(any(r["organizer"] is None for r in rows))
+        for o in organizers:
+            self.assertEqual(set(o), set(re.findall(r'"([a-z_]+)":', swift_organizer)))
+
     def test_python_calls_only_real_commands(self):
         called = set()
         for text in SRC.values():

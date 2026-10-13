@@ -87,6 +87,17 @@ func declined(_ e: EKEvent) -> Bool {
     e.attendees?.first(where: { $0.isCurrentUser })?.participantStatus == .declined
 }
 
+// Who sent the invite: its address when EventKit gives one, and whether it's the person signed in
+// on this Mac. Null for an event nobody invited anyone to. Butler marks invites from outside the
+// household, so a stranger's text reaches Claude labelled as theirs.
+func organizer(_ e: EKEvent) -> Any {
+    guard let o = e.organizer else { return NSNull() }
+    let link = o.url.absoluteString
+    let email = link.lowercased().hasPrefix("mailto:")
+        ? (String(link.dropFirst("mailto:".count)).removingPercentEncoding ?? "") : ""
+    return ["email": email, "current_user": o.isCurrentUser]
+}
+
 // Every command, checked before asking for access, so a wrong one fails at once instead of
 // waiting on a permission prompt.
 let commands: Set<String> = ["calendars", "events", "reminder-lists", "reminders", "ensure-list",
@@ -122,6 +133,7 @@ case "events":
             "notes": String((e.notes ?? "").prefix(600)),
             "calendar": e.calendar.title,
             "source": e.calendar.source.title,
+            "organizer": organizer(e),
         ]
     }
     emit(events)

@@ -28,7 +28,7 @@ Plus the budget workbook, `budget/budget.xlsx`, and the household notes Claude r
 | `email.recipients` | Who gets the emails |
 | `email.trusted_senders` | Addresses whose replies are acted on (DKIM must pass) |
 | `email.send_hour`, `weekly_day`, `weekly_hour`, `monthly_hour` | When each email goes out. `weekly_day` is Monday = 0 ... Sunday = 6 (default 6); the weekly letter names that day ("Week ending Friday 16 October"). If the Mac is asleep or offline at a letter's or look-back's hour, it goes out on the first tick in the next two days and says it's late |
-| `household.adults` | The adults, with the addresses they reply from |
+| `household.adults` | The adults, with the addresses they reply from. These, `email.trusted_senders`, `email.recipients` and `email.sender` are the household's addresses: an invite organised by any other address, and not by the person signed in on the Mac, shows "(invite from outside)" in the emails, and its text reaches Claude labelled as a stranger's. Add an adult's other addresses here if their invites are marked |
 | `household.place` | Your town, for the news prompt |
 | `news.interests` | What you want from the news, in a sentence. With `household.place`, the only household detail the news call sees, so keep names out of it |
 | `household.about` | A short description of the household for Claude. Never put ID numbers here |
