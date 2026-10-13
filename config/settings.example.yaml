@@ -139,7 +139,7 @@ news:
           url: https://www.theguardian.com/world/rss
 
 llm:
-  model: claude-opus-5
+  model: claude-sonnet-5-5   # the model check (scripts/model_check.py) found it as good as Opus at about a third of the cost
   effort: medium
   # Set this only if your API key isn't scoped to a workspace (Console > Workspaces).
   workspace_id:

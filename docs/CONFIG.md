@@ -42,7 +42,7 @@ Plus the budget workbook, `budget/budget.xlsx`, and the household notes Claude r
 | `reminders.todo_list`, `shopping_list` | Apple Reminders lists |
 | `news.regions` | Regions in order, each with RSS feeds |
 | `news.language` | The language summaries are written in |
-| `llm.model`, `effort` | The Claude model and effort level |
+| `llm.model`, `effort` | The Claude model and effort level. The example uses Sonnet 5.5: the model check (`scripts/model_check.py`, docs/TESTING.md) scored it with Opus at about a third of the cost. Any current model works |
 | `weather` | Optional: `place`, `latitude`, `longitude`, `unit` |
 | `language_learning` | Optional: a phrase of the day for `learner` in `language` at `level` |
 | `score_tracker` | Optional: practice-test scores for `person` toward `pass_score`/`out_of` |
