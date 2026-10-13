@@ -121,7 +121,7 @@ Lunch Money and Open-Meteo are read over their APIs.
 ## Requirements
 
 - A Mac that's on most mornings (macOS 14 or later). Butler wakes it for the brief.
-- A [Claude API key](https://console.anthropic.com).
+- A [Claude API key](https://platform.claude.com).
 - A new Gmail account for the assistant, with an app password.
 - Calendars in macOS Calendar (Google, iCloud or Exchange all work) and Apple Reminders.
 - Optional: a [Lunch Money](https://lunchmoney.app) account, for the money sections. Without

@@ -120,16 +120,20 @@ The win: Claude writes the news summaries and notes on what to prepare for.
 
 1. Explain in two sentences: Butler uses Claude through an API key. This is separate from
    their Claude plan and billed by use, so they'll set a spending limit first.
-2. They go to console.anthropic.com, create an account, add billing, and set a monthly spend
-   limit (Settings > Limits). Suggest a low limit to start. Then they create an API key.
-3. Store it: `scripts/store-secret.sh butler-anthropic "Your Claude API key"`.
-4. Check it's there without printing it:
+2. They go to platform.claude.com and create an account. If they have a Max plan, sign-up
+   offers a **Link organization** option. Either choice works for Butler: the API key is
+   billed by use, separately from the plan.
+3. They add billing, then set a monthly spend limit: Settings > Billing > Spend limits, then
+   **Set limit**. Suggest a low limit to start. Prepaid credit expires, so suggest buying a
+   small amount and topping up later. Then they create an API key.
+4. Store it: `scripts/store-secret.sh butler-anthropic "Your Claude API key"`.
+5. Check it's there without printing it:
    `security find-generic-password -s butler-anthropic >/dev/null && echo ok`
-5. Ask for two or three sentences about the household for `household.about`: who lives
+6. Ask for two or three sentences about the household for `household.about`: who lives
    there, work, what's going on. Remind them it goes to Claude, so no ID numbers.
-6. Ask for one sentence for `news.interests`. It sits next to news from strangers, so no
+7. Ask for one sentence for `news.interests`. It sits next to news from strangers, so no
    names or personal details.
-7. Check: `./run.sh preview`. The news is summarized, and the footer shows no Claude error.
+8. Check: `./run.sh preview`. The news is summarized, and the footer shows no Claude error.
 
 ## inbox (Module 5: Give your butler an inbox)
 
