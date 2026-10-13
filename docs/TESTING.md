@@ -27,6 +27,7 @@ fails, it opens a GitHub issue.
 | Signed update | `tests/e2e/signed-update.sh` | Before every release is published (release.yml), and by hand for a candidate | A signed, notarized release that the latest published one, or the oldest still offered an update, refuses or breaks on: the household's files, the version, the health check, tampered packages |
 | Skill evals | `tests/evals/run_evals.py` | Weekly and on demand (paid) | `/butler-setup install` and `/butler-doctor` not doing their job; Claude repeating or storing a pasted secret; Claude sending email |
 | Live contract | `tests/live/live_contract.py` | Weekly and on demand (paid) | The Claude API no longer accepting Butler's request shape (model, beta, fallbacks, thinking, effort, JSON schema) |
+| Model check | `scripts/model_check.py`, tested by `tests/test_model_check.py` | On demand only (paid, at most $5 a run) | Not a pass or fail: a report for choosing the default model. Each of Butler's Claude calls (news, prep notes and the phrase of the day, the weekly letter, the monthly look-back, a reply plan and a reply answer) runs on the invented Johnsons with each candidate model. Claude Opus 5.5 grades every output blind against the rules in `CLAUDE.md`, and the report gives each model's scores, tokens, cost and estimated cost per household per month |
 
 ## How the fakes work
 
@@ -37,6 +38,9 @@ repo is never touched. Inside it:
 
 - **Claude:** `llm._ask_json` answers from canned responses. Each schema is checked as a valid,
   strict JSON schema, and each canned answer is validated against it.
+- **Claude, for the model check:** `tests/fakes/anthropic_client.py` answers each request with the
+  smallest answer its schema allows and fixed token counts, so the budget stop and the cost
+  arithmetic can be checked to the cent.
 - **Gmail:** a recording SMTP server and an IMAP server holding invented replies, with
   Gmail-style `Authentication-Results` headers.
 - **Lunch Money and Open-Meteo:** answered from `tests/fakes/fixtures.py`, dated relative to
@@ -96,6 +100,7 @@ pip install -r requirements-mutation.txt && mutmut run && mutmut results # mutat
 tests/e2e/macos.sh                                        # on a Mac; installs into a temp folder
 ANTHROPIC_API_KEY=... python tests/evals/run_evals.py     # paid: skill evals
 ANTHROPIC_API_KEY=... PYTHONPATH=src python tests/live/live_contract.py   # paid: live contract
+ANTHROPIC_API_KEY=... python scripts/model_check.py      # paid, at most $5: compare models
 ```
 
 The paid checks skip cleanly when `ANTHROPIC_API_KEY` isn't set.
@@ -110,6 +115,7 @@ The paid checks skip cleanly when `ANTHROPIC_API_KEY` isn't set.
 | `mutation.yml` | Linux | Nothing | Free for a public repository |
 | `skill-evals.yml` | macOS | `ANTHROPIC_API_KEY` secret | Claude API usage: roughly $1–4 per scenario, three scenarios a week. Each run's summary shows the real cost |
 | `live-contract.yml` | Linux | `ANTHROPIC_API_KEY` secret | A few cents a week |
+| `model-check.yml` | Linux | `ANTHROPIC_API_KEY` secret | Claude API usage, on demand only: it stops before passing its budget ($5.00 at most). The report shows the real cost |
 
 Set the secret once (it prompts for the value):
 
