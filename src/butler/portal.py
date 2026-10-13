@@ -742,9 +742,11 @@ PAIR_FORM = ('<form method=post action="/pair"><p><label for=code>Pairing code</
 def _pair_page(message: str = "") -> str:
     name = escape(brand())
     return page("Pair", f"<h1>Pair this browser with {name}</h1>{message}"
-                f"<p>{name} opens only on browsers you've paired. Type the code from a paired device's "
-                "<strong>Devices</strong> page. On the Mac itself, run <code>butler portal</code> "
-                f"instead.</p>{PAIR_FORM}", None)
+                f"<p>{name} opens only on browsers you've paired, so nobody else on the Mac or the network "
+                "can read it. Type the code from a paired device's <strong>Devices</strong> page.</p>"
+                "<p><strong>Nothing paired yet?</strong> On the Mac, open Terminal and type "
+                "<code>butler portal</code>. That pairs the Mac's browser. Then choose <strong>Devices</strong> "
+                f"&gt; <strong>Add a phone or browser</strong> to get a code for this one.</p>{PAIR_FORM}", None)
 
 
 @app.get("/pair")
