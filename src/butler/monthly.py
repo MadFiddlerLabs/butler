@@ -21,7 +21,7 @@ from . import charts, finance, llm, mailer, networth, projects
 from .agenda import COPY_NOTE, _assign
 from .config import BUTLER_EK, ROOT, brand, load_settings, people, portal_url, tz
 from .finance import SPEND, Summary
-from .fmt import money, primary_code
+from .fmt import money, primary_code, scale
 
 log = logging.getLogger("butler")
 
@@ -90,7 +90,8 @@ def _time(settings: dict, start: date, end: date) -> dict[str, list[tuple[str, f
 
 def _suggestions(m: Summary, rules: dict, end: date) -> list[Suggestion]:
     """Trend-weighted monthly spend per daily category: the last two full months count double
-    against the ones before. Suggest a change when it's off the budget by >15% and >50."""
+    against the ones before. Suggest a change when it's off the budget by >15% and >50
+    (euro-sized; fmt.scale makes it ¥7,500 for a yen household)."""
     daily = set(rules["rules"]["day_to_day"])
     by: dict[str, dict[str, float]] = {}
     for t in m.txs:
@@ -111,7 +112,7 @@ def _suggestions(m: Summary, rules: dict, end: date) -> list[Suggestion]:
         recent, earlier = vals[-2:], vals[:-2]
         trend = (2 * sum(recent) / len(recent) + (sum(earlier) / len(earlier) if earlier else sum(recent) / len(recent))) / 3
         budget = m.daily_budget_by_category.get(cat, 0.0)
-        if abs(trend - budget) > max(50.0, 0.15 * budget):
+        if abs(trend - budget) > max(50.0 * scale(), 0.15 * budget):
             out.append(Suggestion(cat, budget, trend, months))
     return sorted(out, key=lambda s: -abs(s.trend - s.budget))
 

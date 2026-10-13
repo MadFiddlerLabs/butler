@@ -465,6 +465,40 @@ class SummaryWindows(unittest.TestCase):
         self.assertEqual((led.month, led.budget, led.costs, led.reimbursed), (110.5, 0.0, 150.5, 40))
 
 
+class ThresholdsScaleWithTheCurrency(unittest.TestCase):
+    """The thresholds are euro-sized; a yen household's are 150 times larger (fmt.scale). The plan
+    and amounts are invented, in yen."""
+    YEN_PLAN = Plan(fx_rate=1, lines=[Line("Food", "Groceries", None, 90_000, "Monthly", None),
+                                      Line("Housing", "Rent", None, 150_000, "Monthly", None)])
+    RULES = {"map": {}, "rules": {"day_to_day": ["Food"]}}
+
+    def summary(self, scale: float, *txs: Tx):
+        with mock.patch("butler.fmt.scale", return_value=scale):
+            return summarize(list(txs), self.YEN_PLAN, self.RULES, TODAY, SINCE)
+
+    def test_over_pace_needs_15000_yen_over(self):
+        expected = 90_000 * 20 / 31                         # 58,065 by the 20th; a quarter is 14,516
+        over = spend(1, date(2026, 10, 2), "Grocer", expected + 15_001)
+        under = spend(1, date(2026, 10, 2), "Grocer", expected + 14_999)
+        self.assertEqual([c for c, _, _ in self.summary(150, over).over_pace], ["Food"])
+        self.assertEqual(self.summary(150, under).over_pace, [])
+        self.assertEqual([c for c, _, _ in self.summary(1, under).over_pace], ["Food"])
+
+    def test_no_budget_line_needs_7500_yen(self):
+        gift = spend(1, date(2026, 10, 2), "Gift Shop", 7_400, "Gifts")
+        self.assertEqual(self.summary(150, gift).unbudgeted, [])
+        self.assertEqual(self.summary(1, gift).unbudgeted, [("Gifts", 7_400)])
+        big = spend(1, date(2026, 10, 2), "Gift Shop", 7_501, "Gifts")
+        self.assertEqual(self.summary(150, big).unbudgeted, [("Gifts", 7_501)])
+
+    def test_a_bill_still_to_come_needs_2250_yen_left(self):
+        rent = spend(1, date(2026, 10, 1), "Landlord", 148_000, "Housing")      # 2,000 under plan
+        self.assertEqual(self.summary(150, rent).fixed_remaining, [])
+        self.assertEqual(self.summary(1, rent).fixed_remaining, [("Rent", 2_000)])
+        part = spend(1, date(2026, 10, 1), "Landlord", 147_700, "Housing")      # 2,300 to come
+        self.assertEqual(self.summary(150, part).fixed_remaining, [("Rent", 2_300)])
+
+
 class Build(unittest.TestCase):
     def test_build_fetches_the_window_caches_it_and_summarizes(self):
         fetched, cached = [], []

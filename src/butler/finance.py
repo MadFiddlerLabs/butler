@@ -19,7 +19,7 @@ from datetime import date, datetime, timedelta, timezone
 
 import yaml
 
-from . import lunchmoney
+from . import fmt, lunchmoney
 from .budget import Line, Plan, load_plan
 from .config import config_path
 
@@ -237,9 +237,9 @@ def _fixed_plan(plan: Plan, off_book: set[str], daily: set[str], fixed_items: se
     return sorted((x for x in out if x[1] > 0), key=lambda x: -x[1])
 
 
-def _fixed_status(plan: Plan, mtd: list[Tx], off_book: set[str], daily: set[str],
-                  fixed_items: set[str]) -> tuple[list[tuple[str, float]], list[tuple[str, float]]]:
-    """(still to come, paid) per fixed-plan entry."""
+def _fixed_status(plan: Plan, mtd: list[Tx], off_book: set[str], daily: set[str], fixed_items: set[str],
+                  unit: float) -> tuple[list[tuple[str, float]], list[tuple[str, float]]]:
+    """(still to come, paid) per fixed-plan entry. `unit` scales the thresholds (fmt.scale)."""
     names = _group_names(plan, off_book, daily, fixed_items)
     paid: dict[str, float] = {}
     for t in mtd:
@@ -249,7 +249,7 @@ def _fixed_status(plan: Plan, mtd: list[Tx], off_book: set[str], daily: set[str]
     planned = dict(_fixed_plan(plan, off_book, daily, fixed_items))
     left = [(name, planned.get(name, 0.0) - paid.get(key, 0.0)) for key, name in names.items()]
     # Gaps under 15 are bills coming in slightly under plan, not bills still to come.
-    still = sorted(((n, v) for n, v in left if v >= 15), key=lambda x: -x[1])
+    still = sorted(((n, v) for n, v in left if v >= 15 * unit), key=lambda x: -x[1])
     done = sorted(((names[k], v) for k, v in paid.items() if v >= 1), key=lambda x: -x[1])
     return still, done
 
@@ -337,6 +337,7 @@ def covered_days(start: date, end: date, first: date | None) -> int:
 
 def summarize(txs: list[Tx], plan: Plan, rules: dict, today: date, since: datetime) -> Summary:
     r = rules["rules"]
+    unit = fmt.scale()      # thresholds below are euro-sized; ¥ and kr households scale them
     month_start = today.replace(day=1)
     days_in_month = calendar.monthrange(today.year, today.month)[1]
     month_end = month_start + timedelta(days=days_in_month - 1)
@@ -374,10 +375,10 @@ def summarize(txs: list[Tx], plan: Plan, rules: dict, today: date, since: dateti
     over = []
     for cat, actual in daily_by_cat.items():
         expected = daily_budget.get(cat, 0.0) * frac
-        if expected > 0 and actual - expected > max(100.0, 0.25 * expected):
+        if expected > 0 and actual - expected > max(100.0 * unit, 0.25 * expected):
             over.append((cat, actual, expected))
     over.sort(key=lambda o: o[2] - o[1])
-    unbudgeted = sorted(((c, a) for c, a in planned_cat.items() if budget.get(c, 0.0) == 0 and a > 50),
+    unbudgeted = sorted(((c, a) for c, a in planned_cat.items() if budget.get(c, 0.0) == 0 and a > 50 * unit),
                         key=lambda x: -x[1])
 
     recurring = [t for t in spend if not t.one_off and not t.fixed and t.category in daily_cats]
@@ -425,7 +426,7 @@ def summarize(txs: list[Tx], plan: Plan, rules: dict, today: date, since: dateti
 
     real_off_book = {o["item"]: o.get("paid", "") for o in rules.get("off_book") or []}
     not_one_off = [t for t in mtd if not t.one_off]
-    still, done = _fixed_status(plan, not_one_off, off_book_items, daily_cats, fixed_items)
+    still, done = _fixed_status(plan, not_one_off, off_book_items, daily_cats, fixed_items, unit)
     drawer, counted = _drawer(txs, rules, today)
     fees = rules.get("managed_fees") or {}
     label = (rec or {}).get("label", "")

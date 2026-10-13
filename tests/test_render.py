@@ -4,8 +4,9 @@ Run with: PYTHONPATH=src .venv/bin/python -m unittest discover tests"""
 import unittest
 from datetime import date
 from types import SimpleNamespace
+from unittest import mock
 
-from butler import render
+from butler import fmt, render
 
 
 def drawer(estimate: float, today: date) -> str:
@@ -52,6 +53,45 @@ class TrendTest(unittest.TestCase):
 
     def test_no_comparison_under_a_week_of_history(self):
         self.assertEqual(trend(80, 0, 0), "")
+
+
+
+class YenPaceTest(unittest.TestCase):
+    """'Right on pace' within 25 euro-sized units: ¥3,750 for a yen household. Invented amounts."""
+
+    def verdict(self, spent: float, scale: float) -> str:
+        m = SimpleNamespace(fixed_paid=[], fixed_plan=[], fixed_remaining=[], pace_fraction=0.5,
+                            day_to_day_budget=200_000, day_to_day_mtd=spent, today=date(2026, 10, 15),
+                            one_offs_total=0)
+        with mock.patch("butler.render.scale", return_value=scale), \
+                mock.patch("butler.fmt._symbols", return_value=("¥", "JPY", "USD")):
+            return render.split_lines(m)[1]
+
+    def test_a_few_thousand_yen_is_right_on_pace(self):
+        self.assertIn("(right on pace;", self.verdict(103_000, 150))
+        self.assertIn("(¥4,000 over pace;", self.verdict(104_000, 150))
+        self.assertIn("(¥3,000 over pace;", self.verdict(103_000, 1))
+
+
+
+class CurrencyScaleTest(unittest.TestCase):
+    """fmt.scale: euro-sized thresholds in the household's currency."""
+
+    def scale(self, currency: dict) -> float:
+        fmt.scale.cache_clear()
+        self.addCleanup(fmt.scale.cache_clear)
+        with mock.patch("butler.config.load_settings", return_value={"currency": currency}):
+            return fmt.scale()
+
+    def test_set_from_the_primary_currency(self):
+        self.assertEqual(self.scale({"primary": "JPY"}), 150)
+        self.assertEqual(self.scale({"primary": "sek"}), 10)
+        self.assertEqual(self.scale({"primary": "EUR"}), 1)
+        self.assertEqual(self.scale({"primary": "XYZ"}), 1)
+        self.assertEqual(self.scale({}), 1)
+
+    def test_a_setting_overrides_it(self):
+        self.assertEqual(self.scale({"primary": "JPY", "scale": 100}), 100)
 
 
 if __name__ == "__main__":

@@ -93,5 +93,21 @@ class TypicalWeekTest(unittest.TestCase):
         self.assertEqual(self.numbers(txs), (30, None))
 
 
+
+class YenThresholdTest(unittest.TestCase):
+    """A category is ahead of plan by 100 euro-sized units: ¥15,000 for a yen household."""
+
+    def rows(self, spent: float, scale: float):
+        m = SimpleNamespace(budget_by_category={"Rent": 15_000}, against_budget_by_category={"Rent": spent},
+                            daily_budget_by_category={}, daily_by_category={}, pace_fraction=0.5)
+        with mock.patch("butler.weekly.scale", return_value=scale):
+            return weekly._category_rows(m, {"rules": {"day_to_day": []}})
+
+    def test_a_few_thousand_yen_over_is_on_track(self):
+        self.assertEqual(self.rows(25_000, 150), ([], ["Rent"]))
+        self.assertEqual([r.category for r in self.rows(30_001, 150)[0]], ["Rent"])
+        self.assertEqual([r.category for r in self.rows(25_000, 1)[0]], ["Rent"])
+
+
 if __name__ == "__main__":
     unittest.main()

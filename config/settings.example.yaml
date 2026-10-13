@@ -20,6 +20,8 @@ update_hour: 3
 currency:
   primary: EUR     # what Lunch Money reports in (its "primary currency")
   second: USD      # optional: budget lines priced in another currency; leave as is if unused
+  # scale: 1       # optional: units of your currency per euro for thresholds like "100 over pace";
+                   # set from `primary` when absent (JPY 150, MXN 20, SEK and NOK 10, DKK 7, else 1)
 
 email:
   sender_name: Bento

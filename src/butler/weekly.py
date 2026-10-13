@@ -20,13 +20,13 @@ from . import charts, finance, llm, mailer, networth, projects
 from .agenda import Agenda, load_agenda
 from .config import ROOT, brand, load_settings, people, portal_url, tz
 from .finance import SPEND, Summary, Tx
-from .fmt import money, primary_code
+from .fmt import money, primary_code, scale
 
 log = logging.getLogger("butler")
 IDEAS = ROOT / "data" / "ideas.jsonl"
 QUESTIONS = ROOT / "data" / "questions.json"   # id -> {payee, text, asked}; replies resolve ids
 REPORTS = ROOT / "reports"
-DRIFT_MIN = 15   # in the primary currency
+DRIFT_MIN = 15   # euro-sized; scaled for the primary currency (fmt.scale)
 
 
 # ---------- the day ----------
@@ -112,7 +112,7 @@ def _category_rows(m: Summary, rules: dict) -> tuple[list[CategoryRow], list[str
             budget, spent = m.budget_by_category.get(cat, 0.0), m.against_budget_by_category.get(cat, 0.0)
         expected = budget * m.pace_fraction if cat in daily else budget
         gap = spent - expected
-        threshold = max(100.0, 0.10 * budget)
+        threshold = max(100.0 * scale(), 0.10 * budget)
         if gap > threshold:
             rows.append(CategoryRow(cat, budget, spent, expected, "over"))
         elif budget:
@@ -138,7 +138,7 @@ def _drift(m: Summary, rules: dict, last_day: date) -> list[Drift]:
         before = prior12 / 3
         if prior12 == 0 and recent_count < 2:
             continue  # a single new purchase isn't drift
-        if last4 - before >= max(DRIFT_MIN, 0.3 * before) and last4 >= DRIFT_MIN * 2:
+        if last4 - before >= max(DRIFT_MIN * scale(), 0.3 * before) and last4 >= DRIFT_MIN * 2 * scale():
             out.append(Drift(payee, last4, before, "new" if prior12 == 0 else ""))
     out.sort(key=lambda d: d.before - d.last4)
 
@@ -149,7 +149,7 @@ def _drift(m: Summary, rules: dict, last_day: date) -> list[Drift]:
             series.setdefault(t.recurring_id, []).append(t)
     for txs in series.values():
         txs.sort(key=lambda t: t.day)
-        if len(txs) >= 2 and abs(txs[-1].amount - txs[-2].amount) >= max(2.0, 0.05 * txs[-2].amount):
+        if len(txs) >= 2 and abs(txs[-1].amount - txs[-2].amount) >= max(2.0 * scale(), 0.05 * txs[-2].amount):
             out.append(Drift(txs[-1].payee, txs[-1].amount, txs[-2].amount, "recurring charge changed"))
     return out[:6]
 
@@ -161,10 +161,10 @@ def _questions(m: Summary, rules: dict, last_day: date) -> list[tuple[str, str, 
     year, wk, _ = last_day.isocalendar()
     asks = []
     for t in sorted((t for t in m.txs if week <= t.day <= last_day), key=lambda t: -t.amount):
-        if t.kind == SPEND and t.unmapped and t.amount >= 20:
+        if t.kind == SPEND and t.unmapped and t.amount >= 20 * scale():
             asks.append((f"{t.payee} {money(t.amount)} on {t.day:%a %-d %b} has no category I know. "
                          "What was it?", t.payee))
-        elif t.kind == "transfer" and t.amount >= 20 and not any(o in t.payee.lower() for o in own) \
+        elif t.kind == "transfer" and t.amount >= 20 * scale() and not any(o in t.payee.lower() for o in own) \
                 and not t.payee.lower().startswith(("to ", "from ", "cashback")):
             asks.append((f"{money(t.amount)} to {t.payee} on {t.day:%a %-d %b} counted as a transfer. "
                          "Was it spending? If so, on what?", t.payee))

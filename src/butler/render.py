@@ -6,7 +6,7 @@ from html import escape
 
 from .agenda import Agenda, Event
 from .config import brand, people as adults
-from .fmt import money, primary_code, second_code
+from .fmt import money, primary_code, scale, second_code
 from .finance import Summary
 from .projects import Today as ProjectsToday
 
@@ -190,7 +190,7 @@ def split_lines(m: Summary) -> list[str]:
     month_over = m.pace_fraction >= 1
     pace = m.day_to_day_budget * m.pace_fraction
     gap = m.day_to_day_mtd - pace
-    verdict = ("right on pace" if abs(gap) < 25
+    verdict = ("right on pace" if abs(gap) < 25 * scale()
                else f"{money(abs(gap))} {'over' if gap > 0 else 'under'} pace")
     lines = [
         f"Fixed monthly expenses: {money(fixed_paid)} paid of a {money(fixed_plan)} plan. "
