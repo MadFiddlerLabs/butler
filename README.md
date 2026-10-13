@@ -95,6 +95,9 @@ Butler was designed so a household can trust it with everything.
   Nothing can be deleted by a reply. Only trusted senders with a passing DKIM signature count.
 - **News is quarantined.** The news call sees only your town and a sentence about what news
   you want, and it has no tools. Links always come from the feed, never from the model.
+- **Outsiders can't put links in the butler's mouth.** Calendar invites and bank payees come from
+  other people. In anything Claude writes, a link or email address the household didn't write
+  itself becomes "[link removed]".
 
 What does leave the Mac: calendar titles, project steps, money summaries and household notes
 go to the Claude API to write the emails; email goes through the assistant's Gmail account;

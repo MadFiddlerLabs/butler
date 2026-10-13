@@ -228,7 +228,7 @@ Steps finished or updated: {json.dumps(mo.done_steps, ensure_ascii=False)}
 Reminders completed: {json.dumps(mo.done_reminders, ensure_ascii=False)} (+{mo.shopping_done} shopping items)"""
     s2 = copy.deepcopy(settings)
     s2["llm"]["effort"] = "high"
-    return llm._ask_json(s2, system, prompt, WRITE_SCHEMA)
+    return llm.unlinked(llm._ask_json(s2, system, prompt, WRITE_SCHEMA), llm.household_text(settings))
 
 
 

@@ -364,7 +364,7 @@ Ideas suggested in the last four weeks:
 {json.dumps([i['title'] for i in _recent_ideas(w.last_day)], ensure_ascii=False)}"""
     s2 = copy.deepcopy(settings)
     s2["llm"]["effort"] = "high"
-    return llm._ask_json(s2, system, prompt, WRITE_SCHEMA)
+    return llm.unlinked(llm._ask_json(s2, system, prompt, WRITE_SCHEMA), llm.household_text(settings))
 
 
 # ---------- rendering ----------

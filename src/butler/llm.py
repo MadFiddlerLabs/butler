@@ -7,6 +7,7 @@ links always come from the feed, never from the model.
 """
 
 import json
+import re
 
 import anthropic
 
@@ -29,6 +30,60 @@ def _feedback() -> str:
 
 class ClaudeError(RuntimeError):
     pass
+
+
+# ---------- links in what Claude writes ----------
+
+_LINK = re.compile(
+    r"\b(?:https?|ftp)://\S+|\bmailto:\S+|\bwww\.\S+"             # links with a scheme, and www.
+    r"|[\w.+-]+@[\w-]+(?:\.[\w-]+)+"                                # email addresses
+    r"|\b(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,24}\b(?:/\S*)?",  # bare domains, which mail apps link too
+    re.I)
+FILE_TYPES = {"pdf", "doc", "docx", "xls", "xlsx", "jpg", "jpeg", "png", "heic", "txt", "csv", "pages", "numbers"}
+LINK_REMOVED = "[link removed]"
+
+
+def household_text(settings: dict) -> str:
+    """What the household wrote itself: household.about, their notes and feedback, and their
+    projects. A link or address in here is theirs, so it may stay in what Claude writes."""
+    from . import projects
+    parts = [settings.get("household", {}).get("about", "")]
+    for path in (ROOT / settings.get("household", {}).get("notes_file", "data/household_notes.md"),
+                 ROOT / "data" / "feedback.md"):
+        if path.exists():
+            parts.append(path.read_text())
+    try:
+        for p in projects.load():
+            for step in p.steps:
+                parts += [step.do, step.notes or ""] + [u["text"] for u in projects.updates(step.id)]
+    except Exception:
+        pass    # no projects yet: fewer links are the household's, never more
+    return "\n".join(parts)
+
+
+def unlinked(value, household: str):
+    """`value` (text, or lists and dicts of it) with every link and email address the household
+    didn't write replaced by LINK_REMOVED. Calendar invites and payees come from outsiders, and
+    a link Claude copies from one would arrive in an email in the butler's voice. Escaping stops
+    HTML, not a plain address that a mail app makes clickable."""
+    if isinstance(value, list):
+        return [unlinked(v, household) for v in value]
+    if isinstance(value, dict):
+        return {k: unlinked(v, household) for k, v in value.items()}
+    if not isinstance(value, str):
+        return value
+    known = household.lower()
+
+    def swap(m: re.Match) -> str:
+        link = m.group(0).rstrip(".,;:!?)]}'\"")
+        tail = m.group(0)[len(link):]
+        bare = not re.search(r"[/@:]", link) and not link.lower().startswith("www.")
+        # Theirs only as a whole: "a.co" inside "banana.com" doesn't count.
+        theirs = re.search(rf"(?<![\w.-]){re.escape(link.lower())}(?![\w-]|\.\w)", known)
+        if theirs or (bare and link.rsplit(".", 1)[-1].lower() in FILE_TYPES):
+            return m.group(0)
+        return LINK_REMOVED + tail
+    return _LINK.sub(swap, value)
 
 
 def _client(settings: dict) -> anthropic.Anthropic:
@@ -246,8 +301,10 @@ def flag_prep(settings: dict, agenda: Agenda) -> tuple[list[dict], dict | None]:
     with_phrase = bool(lang.get("language") and lang.get("learner"))
     answer = _ask_json(settings, system, prompt, _prep_schema(with_phrase))
     by_ref = {e.ref: e for e in events}
-    prep = [{"event": by_ref[f["ref"]], "note": f["note"]} for f in answer["prep"][:5] if f["ref"] in by_ref]
-    return prep, answer.get("phrase")
+    theirs = household_text(settings)
+    prep = [{"event": by_ref[f["ref"]], "note": unlinked(f["note"], theirs)}
+            for f in answer["prep"][:5] if f["ref"] in by_ref]
+    return prep, unlinked(answer.get("phrase"), theirs)
 
 
 APPOINTMENT_KEYWORDS = ("bring", "appointment", "document", "passport", "visa", "permit", "office")

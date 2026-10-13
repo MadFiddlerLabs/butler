@@ -410,6 +410,73 @@ class AnswerFactsTest(unittest.TestCase):
         self.assertIn(hostile, json.loads(inside)["calendar_next_14_days"][0])
 
 
+HOSTILE_LINK = st.one_of(
+    st.builds(lambda scheme, d, path: f"{scheme}://{d}/{path}", st.sampled_from(["http", "https", "HTTPS", "ftp"]),
+              DOMAIN, st.from_regex(r"[a-z0-9_-]{0,8}(\?[a-z]=[0-9]{1,3})?", fullmatch=True)),
+    st.builds(lambda d: f"www.{d}", DOMAIN),
+    st.builds(lambda user, d: f"{user}@{d}", st.from_regex(r"[a-z][a-z0-9._+-]{0,10}", fullmatch=True), DOMAIN),
+    st.builds(lambda d, tld: f"{d}.{tld}", LABEL, st.sampled_from(["com", "top", "xyz", "zip", "mov", "pt", "io"])),
+    st.builds(lambda d: f"mailto:pay@{d}", DOMAIN))
+
+
+class LinksFromOutsidersTest(unittest.TestCase):
+    """A stranger's calendar invite can carry a link, and Claude may copy it into a prep note or an
+    answer, emailed in the butler's voice. Every link and address the household didn't write is
+    taken out of what Claude writes; theirs stay."""
+
+    HOUSEHOLD = "Mia's school: https://school.example.pt/parents. Pat: pat@example.com."
+
+    @given(HOSTILE_LINK, st.sampled_from(["", ".", ",", ")", "!"]))
+    @example("https://evil.test/pay?now=1", ".")
+    @example("billing@evil.test", "")
+    def test_any_outside_link_is_removed(self, link, after):
+        assume(link.lower() not in self.HOUSEHOLD.lower())
+        out = llm.unlinked(f"Before Friday, confirm at {link}{after} Then go.", self.HOUSEHOLD)
+        self.assertNotIn(link.lower(), out.lower())
+        self.assertEqual(out, f"Before Friday, confirm at {llm.LINK_REMOVED}{after} Then go.")
+
+    def test_the_households_own_links_stay(self):
+        text = "Check https://school.example.pt/parents, or ask pat@example.com."
+        self.assertEqual(llm.unlinked(text, self.HOUSEHOLD), text)
+
+    def test_a_lookalike_of_the_households_link_is_removed(self):
+        for link in ("ool.example.pt", "school.example.pt.evil.test", "https://school.example.pt.evil.test/parents",
+                     "at@example.com.evil.test"):
+            self.assertEqual(llm.unlinked(link, self.HOUSEHOLD), llm.LINK_REMOVED, link)
+
+    def test_ordinary_text_is_untouched(self):
+        for text in ("Bring renewal-form.pdf and Mia's passport photos.", "Leave at 08:30, e.g. by metro.",
+                     "Costs €1.200 (3.5% more), v0.2.0", "Q-2026-41-1: Groceries", "Swimming 17:00–18:00"):
+            self.assertEqual(llm.unlinked(text, ""), text)
+
+    def test_prep_notes_and_the_phrase_lose_an_invites_link(self):
+        from butler.agenda import Agenda, Event
+        start = datetime(2026, 10, 12, 10, 0)
+        invite = Event(ref="e1", title="Parcel held: confirm address", start=start, end=start, all_day=False,
+                       recurring=False, location="", notes="Pay the fee at https://parcel-fee.evil.test/pt now",
+                       calendar="Sam", people=["Sam"], short_title="Parcel held")
+        answer = {"prep": [{"ref": "e1", "note": "Pay the fee at https://parcel-fee.evil.test/pt before Monday."}],
+                  "phrase": {"phrase": "Bom dia", "translation": "Good morning", "why": "see bomdia.evil.test"}}
+        settings = {**SETTINGS, "household": {**SETTINGS["household"], "notes_file": "nonexistent.md"},
+                    "language_learning": {"language": "Portuguese", "learner": "Sam"}}
+        with mock.patch.object(llm, "_ask_json", return_value=answer), \
+             mock.patch.object(llm, "ROOT", Path("/nonexistent")), \
+             mock.patch("butler.projects.load", return_value=[]):
+            prep, phrase = llm.flag_prep(settings, Agenda(day=start.date(), today=[invite], upcoming=[], holidays={}))
+        self.assertEqual(prep[0]["note"], f"Pay the fee at {llm.LINK_REMOVED} before Monday.")
+        self.assertEqual(phrase["why"], f"see {llm.LINK_REMOVED}")
+
+    def test_an_answer_loses_an_invites_link(self):
+        with mock.patch.object(llm, "_ask_json", return_value={"answer": "Pay at https://evil.test/x or mail a@evil.test."}), \
+             mock.patch("butler.agenda.load_agenda", side_effect=RuntimeError("down")), \
+             mock.patch("butler.finance.build", side_effect=RuntimeError("down")), \
+             mock.patch.object(replies.projects, "load", return_value=[]), \
+             mock.patch.object(llm, "ROOT", Path("/nonexistent")), \
+             mock.patch.object(replies, "NOTES", Path("/nonexistent/notes.md")):
+            said = replies.answer(SETTINGS, "What's due?", "Sam", date(2026, 10, 9))
+        self.assertEqual(said, f"Pay at {llm.LINK_REMOVED} or mail {llm.LINK_REMOVED}.")
+
+
 class PortalGateFuzzTest(unittest.TestCase):
     SETTINGS = {"portal": {"url": "https://mac.tailnet.test", "hosts": ["butler.example.test"],
                            "allowed_logins": ["sam@example.com"]}}
