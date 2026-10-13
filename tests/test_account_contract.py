@@ -105,6 +105,7 @@ class DocParseTest(unittest.TestCase):
         self.assertTrue(CALLS["POST /api/prefs"].bearer)
         self.assertTrue(CALLS["GET /api/me"].bearer)
         self.assertFalse(CALLS["POST /api/auth/start"].bearer)
+        self.assertEqual(CALLS["POST /api/auth/start"].body.optional, {"heard"})
 
 
 class EngineCallsAreDocumentedTest(unittest.TestCase):
@@ -175,7 +176,7 @@ class FakeFollowsTheDocTest(unittest.TestCase):
         start = CALLS["POST /api/auth/start"]
         code, answer = self.call("POST /api/auth/start", {
             "email": "sam@example.com", "butler_name": "Bento", "client": client,
-            "terms_version": "1.0-beta", "terms_accepted_at": "2026-10-10T18:00:00Z"})
+            "terms_version": "1.0-beta", "terms_accepted_at": "2026-10-10T18:00:00Z", "heard": "friend"})
         self.assertEqual(code, 200)
         self.assert_shape(answer, start.answer, "auth/start")
         code, polled = self.call("POST /api/auth/poll", {"request_id": answer["request_id"],
@@ -229,6 +230,10 @@ class FakeFollowsTheDocTest(unittest.TestCase):
         self.assertEqual(code, 400, "the setup app's statuses are started and done")
         self.assertEqual(self.call("POST /api/prefs", {"nudges": "yes"}, token)[0], 400)
         self.assertEqual(self.call("GET /api/me", None, "not-a-session")[0], 401)
+        code, answer = self.call("POST /api/auth/start", {
+            "email": "sam@example.com", "butler_name": "Bento", "client": "setup/test", "terms_version": "1.0-beta",
+            "terms_accepted_at": "2026-10-10T18:00:00Z", "heard": "x" * 41})
+        self.assertEqual((code, answer.get("code")), (400, "bad_heard"), "never more than a short answer")
         self.assertEqual(self.call("POST /api/progress", {"lesson": "setup.email", "status": "done"})[0], 401)
         for key in ("POST /api/auth/poll",):
             code, answer = self.call(key, {"request_id": "nope", "poll_secret": "nope"})

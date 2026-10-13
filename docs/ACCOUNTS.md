@@ -30,7 +30,7 @@ All bodies are JSON. Return clear `error` strings. Rate-limit by email and IP.
 
 | Call | Body | Returns |
 |---|---|---|
-| `POST /api/auth/start` | `{email, butler_name, client:"setup/<version>", terms_version, terms_accepted_at}` | `{request_id, poll_secret, expires_in}`; emails a magic link, stores the Terms acceptance |
+| `POST /api/auth/start` | `{email, butler_name, client:"setup/<version>", terms_version, terms_accepted_at, heard?}` | `{request_id, poll_secret, expires_in}`; emails a magic link, stores the Terms acceptance and the first `heard` |
 | `GET /verify?t=<token>` | (a page) | "You're in. Go back to your Terminal." It POSTs to `/api/auth/verify` |
 | `POST /api/auth/verify` | `{token}` | `{ok:true, client:"setup"|"web"}`; marks the request verified |
 | `POST /api/auth/poll` | `{request_id, poll_secret}` | `{status:"pending"|"verified"|"expired"}`, plus `session_token` once verified (returned once) |
@@ -64,6 +64,20 @@ sent. The agreement is recorded in `~/Butler/data/terms.json` (`terms_version` f
 `TERMS_VERSION` file, `terms_accepted_at` in ISO 8601 UTC) and goes with every
 `/api/auth/start`, so an agreement made offline reaches the server with the first sign-in. A new
 `TERMS_VERSION` asks again.
+
+## Where did you hear about Butler?
+
+The Terminal setup asks once, after the Terms and before the email: "Where did you hear about
+Butler? (optional)", with a numbered list. Return skips. The answer goes as `heard` with
+`/api/auth/start`, so the course can count Module 3 completions by channel.
+
+- `heard` is one of ten tokens: `friend`, `search`, `reddit`, `hacker_news`, `product_hunt`,
+  `youtube`, `social`, `newsletter`, `podcast` or `other`. The list is in
+  `scripts/lib/heard.sh` and `account.HEARD_SOURCES`. Free text is never sent.
+- `~/Butler/data/heard.json` records the answer, or `null` for a skip, so the question is asked
+  only once. A skip leaves the key out of the body.
+- Like the Terms, it goes with every `/api/auth/start`, so an answer given offline reaches the
+  server with the first sign-in. The server keeps the first answer.
 
 ## The setup app (engine repo)
 

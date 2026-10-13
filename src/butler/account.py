@@ -17,6 +17,10 @@ from .config import ROOT, keychain
 API = os.environ.get("BUTLER_API", "https://buildyourbutler.com/api").rstrip("/")
 KEYCHAIN_ACCOUNT = "butler-account"
 TERMS_FILE = ROOT / "data" / "terms.json"          # written when the student agrees, in first-run.sh
+HEARD_FILE = ROOT / "data" / "heard.json"          # "Where did you hear about Butler?", asked once in first-run.sh
+# The sources the website takes as `heard` (docs/ACCOUNTS.md), as scripts/lib/heard.sh lists them.
+HEARD_SOURCES = ("friend", "search", "reddit", "hacker_news", "product_hunt", "youtube", "social",
+                 "newsletter", "podcast", "other")
 TIMEOUT = 8
 
 
@@ -59,8 +63,20 @@ def terms() -> dict:
         return {}
 
 
+def heard() -> str | None:
+    """Where the student heard about Butler, recorded locally by the first run: one of
+    HEARD_SOURCES, or None for a skip or no answer. Like the Terms, it goes with every sign-in, so
+    an answer given offline still reaches the server. Only a listed token is ever sent."""
+    try:
+        answer = json.loads(HEARD_FILE.read_text()).get("heard")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return answer if answer in HEARD_SOURCES else None
+
+
 def start(email: str, butler_name: str, client: str) -> dict:
-    return _call("POST", "/auth/start", {"email": email, "butler_name": butler_name, "client": client, **terms()})
+    source = heard()
+    return _call("POST", "/auth/start", {"email": email, "butler_name": butler_name, "client": client, **terms(), **({"heard": source} if source else {})})
 
 
 def poll(request_id: str, poll_secret: str) -> dict:

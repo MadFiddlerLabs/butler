@@ -127,6 +127,9 @@ class FakeAccountAPI:
                         return self._send(503, {"error": "email_unavailable"})
                     if "@" not in body.get("email", ""):
                         return self._send(400, {"error": "that email doesn't look right"})
+                    heard = body.get("heard")      # optional; the real API refuses non-text or over 40 characters
+                    if heard is not None and (not isinstance(heard, str) or len(heard) > 40):
+                        return self._send(400, {"error": '"heard" must be a short answer.', "code": "bad_heard"})
                     request_id, poll_secret, link = (secrets.token_urlsafe(16), secrets.token_urlsafe(32),
                                                      secrets.token_urlsafe(32))
                     api.requests[request_id] = {"email": body["email"], "butler_name": body.get("butler_name", ""),
@@ -134,7 +137,8 @@ class FakeAccountAPI:
                                                 "status": "pending", "issued": False,
                                                 "client": str(body.get("client", "")),
                                                 "terms_version": body.get("terms_version"),
-                                                "terms_accepted_at": body.get("terms_accepted_at")}
+                                                "terms_accepted_at": body.get("terms_accepted_at"),
+                                                "heard": heard}
                     api.links.append(link)
                     if api.auto_verify:
                         api._verify(link)

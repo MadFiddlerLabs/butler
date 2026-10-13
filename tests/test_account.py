@@ -44,6 +44,27 @@ class SignInTest(unittest.TestCase):
             r = account.start("sam@example.com", "Bento", "setup/test")
         self.assertIsNone(self.api.requests[r["request_id"]]["terms_version"])
 
+    def start_with_heard(self, recorded: str | None) -> dict:
+        """The body /auth/start received, with data/heard.json holding `recorded` (None: no file)."""
+        import tempfile
+        from pathlib import Path
+        heard = Path(tempfile.mkdtemp()) / "heard.json"
+        if recorded is not None:
+            heard.write_text(recorded)
+        with mock.patch.object(account, "HEARD_FILE", heard):
+            account.start("sam@example.com", "Bento", "setup/test")
+        return self.api.calls[-1][2]
+
+    def test_start_sends_where_they_heard(self):
+        self.assertEqual(self.start_with_heard('{"heard": "hacker_news"}')["heard"], "hacker_news")
+
+    def test_a_skip_or_no_answer_sends_no_heard_key(self):
+        for recorded in ('{"heard": null}', None, "not json", "[]"):
+            self.assertNotIn("heard", self.start_with_heard(recorded), recorded)
+
+    def test_only_a_listed_source_is_sent(self):
+        self.assertNotIn("heard", self.start_with_heard('{"heard": "my neighbour Pat"}'))
+
     def test_wrong_poll_secret(self):
         r = account.start("sam@example.com", "Bento", "setup/test")
         with self.assertRaises(account.AccountError):

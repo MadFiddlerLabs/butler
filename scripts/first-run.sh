@@ -22,6 +22,8 @@ mkdir -p "$home/logs" "$home/data" "$home/out"
 log="$home/logs/setup.log"
 # shellcheck source-path=SCRIPTDIR source=lib/names.sh
 . "$home/scripts/lib/names.sh"
+# shellcheck source-path=SCRIPTDIR source=lib/heard.sh
+. "$home/scripts/lib/heard.sh"
 
 # The `butler` command, from any new Terminal window. First, before anything can stop the setup,
 # because every way out says "type: butler setup".
@@ -125,6 +127,26 @@ if [ "$(json_value terms_version "$(cat "$terms_file" 2>/dev/null)")" != "$terms
 fi
 terms_accepted_at="$(json_value terms_accepted_at "$(cat "$terms_file")")"
 
+# Where the student heard about Butler, asked once: data/heard.json keeps the answer, or the skip.
+# Only one of the ten tokens goes with the sign-in (now or, offline, later). Never free text.
+heard_file="$home/data/heard.json"
+if [ ! -f "$heard_file" ]; then
+  say "Where did you hear about Butler? (optional)"
+  i=0
+  for label in "${HEARD_LABELS[@]}"; do i=$((i + 1)); printf '  %2d. %s\n' "$i" "$label"; done
+  heard=""
+  while :; do
+    printf 'Type a number, or press Enter to skip › '
+    read -r answer || answer=""
+    [ -z "$(printf '%s' "$answer" | tr -d '[:space:]')" ] && break
+    heard="$(heard_token "$answer")" && break
+    say "Type a number from 1 to ${#HEARD_TOKENS[@]}, or press Enter to skip."
+  done
+  if [ -n "$heard" ]; then printf '{"heard":"%s"}\n' "$heard"; else printf '{"heard":null}\n'; fi > "$heard_file"
+fi
+heard="$(json_value heard "$(cat "$heard_file" 2>/dev/null)")"
+heard_known "$heard" || heard=""
+
 say "I'll email you a link to sign in. It keeps your place in the course."
 say "We never see your household's data. It goes only from this Mac to services you choose, such as Anthropic and Google."
 token=""
@@ -142,7 +164,7 @@ while :; do
     say "That doesn't look like an email address. Try again, or type skip."
     continue
   fi
-  response="$(post /auth/start "{\"email\":\"$email\",\"butler_name\":\"$name\",\"client\":\"setup/$version\",\"terms_version\":\"$terms_version\",\"terms_accepted_at\":\"$terms_accepted_at\"}")"
+  response="$(post /auth/start "{\"email\":\"$email\",\"butler_name\":\"$name\",\"client\":\"setup/$version\",\"terms_version\":\"$terms_version\",\"terms_accepted_at\":\"$terms_accepted_at\"${heard:+,\"heard\":\"$heard\"}}")"
   code="$(printf '%s' "$response" | tail -n 1)"
   body="$(printf '%s' "$response" | sed '$d')"
   if [ "$code" != "200" ]; then
