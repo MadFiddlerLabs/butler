@@ -102,6 +102,16 @@ def _gate():
             abort(403)
 
 
+@app.after_request
+def _no_framing(resp: Response) -> Response:
+    """No other page may frame the portal, so it can't trick a click into a post from here
+    (clickjacking); and a file is never read as anything but its declared type."""
+    resp.headers["X-Frame-Options"] = "DENY"
+    resp.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp
+
+
 # ---------- layout ----------
 
 CSS = """
