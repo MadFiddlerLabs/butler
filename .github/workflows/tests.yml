@@ -1,4 +1,4 @@
-# Every push and pull request: pyflakes, shellcheck, and the unit, integration, privacy and
+# Every push and pull request: pyflakes, shellcheck, the dependency lock, and the unit, integration, privacy and
 # contract tests (tests/), on Linux with every outside service faked. No secrets needed.
 # A second job reruns the suite at awkward dates (month and year ends, DST changes). A third makes
 # the README screenshots twice and checks they match (tests/test_screenshots.py).
@@ -22,8 +22,10 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -r requirements-dev.txt
+      - run: pip install --require-hashes -r requirements.lock && pip install -r requirements-dev.txt
       - run: python -m pyflakes src tests scripts
+      - name: requirements.lock follows from requirements.txt (docs/UPDATES.md, "Dependencies")
+        run: scripts/lock.sh --check
       - run: git ls-files '*.sh' '*.command' bin/butler packaging/macos/scripts/postinstall | xargs shellcheck -S warning -x
       - name: Tests, under coverage (the flows' subprocesses too)
         run: python -m coverage run -m unittest discover tests -v
@@ -55,7 +57,7 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -r requirements-screenshots.txt
+      - run: pip install --require-hashes -r requirements.lock && pip install -r requirements-screenshots.txt
       - run: python -m playwright install --with-deps chromium
       - run: python -m unittest discover -v -s tests -p test_screenshots.py
         env:
@@ -90,7 +92,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: sudo apt-get install -y faketime
-      - run: pip install -r requirements-dev.txt
+      - run: pip install --require-hashes -r requirements.lock && pip install -r requirements-dev.txt
       - name: The clock really moved, in child processes too
         run: |
           want="$(echo "$WHEN" | cut -c1-10)"

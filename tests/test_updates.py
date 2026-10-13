@@ -190,15 +190,24 @@ class ApplyTest(Sandbox):
         self.addCleanup(os.environ.pop, "BUTLER_RELEASES_URL", None)
         self.entry = {"version": "v0.2.0", "pkg_url": str(self.new), "sha256": self.digest,
                       "notes": "Faster briefs. A new  Sunday chart."}
-        self.installed = []
-        for name, fake in {"verify_signature": lambda p: None, "install_package": self.install}.items():
+        self.installed, self.broken_installs, self.mailed = [], set(), []
+        self.settings = {"name": "Bento", "email": {"recipients": ["sam@example.com", "alex@example.com"]}}
+        for name, fake in {"verify_signature": lambda p: None, "install_package": self.install,
+                           "record_baseline": lambda: None, "_settings_or_none": lambda: self.settings}.items():
             p = mock.patch.object(updates, name, side_effect=fake)
             p.start()
             self.addCleanup(p.stop)
+        p = mock.patch.object(updates.mailer, "send", side_effect=lambda s, subject, text: self.mailed.append(
+            (s["email"]["recipients"], subject, text)))
+        p.start()
+        self.addCleanup(p.stop)
 
     def install(self, pkg):
-        self.installed.append(Path(pkg).read_bytes())
-        self.version_file.write_text("v0.2.0\n" if Path(pkg).read_bytes() == b"version two" else "v0.1.0\n")
+        content = Path(pkg).read_bytes()
+        self.installed.append(content)
+        if content in self.broken_installs:
+            raise updates.UpdateError("Installer didn't finish (the disk is full)")
+        self.version_file.write_text("v0.2.0\n" if content == b"version two" else "v0.1.0\n")
 
     def test_success(self):
         with mock.patch.object(updates, "post_install", return_value={"ok": True}):
@@ -224,6 +233,62 @@ class ApplyTest(Sandbox):
         self.assertTrue(result["restored_ok"])
         self.assertFalse(updates.kept_package("v0.2.0").exists(), "the broken version isn't kept")
         self.assertIn("went back to v0.1.0", updates.brief_lines("Bento")[0])
+
+    def test_a_failed_check_on_the_brief_rolls_back_too(self):
+        answers = iter([{"ok": False, "problem": "the morning brief didn't build: money failed (TypeError: x)"},
+                        {"ok": True}])
+        with mock.patch.object(updates, "post_install", side_effect=lambda prev: next(answers)):
+            result = updates.apply(self.entry)
+        self.assertEqual((result["status"], result["restored_ok"]), ("rolled_back", True))
+        self.assertIn("the morning brief didn't build", result["problem"])
+        self.assertEqual(self.mailed, [], "a clean way back needs no email: the brief says it")
+
+    def test_an_installer_that_fails_halfway_still_goes_back(self):
+        self.broken_installs.add(b"version two")
+        with mock.patch.object(updates, "post_install", return_value={"ok": True}) as post:
+            result = updates.apply(self.entry)
+        self.assertEqual(self.installed, [b"version two", b"version one"])
+        self.assertEqual((result["status"], result["restored_ok"]), ("rolled_back", True))
+        self.assertIn("disk is full", result["problem"])
+        self.assertEqual(post.call_count, 1, "only the way back's own check ran")
+
+    def test_a_failed_way_back_is_reported_by_brief_and_email(self):
+        self.broken_installs.add(b"version one")
+        with mock.patch.object(updates, "post_install", return_value={"ok": False, "problem": "butler.render doesn't load"}):
+            result = updates.apply(self.entry)
+        self.assertEqual(result["status"], "rolled_back")
+        self.assertFalse(result["restored_ok"])
+        self.assertIn("disk is full", result["rollback_problem"])
+        self.assertEqual(updates.load_state()["last_result"], result, "recorded, not lost")
+        line = updates.brief_lines("Bento")[0]
+        self.assertIn("going back to v0.1.0 didn't work either", line)
+        self.assertIn("Download Bento again from buildyourbutler.com", line)
+        self.assertEqual(len(self.mailed), 1)
+        to, subject, text = self.mailed[0]
+        self.assertEqual((to, subject), (["sam@example.com", "alex@example.com"], "Bento · an update needs you"))
+        for part in ("v0.2.0", "butler.render doesn't load", "disk is full", "download Bento again",
+                     "settings, data, projects and budget stay"):
+            self.assertIn(part, text)
+
+    def test_a_way_back_whose_own_check_fails_is_not_ok(self):
+        answers = iter([{"ok": False, "problem": "new is broken"}, {"ok": False, "problem": "old is broken too"}])
+        with mock.patch.object(updates, "post_install", side_effect=lambda prev: next(answers)):
+            result = updates.apply(self.entry)
+        self.assertEqual((result["restored"], result["restored_ok"]), ("v0.1.0", False))
+        self.assertEqual(result["rollback_problem"], "old is broken too")
+        self.assertEqual(len(self.mailed), 1)
+
+    def test_no_settings_or_no_mail_still_records_the_failed_way_back(self):
+        self.broken_installs.add(b"version one")
+        for settings, send in ((None, None), (self.settings, OSError("smtp down"))):
+            with self.subTest(settings=settings):
+                self.settings, self.mailed = settings, []
+                self.version_file.write_text("v0.1.0\n")     # the last subtest's way back left v0.2.0
+                with mock.patch.object(updates, "post_install", return_value={"ok": False, "problem": "x"}), \
+                        mock.patch.object(updates.mailer, "send", side_effect=send) as sent:
+                    result = updates.apply(self.entry)
+                self.assertFalse(result["restored_ok"])
+                self.assertEqual(sent.call_count, 0 if settings is None else 1)
 
     def test_no_rollback_copy_means_no_update(self):
         os.environ["BUTLER_RELEASES_URL"] = str(self.root / "nowhere")
@@ -265,6 +330,18 @@ class TickTest(Sandbox):
             self.assertIn("Installing version v1.0.0", updates.approve())
             updates.tick(self.SETTINGS, datetime(2026, 10, 12, 9, 0))
             self.assertEqual(apply.call_count, 1, "approved: installs on the next tick")
+
+    def test_an_update_that_didnt_happen_is_said_once_then_cleared(self):
+        with mock.patch.object(updates, "fetch_manifest", return_value={"version": "v0.2.0", "pkg_url": "u"}), \
+                mock.patch.object(updates, "apply", side_effect=updates.UpdateError(
+                    "the download didn't match its checksum, so I deleted it")):
+            updates.tick(self.SETTINGS, datetime(2026, 10, 12, 3, 0))
+        self.assertEqual(updates.brief_lines("Bento"), [
+            "Bento couldn't update to v0.2.0 overnight: the download didn't match its checksum, so I deleted it. "
+            "It tries again tomorrow."])
+        updates.mark_announced()
+        self.assertEqual(updates.brief_lines("Bento"), [], "said once")
+        self.assertTrue(updates.load_state()["last_error"]["announced"])
 
     def test_off_never_checks(self):
         with mock.patch.object(updates, "fetch_manifest") as fetch:
@@ -376,6 +453,15 @@ class CommandTest(Sandbox):
         code, said, _ = self.run_command(result=updates.UpdateError("the download's checksum didn't match"))
         self.assertEqual((code, said[-1]), (1, "I didn't update: the download's checksum didn't match."))
 
+    def test_a_failed_way_back_says_what_to_do(self):
+        code, said, _ = self.run_command(result={"status": "rolled_back", "from": "v0.1.0", "restored": "v0.2.0",
+                                                 "restored_ok": False, "rollback_problem": "Installer didn't finish"})
+        self.assertEqual(code, 1)
+        self.assertEqual(said[-1], "The new version didn't pass its check, and going back to v0.1.0 didn't work "
+                                   "either (Installer didn't finish). Download Butler again from "
+                                   "buildyourbutler.com and open it: your settings and data stay. "
+                                   "Details are in logs/butler.log.")
+
     def test_a_failed_check_says_it_went_back(self):
         code, said, _ = self.run_command(result={"status": "rolled_back", "restored": "v0.1.0"})
         self.assertEqual(code, 1)
@@ -386,7 +472,7 @@ class CommandTest(Sandbox):
 class PostInstallTest(Sandbox):
     """The new code's side: dependencies, migrations, a health check, then the portal restarts."""
 
-    def post_install(self, bootstrap=0, migration_error=None, problems=()):
+    def post_install(self, bootstrap=0, migration_error=None, problems=(), brief=None):
         ran = []
 
         def run(cmd, timeout=600):
@@ -405,7 +491,8 @@ class PostInstallTest(Sandbox):
              mock.patch.object(updates, "_run", side_effect=run), \
              mock.patch.object(updates.shutil, "which", return_value="/bin/launchctl"), \
              mock.patch.object(migrations, "run_pending", side_effect=migrate), \
-             mock.patch.object(updates, "health", return_value=list(problems)):
+             mock.patch.object(updates, "health", return_value=list(problems)), \
+             mock.patch.object(updates, "brief_problem", return_value=brief):
             return updates.run_post_install(), ran
 
     def test_all_good_restarts_the_portal(self):
@@ -422,12 +509,88 @@ class PostInstallTest(Sandbox):
         result, ran = self.post_install(problems=["butler.render doesn't load", "settings lost 'email'"])
         self.assertEqual(result, {"ok": False, "problem": "butler.render doesn't load; settings lost 'email'"})
         self.assertNotIn(["launchctl", "kickstart"], ran)
+        result, ran = self.post_install(brief="the morning brief didn't build: money failed (TypeError: x)")
+        self.assertEqual(result, {"ok": False, "problem": "the morning brief didn't build: money failed (TypeError: x)"})
+        self.assertNotIn(["launchctl", "kickstart"], ran)
 
     def test_the_post_install_entry_point_prints_json(self):
         with mock.patch.object(updates, "run_post_install", return_value={"ok": True, "migrations": []}), \
              mock.patch("builtins.print") as printed:
             self.assertEqual(updates.main(["--post-install", "v0.1.0"]), 0)
         printed.assert_called_once_with('{"ok": true, "migrations": []}', flush=True)
+
+
+class BriefCheckTest(Sandbox):
+    """The new code builds today's brief; only failures the code running before didn't have count."""
+
+    MONEY = {"where": "money failed", "error": "TypeError", "detail": "unsupported operand"}
+    NEWS = {"where": "news failed", "error": "KeyError", "detail": "'regions'"}
+
+    def problem(self, found, baseline=None):
+        if baseline is not None:
+            updates.UPDATES.mkdir(parents=True, exist_ok=True)
+            updates.baseline_path().write_text(baseline)
+        from butler import daily
+        with mock.patch.object(daily, "brief_check", side_effect=found if isinstance(found, Exception)
+                               else lambda: {"failures": found}):
+            return updates.brief_problem()
+
+    def test_a_clean_brief_passes(self):
+        self.assertIsNone(self.problem([]))
+
+    def test_without_a_baseline_every_failure_counts(self):
+        self.assertEqual(self.problem([self.MONEY]),
+                         "the morning brief didn't build: money failed (TypeError: unsupported operand)")
+        self.assertIsNotNone(self.problem([self.MONEY], baseline="not json"))
+
+    def test_a_failure_the_old_code_had_too_doesnt_stop_the_update(self):
+        import json
+        baseline = json.dumps({"failures": [{**self.MONEY, "detail": "another detail"}]})
+        self.assertIsNone(self.problem([self.MONEY], baseline=baseline))
+        self.assertEqual(self.problem([self.MONEY, self.NEWS], baseline=baseline),
+                         "the morning brief didn't build: news failed (KeyError: 'regions')")
+
+    def test_a_check_that_cant_run_fails(self):
+        self.assertEqual(self.problem(RuntimeError("no settings")),
+                         "the morning brief check didn't run (RuntimeError: no settings)")
+
+    def test_the_baseline_comes_from_the_code_running_now(self):
+        import json
+        with mock.patch.object(updates, "_fresh_process", return_value={"failures": [self.MONEY]}) as fresh:
+            updates.UPDATES.mkdir(parents=True, exist_ok=True)
+            updates.record_baseline()
+        fresh.assert_called_once_with(["--brief-check"], timeout=600)
+        self.assertEqual(json.loads(updates.baseline_path().read_text()), {"failures": [self.MONEY]})
+        with mock.patch.object(updates, "_fresh_process", return_value={"ok": False, "problem": "usage: --brief-check"}):
+            updates.record_baseline()
+        self.assertFalse(updates.baseline_path().exists(), "an older version without the check leaves none")
+
+    def test_the_brief_check_entry_point_prints_json(self):
+        from butler import daily
+        with mock.patch.object(daily, "brief_check", return_value={"failures": []}), \
+             mock.patch("builtins.print") as printed:
+            self.assertEqual(updates.main(["--brief-check"]), 0)
+        printed.assert_called_once_with('{"failures": []}', flush=True)
+
+
+class FreshProcessTest(Sandbox):
+    def test_reads_the_last_json_line(self):
+        with mock.patch.object(updates.subprocess, "run", return_value=done([], 0, 'migrating\n{"ok": true}\n')):
+            self.assertEqual(updates.post_install("v0.1.0"), {"ok": True})
+
+    def test_no_answer_a_hang_or_no_python_is_a_failed_check(self):
+        with mock.patch.object(updates.subprocess, "run", return_value=done([], 1, "", "Traceback: boom\n")):
+            self.assertEqual(updates.post_install("v0.1.0"), {"ok": False, "problem": "Traceback: boom"})
+        with mock.patch.object(updates.subprocess, "run", side_effect=subprocess.TimeoutExpired("python", 1200)):
+            self.assertEqual(updates.post_install("v0.1.0"),
+                             {"ok": False, "problem": "its checks took longer than 20 minutes"})
+        with mock.patch.object(updates.subprocess, "run", side_effect=FileNotFoundError("no .venv")):
+            self.assertIn("its Python didn't start", updates.post_install("v0.1.0")["problem"])
+
+    def test_an_installer_that_hangs_is_an_update_error(self):
+        with mock.patch.object(updates, "_run", side_effect=subprocess.TimeoutExpired("installer", 900)):
+            with self.assertRaisesRegex(updates.UpdateError, "Installer didn't finish"):
+                updates.install_package(self.root / "Butler.pkg")
 
 
 class HealthTest(unittest.TestCase):

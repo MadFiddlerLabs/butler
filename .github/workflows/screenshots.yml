@@ -16,6 +16,7 @@ on:
       - "scripts/fonts/**"
       - "tests/fakes/**"
       - "requirements*.txt"
+      - requirements.lock
       - ".github/workflows/screenshots.yml"
   workflow_dispatch:
 
@@ -37,7 +38,7 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -r requirements-screenshots.txt
+      - run: pip install --require-hashes -r requirements.lock && pip install -r requirements-screenshots.txt
       - run: python -m playwright install --with-deps chromium
       - run: python scripts/screenshots.py
       - name: Open a pull request when an image changed

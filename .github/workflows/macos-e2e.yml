@@ -26,7 +26,7 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-      - run: pip install -r requirements-dev.txt
+      - run: pip install --require-hashes -r requirements.lock && pip install -r requirements-dev.txt
       - name: The test suite on macOS
         run: python -m unittest discover tests
         env:
@@ -48,7 +48,7 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-      - run: pip install -r requirements-dev.txt
+      - run: pip install --require-hashes -r requirements.lock && pip install -r requirements-dev.txt
       - name: Package tests (names, postinstall, the built package)
         run: |
           python -m unittest discover -v -s tests -p test_packaging.py

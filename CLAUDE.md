@@ -57,7 +57,7 @@ someone developing Butler itself. The hard rules apply to both.
 | `src/butler/progress.py`, `course_progress.json` | Progress that marks itself: each setup step's check, the step-to-lesson map, the offline queue (`data/progress.json`), `butler progress` |
 | `packaging/macos/` | The installer package and the universal Calendar helper (docs/RELEASING.md) |
 | `src/butler/updates.py`, `migrations.py` | Over-the-air updates: the manifest, signature checks, rollback; settings migrations (docs/UPDATES.md) |
-| `scripts/install.sh`, `bootstrap.sh` | Download to `~/Butler`; Python through uv, no Xcode tools |
+| `scripts/install.sh`, `bootstrap.sh`, `lock.sh` | Download to `~/Butler`; Python through a pinned uv, no Xcode tools; packages exactly as `requirements.lock` pins them, with hashes |
 | `scripts/store-secret.sh` | A Mac dialog that puts a secret straight into Keychain |
 | `scripts/screenshots.py` | The README images, from the example household (docs/TESTING.md) |
 | `.claude/skills/` | `/butler-setup <step>`, `/butler-tune` and `/butler-doctor` |

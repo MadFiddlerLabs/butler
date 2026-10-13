@@ -1,6 +1,6 @@
 #!/bin/bash
-# Signed to signed: the update students will really get. Installs the published release (signed,
-# notarized, from GitHub Releases) into this home, adds a household's files, then lets THAT
+# Signed to signed: the update students will really get. Installs a published release (signed,
+# notarized, from GitHub Releases: the latest, or the oldest still offered an update) into this home, adds a household's files, then lets THAT
 # release's own updater install the candidate: a signed, notarized package built by
 # .github/workflows/release.yml. Nothing relaxes a check here: BUTLER_UPDATE_ALLOW_UNSIGNED is
 # never set, and the rollback copy comes from the real GitHub Release.
@@ -120,7 +120,9 @@ helper="$(codesign -dv "$b/bin/butler-ek" 2>&1)"
 grep -q "TeamIdentifier=VB9CHJM4AN" <<< "$helper" || { echo "$helper"; fail "the Calendar helper isn't signed by our team"; }
 problems="$(py 'from butler import updates; print("; ".join(updates.health()))')"
 [ -z "$problems" ] || fail "health check: $problems"
-echo "health check: passed"
+problem="$(py 'from butler import updates; print(updates.brief_problem() or "")')"
+[ -z "$problem" ] || fail "brief check: $problem"
+echo "health check: passed, the brief included"
 test -f "$b/data/updates/Butler-$old.pkg" || fail "the rollback package isn't kept"
 test -f "$b/data/updates/Butler-$new.pkg" || fail "the installed package isn't kept"
 line="$(py 'from butler import updates; print(updates.brief_lines("Bento"))')"

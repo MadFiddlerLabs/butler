@@ -3,7 +3,7 @@ went out: emails, Claude prompts, helper calls, URLs and portal responses.
 
     python harness.py <flow> <record.json>      (cwd: the test home; PYTHONPATH: its src/)
 
-Flows: daily, daily-dry, replies, weekly, monthly, portal, progress, tick. The fakes:
+Flows: daily, daily-dry, brief-check, replies, weekly, monthly, portal, progress, tick. The fakes:
 
 - Claude: `llm._request` (the API call, after ID numbers are withheld) answers from canned responses. Each schema is checked to be a valid,
   strict JSON schema, and each canned answer is validated against it, so schema drift fails.
@@ -17,6 +17,9 @@ Flows: daily, daily-dry, replies, weekly, monthly, portal, progress, tick. The f
 BUTLER_FAKE_DOWN takes services down for the failure tests, comma-separated: lunchmoney, weather,
 news, claude (an API error 500), claude-timeout, smtp (Gmail refuses the login), imap (Gmail's
 IMAP is unreachable). The stub butler-ek reads it too: calendar makes it fail.
+
+BUTLER_FAKE_BUG plants a bug a release could ship, for the update's brief check: money (the money
+section raises a TypeError) or render (the email's HTML can't be made).
 """
 
 import io
@@ -297,6 +300,18 @@ def run(flow: str) -> None:
         from butler import daily
         sys.argv = ["daily"] + (["--dry-run"] if flow == "daily-dry" else [])
         daily.main()
+    elif flow == "brief-check":
+        from butler import daily, finance
+        bug = os.environ.get("BUTLER_FAKE_BUG")
+        if bug == "money":
+            def broken(*args, **kwargs):
+                return None + 1
+            finance.build = broken
+        elif bug == "render":
+            def broken_html(*args, **kwargs):
+                raise AttributeError("'Brief' object has no attribute 'agenda_lines'")
+            daily.to_html = broken_html
+        RECORD["check"] = daily.brief_check()
     elif flow == "replies":
         from butler import replies
         replies.process(settings)

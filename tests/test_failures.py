@@ -358,5 +358,44 @@ class TickWithImapDownTest(Case):
         self.assert_no_secrets()
 
 
+class UpdateBriefCheckTest(unittest.TestCase):
+    """An update's health check builds today's brief with the new code (daily.brief_check). A
+    release that crashes at run time fails it; a service that's down doesn't, and the check sends
+    and writes nothing."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.home = Home()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.home.close()
+
+    def check(self, **kwargs) -> list[dict]:
+        record = self.home.run("brief-check", **kwargs)
+        self.assertIsNone(record["error"], record["error"])
+        self.assertEqual(record["mails"], [], "the check sends nothing")
+        self.assertEqual(record["prompts"], [], "the check never calls Claude")
+        return record["check"]["failures"]
+
+    def test_a_healthy_release_passes_and_writes_nothing(self):
+        before = sorted(p.relative_to(self.home.root) for p in (self.home.root / "out").rglob("*"))
+        self.assertEqual(self.check(), [])
+        self.assertEqual(sorted(p.relative_to(self.home.root) for p in (self.home.root / "out").rglob("*")), before)
+        self.assertFalse((self.home.root / "data" / "networth.jsonl").exists(), "no net worth snapshot")
+
+    def test_services_down_are_not_the_releases_fault(self):
+        self.assertEqual(self.check(down=("lunchmoney", "weather", "news", "calendar")), [])
+
+    def test_a_section_that_crashes_on_code_fails_it(self):
+        failures = self.check(env={"BUTLER_FAKE_BUG": "money"})
+        self.assertEqual([(f["where"], f["error"]) for f in failures], [("money failed", "TypeError")])
+        self.assertIn("NoneType", failures[0]["detail"])
+
+    def test_a_brief_that_cant_render_fails_it(self):
+        failures = self.check(env={"BUTLER_FAKE_BUG": "render"})
+        self.assertEqual([(f["where"], f["error"]) for f in failures], [("the brief", "AttributeError")])
+
+
 if __name__ == "__main__":
     unittest.main()

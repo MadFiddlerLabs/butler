@@ -12,23 +12,35 @@ there is no version file to bump in the repository.
 
 1. **Main is green**: the `tests` and `macos-e2e` workflows, including the `package` and
    `updates` jobs.
-2. **Settings need no surprise.** A new setting must default to the old behaviour when it's
+2. **The lock is current.** After any change to `requirements.txt`, run `scripts/lock.sh` and
+   commit `requirements.lock` (docs/UPDATES.md, "Dependencies"). The `tests` workflow checks it.
+3. **Settings need no surprise.** A new setting must default to the old behaviour when it's
    absent. Add a migration in `src/butler/migrations.py` only when a household's file has to
    change (docs/UPDATES.md).
-3. **Pick the version.** Patches and minors install overnight on their own. Use a major version
+4. **Pick the version.** Patches and minors install overnight on their own. Use a major version
    only for a change the household should agree to first: the brief then asks for an "update"
    reply.
-4. **Prove the candidate, signed to signed.** Run the release workflow by hand with the new
+5. **Prove the candidate, signed to signed.** Run the release workflow by hand with the new
    version:
 
    ```
    gh workflow run release.yml -f version=v0.2.0
    ```
 
-   It builds, signs and notarizes the candidate. Then job `signed-update` installs the release
-   students have now, from GitHub Releases, and lets its own updater install the candidate. It
-   publishes nothing.
-5. **Tag with the release notes and push.** The annotated tag's message becomes the release
+   It builds, signs and notarizes the candidate. Then job `signed-update` installs published
+   releases from GitHub Releases, each on its own runner, and lets each one's own updater install
+   the candidate. It publishes nothing. The releases are the ones installs really update from
+   (job `origins`):
+
+   - the latest release, and
+   - the oldest release still offered an update: the first at or after the website manifest's
+     `min_version`, or the first signed release (v0.1.0) when there's none.
+
+   Installs skip versions, so the oldest matters: a Mac on v0.1.0 updates straight to the
+   candidate. When the two are the same release, it runs once. To stop offering updates from old
+   versions, set `min_version` in the website's `updates/hold.json` (its DEPLOY.md); older installs are then asked to
+   download Butler again, and the gate starts from there.
+6. **Tag with the release notes and push.** The annotated tag's message becomes the release
    notes. Write it for households, two or three plain sentences. The first ones show up in the
    brief ("What's new: …"), so lead with what changes for them.
 
@@ -37,7 +49,7 @@ there is no version file to bump in the repository.
    git push origin v0.2.0
    ```
 
-6. **Check the published package** once the workflow finishes:
+7. **Check the published package** once the workflow finishes:
 
    ```
    gh release download v0.2.0 -p Butler.pkg
@@ -51,8 +63,10 @@ On a tag, `.github/workflows/release.yml`:
 1. Builds the universal Calendar helper.
 2. Builds the package and signs it.
 3. Notarizes the package with Apple and staples the ticket.
-4. Runs the signed update from the current release to this package (`signed-update`).
-5. Publishes the release, only if step 4 passed.
+4. Picks the releases to update from: the latest and the oldest still offered an update
+   (`origins`, `.github/scripts/update_origins.py`).
+5. Runs the signed update from each of them to this package, side by side (`signed-update`).
+6. Publishes the release, only if every run of step 5 passed.
 
 Installed copies pick the release up on their own: the website rebuilds its update manifest
 (`/updates/stable.json`) from the latest release on its next deploy, and each Butler checks it
@@ -131,6 +145,8 @@ notarized". A run by hand only uploads the package as a build artifact. It publi
 - It installs into the current user's home folder (`~/Butler`), with no admin password.
 - It carries only tracked files, so an upgrade never touches the household's settings, data,
   projects or budget.
+- It carries `requirements.lock`, so every install of a version gets the same Python packages,
+  checked by hash, and `scripts/lib/uv.sh`, which pins uv by checksum.
 - It includes the Calendar and Reminders helper (`bin/butler-ek`), prebuilt for Apple silicon and
   Intel and signed. Students never need the Xcode tools.
 - Its `postinstall` takes the butler's name from the package's filename and opens the guided
@@ -139,20 +155,28 @@ notarized". A run by hand only uploads the package as a build artifact. It publi
 ## The tests that guard it
 
 - `tests/test_packaging.py`: names from filenames, postinstall on a first install and an upgrade,
-  and the built package's layout.
+  the built package's layout (the lock included), and the lock matching `requirements.txt`.
 - `tests/test_first_run.py` and `tests/test_cli.py`: the guided first run and the `butler`
   command, against a fake account API.
 - `.github/workflows/macos-e2e.yml`, job `package`: builds the package and installs it into the
   runner's home folder with `installer`, then upgrades it and checks nothing personal changed.
 
 - `tests/e2e/signed-update.sh`, run in release.yml as job `signed-update`: the update students
-  really get, signed to signed. It installs the published release from GitHub Releases, then
-  that release's own updater installs the new signed, notarized package, with no check relaxed.
+  really get, signed to signed. It installs a published release from GitHub Releases (the latest,
+  and in a second run the oldest still offered an update), then that release's own updater
+  installs the new signed, notarized package, with no check relaxed.
   First it must refuse three tampered copies: a checksum mismatch, a changed byte and a repacked,
   unsigned package. Afterwards the household's files are byte for byte the same, `butler update
-  --check` reports the new version, the health check passes, and the Calendar helper is signed by
-  the team.
+  --check` reports the new version, the health check passes (today's brief included), and the
+  Calendar helper is signed by the team.
 
 Apple's notarization can only run with the real secrets, so it is checked by the release workflow
 itself: `stapler validate`, `pkgutil --check-signature` and `spctl --assess` must all pass. For
 the same reason `signed-update` runs only there, never on a pull request.
+
+- `tests/test_packaging.py`, `UpdateOriginsTest` and `ReleaseWorkflowTest`: which releases the
+  gate updates from (`min_version`, drafts and prereleases left out, never the candidate itself),
+  and that publishing waits for every one of them.
+
+The `origins` job reads `min_version` from the live manifest. If the website can't be reached,
+the job fails and says so: run it again rather than guess.

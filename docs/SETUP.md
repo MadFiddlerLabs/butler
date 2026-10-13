@@ -21,7 +21,8 @@ scripts/bootstrap.sh
 ```
 
 `bootstrap.sh` creates `.venv` with [uv](https://docs.astral.sh/uv/), which also provides
-Python, so no Xcode tools are needed yet. `./run.sh preview` then shows a first brief.
+Python, so no Xcode tools are needed yet. It installs exactly the packages in `requirements.lock`
+and removes anything else from `.venv`. To develop, install `requirements-dev.txt` afterwards. `./run.sh preview` then shows a first brief.
 
 Then build `bin/butler-ek`, a small helper that reads macOS Calendar and Reminders. It needs
 the Xcode command line tools (`xcode-select --install`):
