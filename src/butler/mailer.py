@@ -55,28 +55,31 @@ def send_or_queue(settings: dict, key: str, subject: str, text: str, html: str |
 def flush(settings: dict) -> int:
     """Re-sends queued messages, oldest first, unless Gmail has been refusing and the hour isn't
     up. Drops any older than KEEP. Returns how many went out."""
-    queued = sorted(OUTBOX.glob("*.eml"), key=lambda p: p.stat().st_mtime) if OUTBOX.exists() else []
+    when = _queued()
+    paths = [p for p in OUTBOX.glob("*.eml")] if OUTBOX.exists() else []
+    for path in paths:
+        when.setdefault(path.name, time.time())    # a file with no record: count from now
     fresh = []
-    for path in queued:
-        if time.time() - path.stat().st_mtime > KEEP:
+    for path in sorted(paths, key=lambda p: when[p.name]):
+        if time.time() - when[path.name] > KEEP:
             log.warning("outbox: dropped %s, unsent for three days", path.name)
             path.unlink()
         else:
             fresh.append(path)
-    if not fresh or _backing_off():
-        return 0
     sent = 0
-    for path in fresh:
-        try:
-            _deliver(settings, email.message_from_bytes(path.read_bytes(), policy=email.policy.default))
-        except Exception as e:
-            _record(ok=False)
-            log.warning("outbox: %s still not sent (%s)", path.name, _why(e))
-            break
-        _record(ok=True)
-        path.unlink()
-        log.info("outbox: sent %s", path.name)
-        sent += 1
+    if fresh and not _backing_off():
+        for path in fresh:
+            try:
+                _deliver(settings, email.message_from_bytes(path.read_bytes(), policy=email.policy.default))
+            except Exception as e:
+                _record(ok=False)
+                log.warning("outbox: %s still not sent (%s)", path.name, _why(e))
+                break
+            _record(ok=True)
+            path.unlink()
+            log.info("outbox: sent %s", path.name)
+            sent += 1
+    _save_queued({p.name: when[p.name] for p in paths if p.exists()})
     return sent
 
 
@@ -116,7 +119,28 @@ def _why(e: Exception) -> str:
 
 def _queue(key: str, msg: EmailMessage) -> None:
     OUTBOX.mkdir(parents=True, exist_ok=True)
-    (OUTBOX / (re.sub(r"[^\w.-]", "-", key) + ".eml")).write_bytes(msg.as_bytes())
+    path = OUTBOX / (re.sub(r"[^\w.-]", "-", key) + ".eml")
+    path.write_bytes(msg.as_bytes())
+    _save_queued({**_queued(), path.name: time.time()})
+
+
+def _queued() -> dict[str, float]:
+    """When each queued message was queued, by file name. Kept on time.time(), the clock the
+    backoff uses, not in file times: those come from the file system's own clock, which a
+    test's (or libfaketime's) clock doesn't move."""
+    try:
+        return json.loads((OUTBOX / "queued.json").read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_queued(when: dict[str, float]) -> None:
+    path = OUTBOX / "queued.json"
+    if when:
+        OUTBOX.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(when))
+    elif path.exists():
+        path.unlink()
 
 
 def _state() -> dict:

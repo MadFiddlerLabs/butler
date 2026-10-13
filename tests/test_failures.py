@@ -235,8 +235,9 @@ class OutboxBackoffTest(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.root, True)
-        # The clock starts at the real time, so queued files' real ages line up with it.
-        self.start = time.time()
+        # The simulated clock runs twelve days ahead of the file system's, as under the dates job's
+        # libfaketime: the outbox must keep time on one clock, not mix in file times.
+        self.start = time.time() + 12 * 24 * 60 * 60
         self.clock, self.up, self.tries, self.sent = [self.start], [False], [], []
         test = self
 
@@ -293,6 +294,10 @@ class OutboxBackoffTest(unittest.TestCase):
             self.assertEqual(mailer.flush(SETTINGS), 0)
         self.assertEqual(self.sent, [])
         self.assertIn("dropped brief-2026-10-12.eml", "\n".join(logs.output))
+
+    def test_the_clock_behind_the_file_system_changes_nothing(self):
+        self.start = self.clock[0] = time.time() - 200 * 24 * 60 * 60
+        self.test_fast_tries_then_hourly_then_everything_goes()
 
     def test_a_working_gmail_sends_at_once_and_queues_nothing(self):
         self.up[0] = True
