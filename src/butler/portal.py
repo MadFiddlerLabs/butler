@@ -351,9 +351,9 @@ def money_page():
         lines = f"<p><strong>{escape(nw)}</strong></p>" + lines
     note = one_off_note(m)
     rows = []
-    for cat in sorted(set(m.budget_by_category) | set(m.mtd_by_category),
-                      key=lambda c: -m.mtd_by_category.get(c, 0)):
-        b, s = m.budget_by_category.get(cat, 0), m.mtd_by_category.get(cat, 0)
+    spent_by = m.against_budget_by_category        # one-offs are named above, not set against budgets
+    for cat in sorted(set(m.budget_by_category) | set(spent_by), key=lambda c: -spent_by.get(c, 0)):
+        b, s = m.budget_by_category.get(cat, 0), spent_by.get(cat, 0)
         rows.append(f"<tr><td>{escape(cat)}</td><td class=num>{money(s)}</td><td class=num>{money(b)}</td>"
                     f"<td class=num>{money(b - s) if b else '—'}</td></tr>")
     month_start = m.today.replace(day=1)
@@ -371,7 +371,8 @@ def money_page():
             + _chart_img("mtd", "Spending so far this month against budget pace and last month")
             + (f'<p class=sub>{escape(note)}</p>' if note else "")
             + _chart_img("categories", "Day-to-day categories against budget")
-            + f"<h2>By category</h2><table><tr><th>Category</th><th class=num>Spent</th>"
+            + "<h2>By category</h2><p class=sub>One-offs are left out here; they're named above.</p>"
+            f"<table><tr><th>Category</th><th class=num>Spent</th>"
             f"<th class=num>Budget</th><th class=num>Left</th></tr>{''.join(rows)}</table>"
             + _subscriptions_html(m)
             + f"<h2>This month's transactions</h2><table><tr><th>Date</th><th>Payee</th><th>Category</th>"

@@ -9,7 +9,7 @@ from unittest import mock
 
 import yaml
 
-from butler import finance
+from butler import charts, finance, weekly
 from butler.budget import Line, Plan
 from butler.config import config_path
 from butler.finance import (CASH_TOPUP, DRAW, IGNORED, LEDGER, MANAGED_FEE, SPEND, TRANSFER, Tx,
@@ -281,6 +281,12 @@ class SummaryWindows(unittest.TestCase):
         s = summarize(txs, PLAN, PLAN_RULES, TODAY, SINCE)
         self.assertEqual([t.id for t in s.new], [4, 1, 5])
         self.assertEqual(s.new_by_category, {"Food": 50, "Household": 5})
+        # A new one-off or fixed line is new, but it isn't new daily spending in the chart.
+        txs += [spend(6, date(2026, 10, 19), "Sofa Shop", 700, created=after, one_off=True),
+                spend(7, date(2026, 10, 19), "School", 90, created=after, fixed=True)]
+        s = summarize(txs, PLAN, PLAN_RULES, TODAY, SINCE)
+        self.assertEqual([t.id for t in s.new], [6, 7, 4, 1, 5])
+        self.assertEqual(s.new_by_category, {"Food": 50, "Household": 5})
         self.assertEqual((s.today, s.since), (TODAY, SINCE))
 
     def test_over_pace(self):
@@ -296,6 +302,20 @@ class SummaryWindows(unittest.TestCase):
         s = summarize(txs, plan, rules, TODAY, SINCE)
         self.assertEqual([(c, round(a, 2), round(e, 2)) for c, a, e in s.over_pace],
                          [("Food", 900, 580.65), ("Cinema", 358.57, 258.06)])
+
+    def test_one_offs_stay_out_of_every_category_compared_with_a_budget(self):
+        # Invented: an 800 bookcase as a one-off in Food, whose daily budget is 900.
+        txs = [spend(1, date(2026, 10, 2), "Grocer", 100),
+               spend(2, date(2026, 10, 3), "Bookcase Shop", 800, one_off=True),
+               spend(3, date(2026, 10, 4), "Gift Shop", 400, "Gifts", one_off=True),  # no budget line
+               spend(4, date(2026, 10, 5), "School", 90, fixed=True, line="School lunch")]
+        s = summarize(txs, PLAN, PLAN_RULES, TODAY, SINCE)
+        self.assertEqual(s.mtd_by_category, {"Food": 990, "Gifts": 400})
+        self.assertEqual(s.against_budget_by_category, {"Food": 190})
+        self.assertEqual(s.unbudgeted, [])          # a one-off is named, not asked to get a budget line
+        self.assertEqual(charts.category_bars(s, ["Food"]), [("Food", 100, 900)])
+        rules = {"rules": {"day_to_day": ["Food"]}}
+        self.assertEqual(weekly._category_rows(s, rules), ([], ["Food", "Housing", "Pets", "Utilities"]))
 
     def test_unbudgeted_means_over_50_with_nothing_planned(self):
         txs = [spend(1, date(2026, 10, 4), "Gift Shop", 51, "Gifts"),

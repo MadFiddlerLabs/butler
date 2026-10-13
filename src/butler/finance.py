@@ -165,7 +165,8 @@ class Summary:
     since: datetime
     new: list[Tx]
     mtd_total: float
-    mtd_by_category: dict[str, float]
+    mtd_by_category: dict[str, float]           # everything this month, one-offs included
+    against_budget_by_category: dict[str, float]   # the same without one-offs: what budgets compare with
     budget_month: float
     budget_by_category: dict[str, float]
     day_to_day_mtd: float
@@ -210,7 +211,7 @@ class Summary:
     daily_this_month: dict[int, float]
     daily_last_month: dict[int, float]
     days_in_month: int
-    new_by_category: dict[str, float]
+    new_by_category: dict[str, float]           # new since the last brief, one-offs and fixed lines left out
     problems: list[str] = field(default_factory=list)
 
 
@@ -361,9 +362,12 @@ def summarize(txs: list[Tx], plan: Plan, rules: dict, today: date, since: dateti
     spend = [t for t in txs if t.kind == SPEND]
     mtd = [t for t in spend if month_start <= t.book_day <= today]
     by_cat: dict[str, float] = {}
+    planned_cat: dict[str, float] = {}
     daily_by_cat: dict[str, float] = {}
     for t in mtd:
         by_cat[t.category] = by_cat.get(t.category, 0.0) + t.amount
+        if not t.one_off:
+            planned_cat[t.category] = planned_cat.get(t.category, 0.0) + t.amount
         if t.category in daily_cats and not t.fixed and not t.one_off:
             daily_by_cat[t.category] = daily_by_cat.get(t.category, 0.0) + t.amount
 
@@ -373,7 +377,7 @@ def summarize(txs: list[Tx], plan: Plan, rules: dict, today: date, since: dateti
         if expected > 0 and actual - expected > max(100.0, 0.25 * expected):
             over.append((cat, actual, expected))
     over.sort(key=lambda o: o[2] - o[1])
-    unbudgeted = sorted(((c, a) for c, a in by_cat.items() if budget.get(c, 0.0) == 0 and a > 50),
+    unbudgeted = sorted(((c, a) for c, a in planned_cat.items() if budget.get(c, 0.0) == 0 and a > 50),
                         key=lambda x: -x[1])
 
     recurring = [t for t in spend if not t.one_off and not t.fixed and t.category in daily_cats]
@@ -406,7 +410,8 @@ def summarize(txs: list[Tx], plan: Plan, rules: dict, today: date, since: dateti
     new = sorted([t for t in spend if t.created > since and t.day >= recent], key=lambda t: -t.amount)
     new_by_cat: dict[str, float] = {}
     for t in new:
-        new_by_cat[t.category] = new_by_cat.get(t.category, 0.0) + t.amount
+        if not t.one_off and not t.fixed:     # the chart's "+€x new" is daily spending only
+            new_by_cat[t.category] = new_by_cat.get(t.category, 0.0) + t.amount
 
     ledgers = []
     for led in rules.get("ledgers") or []:
@@ -426,7 +431,7 @@ def summarize(txs: list[Tx], plan: Plan, rules: dict, today: date, since: dateti
     label = (rec or {}).get("label", "")
     return Summary(
         today=today, since=since, new=new,
-        mtd_total=sum(by_cat.values()), mtd_by_category=by_cat,
+        mtd_total=sum(by_cat.values()), mtd_by_category=by_cat, against_budget_by_category=planned_cat,
         budget_month=sum(budget.values()), budget_by_category=budget,
         day_to_day_mtd=sum(daily_by_cat.values()),
         day_to_day_budget=sum(b for c, b in daily_budget.items() if c in daily_cats),

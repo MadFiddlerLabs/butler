@@ -101,10 +101,15 @@ def _week_numbers(m: Summary, rules: dict, last_day: date) -> tuple[float, float
 
 
 def _category_rows(m: Summary, rules: dict) -> tuple[list[CategoryRow], list[str]]:
+    """Categories ahead of plan. One-offs never count: a daily category compares its daily
+    spending with its paced daily budget, any other its spending with its full month's plan."""
     daily = set(rules["rules"]["day_to_day"])
     rows, on_track = [], []
-    for cat in sorted(set(m.budget_by_category) | set(m.mtd_by_category)):
-        budget, spent = m.budget_by_category.get(cat, 0.0), m.mtd_by_category.get(cat, 0.0)
+    for cat in sorted(set(m.budget_by_category) | set(m.against_budget_by_category)):
+        if cat in daily:
+            budget, spent = m.daily_budget_by_category.get(cat, 0.0), m.daily_by_category.get(cat, 0.0)
+        else:
+            budget, spent = m.budget_by_category.get(cat, 0.0), m.against_budget_by_category.get(cat, 0.0)
         expected = budget * m.pace_fraction if cat in daily else budget
         gap = spent - expected
         threshold = max(100.0, 0.10 * budget)
