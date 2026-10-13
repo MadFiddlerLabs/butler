@@ -3,9 +3,13 @@ student sees after the download, from the welcome to the hand-off to Claude Code
 Run with: PYTHONPATH=src .venv/bin/python -m unittest discover tests"""
 
 import json
+import os
+import shutil
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from butler import account
 
@@ -30,6 +34,42 @@ class HeardTokenTest(unittest.TestCase):
     def test_anything_else_is_no_answer(self):
         for answer in ("0", "11", "01", "1x", "reddit", "-1", ""):
             self.assertEqual(self.token(answer), "", answer)
+
+
+class PlainTest(unittest.TestCase):
+    """scripts/lib/plain.sh: when the first run speaks in words only."""
+
+    def plain(self, **env) -> bool:
+        fake = {k: v for k, v in os.environ.items() if k not in ("BUTLER_PLAIN", "CLAUDE_AX_SCREEN_READER")}
+        fakebin = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, fakebin, True)
+        (fakebin / "pgrep").write_text("#!/bin/sh\n[ -n \"$FAKE_VOICEOVER\" ] && [ \"$*\" = '-x VoiceOver' ]\n")
+        (fakebin / "pgrep").chmod(0o755)
+        fake["PATH"] = f"{fakebin}:/usr/bin:/bin"
+        script = f'. "{REPO}/scripts/lib/plain.sh"; butler_plain'
+        return subprocess.run(["bash", "-c", script], env={**fake, **env}).returncode == 0
+
+    def test_on_for_a_screen_reader_or_by_asking(self):
+        for env in ({"BUTLER_PLAIN": "1"}, {"BUTLER_PLAIN": "yes"}, {"CLAUDE_AX_SCREEN_READER": "1"},
+                    {"CLAUDE_AX_SCREEN_READER": "voiceover"}, {"FAKE_VOICEOVER": "1"}):
+            self.assertTrue(self.plain(**env), env)
+
+    def test_off_otherwise_or_when_turned_off(self):
+        for env in ({}, {"BUTLER_PLAIN": "0"}, {"CLAUDE_AX_SCREEN_READER": "0"}, {"CLAUDE_AX_SCREEN_READER": ""},
+                    {"BUTLER_PLAIN": "0", "CLAUDE_AX_SCREEN_READER": "1", "FAKE_VOICEOVER": "1"}):
+            self.assertFalse(self.plain(**env), env)
+
+    def test_python_decides_the_same_way(self):
+        from butler import config
+        cases = [({"BUTLER_PLAIN": "1"}, True), ({"CLAUDE_AX_SCREEN_READER": "1"}, True),
+                 ({"BUTLER_PLAIN": "0", "CLAUDE_AX_SCREEN_READER": "1"}, False), ({}, False)]
+        for env, want in cases:
+            config.plain_output.cache_clear()
+            clean = {k: v for k, v in os.environ.items() if k not in ("BUTLER_PLAIN", "CLAUDE_AX_SCREEN_READER")}
+            with mock.patch.dict(os.environ, {**clean, **env}, clear=True), \
+                 mock.patch.object(config.subprocess, "run", return_value=mock.Mock(returncode=1)):
+                self.assertEqual(config.plain_output(), want, env)
+        config.plain_output.cache_clear()
 
 
 class FirstRunTest(unittest.TestCase):
@@ -96,6 +136,14 @@ class FirstRunTest(unittest.TestCase):
         lessons = [p["lesson"] for p in self.api.progress]
         for lesson in ("setup.email", "setup.name", "setup.town", "setup.first-brief", "setup.claude"):
             self.assertIn(lesson, lessons)
+        # Every prompt says what to type; the › marker is never the only cue, and nothing is "below".
+        for prompt in ("Name › ", "Press Enter to agree, or type no to stop › ",
+                       "Type a number, or press Enter to skip › ", "Your email › ", "Paste here › "):
+            self.assertIn(prompt, out)
+        self.assertNotRegex(out, r"(^|\n)› ")
+        self.assertIn("Paste it at the › prompt", out)
+        self.assertNotIn("below", out)
+        self.assertNotRegex(out, r"ready\.\.", "no ticker of dots while Python installs")
         # `butler` works from any new Terminal window.
         self.assertIn(f'export PATH="{h.root}/bin:$PATH"', (h.home / ".zprofile").read_text())
         self.assertNotIn("Traceback", out + proc.stderr)
@@ -189,7 +237,7 @@ class FirstRunTest(unittest.TestCase):
         h = self.home()
         proc = h.first_run(["", "", "", "skip", "rm -rf ~", 'butler adults Sam', *LESSONS])
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
-        self.assertGreaterEqual(proc.stdout.count("Paste the line above, starting with: butler town"), 2)
+        self.assertGreaterEqual(proc.stdout.count("Paste the lesson's line, starting with: butler town"), 2)
         self.assertTrue(h.home.exists())
 
     def test_bad_email_then_good(self):
@@ -210,6 +258,19 @@ class FirstRunTest(unittest.TestCase):
         self.assertIn("Bento is ready.", proc.stdout)
         self.assertIn("Your brief is ready", proc.stdout)
         self.assertEqual(h.secrets(), {})
+
+    def test_a_screen_reader_hears_words_only(self):
+        h = self.home()
+        h.env["CLAUDE_AX_SCREEN_READER"] = "1"
+        h.env["BUTLER_BOOTSTRAP"] = "sleep 2; " + h.env["BUTLER_BOOTSTRAP"]   # still installing at the end
+        proc = h.first_run(["", "", "", "skip", *LESSONS])
+        out = proc.stdout
+        self.assertEqual(proc.returncode, 0, out + proc.stderr)
+        self.assertIn("Step 1 of 4: Your email", out)
+        self.assertIn("Getting Bento ready. This can take a few minutes.", out)
+        self.assertIn("Bento is ready.", out)
+        self.assertNotRegex(out, "[✓·…\x1b]")
+        self.assertNotRegex(out, r"ready\.\.")
 
     def test_stop_before_claude(self):
         h = self.home()

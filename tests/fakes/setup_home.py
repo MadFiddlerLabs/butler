@@ -103,6 +103,9 @@ class SetupHome:
         _script(fakebin / "open", "import sys\nopen(__import__('os').environ['BUTLER_FAKE_OPENED'], 'a')"
                                   ".write(' '.join(sys.argv[1:]) + '\\n')\n")
         _script(fakebin / "launchctl", "print('PID\\tStatus\\tLabel')\n")
+        # VoiceOver runs only when a test says so (BUTLER_FAKE_VOICEOVER), whatever this machine runs.
+        _script(fakebin / "pgrep", "import os, sys\nsys.exit(0 if os.environ.get('BUTLER_FAKE_VOICEOVER') "
+                                   "and sys.argv[1:] == ['-x', 'VoiceOver'] else 1)\n")
         # No login records, so `butler doctor` never reports this machine's own restarts.
         _script(fakebin / "last", "")
         self.keychain = self.tmp / "keychain.json"
@@ -125,7 +128,8 @@ class SetupHome:
             "MPLBACKEND": "Agg",
             "BUTLER_COLUMNS": "1000",     # no wrapping, so tests match whole sentences; test_wrap checks 80
         }
-        self.env.pop("PYTHONPATH", None)
+        for inherited in ("PYTHONPATH", "BUTLER_PLAIN", "CLAUDE_AX_SCREEN_READER"):
+            self.env.pop(inherited, None)
         if api is not None:
             self.env["BUTLER_API"] = api.url + "/api"
             self.env["BUTLER_GEOCODE_URL"] = api.url + "/geocode"

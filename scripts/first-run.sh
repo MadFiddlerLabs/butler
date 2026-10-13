@@ -7,7 +7,8 @@
 #   3. the first pasted lessons: butler town, butler adults, butler brief (the first brief opens)
 #   4. butler claude: the rest of the course happens in Claude Code
 #
-# It works offline: the account only keeps the student's place in the course.
+# It works offline: the account only keeps the student's place in the course. Every prompt says
+# what to type, and with a screen reader (scripts/lib/plain.sh) the text is words only.
 # Test hooks: BUTLER_API, BUTLER_BOOTSTRAP (a command instead of scripts/bootstrap.sh),
 # BUTLER_POLL_SECONDS, BUTLER_POLL_LIMIT.
 set -uo pipefail
@@ -26,6 +27,10 @@ log="$home/logs/setup.log"
 . "$home/scripts/lib/heard.sh"
 # shellcheck source-path=SCRIPTDIR source=lib/keychain.sh
 . "$home/scripts/lib/keychain.sh"
+# shellcheck source-path=SCRIPTDIR source=lib/plain.sh
+. "$home/scripts/lib/plain.sh"
+plain=""
+butler_plain && plain=1
 
 # The `butler` command, from any new Terminal window. First, before anything can stop the setup,
 # because every way out says "type: butler setup".
@@ -38,7 +43,9 @@ if ! grep -qsF "$path_line" "$profile"; then
 fi
 
 bold=""; dim=""; green=""; reset=""
-if [ -t 1 ]; then
+dot=" · "                                       # "Step 1 of 4 · Your email"
+[ -n "$plain" ] && dot=": "                     # VoiceOver skips a middle dot or names it
+if [ -t 1 ] && [ -z "$plain" ]; then
   bold="$(printf '\033[1m')"; dim="$(printf '\033[2m')"; green="$(printf '\033[32m')"; reset="$(printf '\033[0m')"
 fi
 # Prose wraps to the window (at most 80 columns, a new Terminal's width), never mid-word, and a
@@ -55,6 +62,8 @@ wrap() {
 }
 say() { printf '%s\n' "$*" | wrap "$wrap_width"; }
 ok() {
+  # A tick for the eye. The sentence says it worked, so plain output leaves the tick out.
+  if [ -n "$plain" ]; then say "$@"; return; fi
   printf '%s\n' "$*" | wrap "$((wrap_width - 2))" | {
     IFS= read -r first; printf '%s✓%s %s\n' "$green" "$reset" "$first"
     while IFS= read -r rest; do printf '  %s\n' "$rest"; done
@@ -85,20 +94,20 @@ post() {
 
 name="$(tr -d '\n' < "$home/.butler-name" 2>/dev/null || true)"
 valid_name "$name" && [ "$name" != "Butler" ] || name=""
-clear 2>/dev/null || true
+[ -n "$plain" ] || clear 2>/dev/null || true   # a screen reader may want what came before
 if [ -n "$name" ]; then
   heading "Hello! I'm $name, your new butler."
   say "Is that the name you'd like? Press Enter to keep it, or type a new one."
-  printf '› '
+  printf 'Name › '
   read -r answer || answer=""
   if [ -n "$answer" ]; then
-    if valid_name "$answer"; then name="$answer"; else say "I'll keep $name for now. You can change it later with: butler name \"…\""; fi
+    if valid_name "$answer"; then name="$answer"; else say "I'll keep $name for now. You can change it later, for example: butler name \"Jeeves\""; fi
   fi
 else
   heading "Hello! I'm your new butler."
   while [ -z "$name" ]; do
-    say "What would you like to call me? (Letters, numbers, spaces, hyphens; up to 24 characters.)"
-    printf '› '
+    say "What would you like to call me? Type a name: letters, numbers, spaces or hyphens, up to 24 characters."
+    printf 'Name › '
     read -r answer || answer="Butler"
     if valid_name "$answer"; then name="$answer"; else say "That one won't work. Try another."; fi
   done
@@ -114,7 +123,7 @@ bootstrap_pid=$!
 
 # ---------- 2. email ----------
 
-heading "Step 1 of 4 · Your email"
+heading "Step 1 of 4${dot}Your email"
 
 # The Terms, once per version: the website downloads at once, so they're agreed to here.
 # data/terms.json records it, and goes to the server with the sign-in (now or, offline, later).
@@ -122,7 +131,7 @@ terms_version="$(tr -d '\n' < "$home/TERMS_VERSION" 2>/dev/null || echo unknown)
 terms_file="$home/data/terms.json"
 if [ "$(json_value terms_version "$(cat "$terms_file" 2>/dev/null)")" != "$terms_version" ]; then
   say "By continuing, you agree to the Terms (https://buildyourbutler.com/terms/) and Privacy (https://buildyourbutler.com/privacy/)."
-  printf 'Continue? [Y/n] '
+  printf 'Press Enter to agree, or type no to stop › '
   read -r agree || agree=""
   case "$(printf '%s' "$agree" | tr '[:upper:]' '[:lower:]')" in
     n|no)
@@ -195,7 +204,7 @@ while :; do
   request_id="$(json_value request_id "$body")"
   poll_secret="$(json_value poll_secret "$body")"
   ok "Sent! Check your inbox for an email from Butler and click the link inside."
-  say "${dim}Waiting for your click. I'm getting my things ready meanwhile. (Type skip and press Enter to do this later.)${reset}"
+  say "Waiting for your click. I'm getting my things ready meanwhile. To do this later, type skip and press Enter."
   polls=0
   while [ "$polls" -lt "$poll_limit" ]; do
     polls=$((polls + 1))
@@ -237,10 +246,9 @@ done
 
 # ---------- Python ----------
 
+# One line while it works, one when it's done: a ticker of dots is noise in VoiceOver.
 if kill -0 "$bootstrap_pid" 2>/dev/null; then
-  printf 'Getting %s ready' "$name"
-  while kill -0 "$bootstrap_pid" 2>/dev/null; do printf '.'; sleep 2; done
-  printf '\n'
+  say "Getting $name ready. This can take a few minutes."
 fi
 if ! wait "$bootstrap_pid" || [ ! -x "$home/.venv/bin/python" ]; then
   say "Something went wrong getting ready. Check your internet connection, then open a new Terminal window and type: butler setup"
@@ -261,7 +269,7 @@ lesson() {
   local want="$1" example="$2" optional="${3:-}" line parts
   lesson_line "$example"
   while :; do
-    printf '› '
+    printf 'Paste here › '
     read -r line || return 1
     line="$(printf '%s' "$line" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
     if [ -n "$optional" ] && { [ -z "$line" ] || [ "$line" = "later" ]; }; then
@@ -271,7 +279,7 @@ lesson() {
     parts=()
     while IFS= read -r part; do parts+=("$part"); done < <(printf '%s\n' "$line" | xargs -n 1 printf '%s\n' 2>/dev/null)
     if [ "${#parts[@]}" -lt 1 ] || [ "${parts[0]}" != "butler" ] || [ "${parts[1]:-}" != "$want" ]; then
-      say "Paste the line above, starting with: butler $want"
+      say "Paste the lesson's line, starting with: butler $want"
       continue
     fi
     if "$butler" "${parts[@]:1}"; then
@@ -281,15 +289,15 @@ lesson() {
   done
 }
 
-heading "Step 2 of 4 · Where you live"
-say "Every lesson is one line you copy and paste. Here's your first. Paste it below, change the town to yours, and press Enter."
+heading "Step 2 of 4${dot}Where you live"
+say "Every lesson is one line you copy and paste. Here's your first. Paste it at the › prompt, change the town to yours, and press Enter."
 lesson town 'butler town "Lisbon"' || exit 1
 
-heading "Step 3 of 4 · Who I work for"
+heading "Step 3 of 4${dot}Who I work for"
 say "Now the adults my emails are for. First names only."
 lesson adults 'butler adults Sam Alex' || exit 1
 
-heading "Step 4 of 4 · Your first brief"
+heading "Step 4 of 4${dot}Your first brief"
 say "Now the fun part. Paste this, and I'll write you a brief right now."
 lesson brief 'butler brief' || exit 1
 

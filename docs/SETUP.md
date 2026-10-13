@@ -4,6 +4,11 @@ This is what `/butler-setup` does for you in Claude Code, step by step, and what
 [buildyourbutler.com](https://buildyourbutler.com) teaches. Allow about an hour. Each step can be
 checked before moving on.
 
+**With a screen reader.** The guided first run (`butler setup`) and the `butler` command switch
+to plain output when VoiceOver is running or `CLAUDE_AX_SCREEN_READER` is set: words only, with
+no colour, tick marks, middle dots or screen clearing. `BUTLER_PLAIN=1` asks for it anyway, and
+`BUTLER_PLAIN=0` turns it off. Every prompt says what to type before its `›` marker.
+
 ## 1. Install
 
 The installer downloads the newest release to `~/Butler` and sets up Python:

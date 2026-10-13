@@ -115,6 +115,25 @@ class CliTest(unittest.TestCase):
         self.home.butler("town", "Lisbon")
         self.assertIn('Next: butler name "Bento"', self.home.butler("status").stdout)
 
+    def test_status_and_progress_say_done_and_to_do_in_words(self):
+        """VoiceOver skips a lone "·", so the words carry it; a screen reader gets only words."""
+        self.home.butler("town", "Lisbon")
+        out = self.home.butler("status").stdout
+        self.assertIn("  ✓ Done:  Your town and weather", out)
+        self.assertIn("  · To do: Signed in to the course", out)
+        for env in ({"BUTLER_PLAIN": "1"}, {"CLAUDE_AX_SCREEN_READER": "1"}, {"BUTLER_FAKE_VOICEOVER": "1"}):
+            self.home.env.update(env)
+            status, progress = self.home.butler("status").stdout, self.home.butler("progress").stdout
+            for k in env:
+                del self.home.env[k]
+            self.assertIn("  Done:  Your town and weather", status, env)
+            self.assertIn("  To do: Signed in to the course", status, env)
+            self.assertIn("  Module 3, /butler-setup calendar: not done yet", progress, env)
+            for mark in ("✓", "·", "…"):
+                self.assertNotIn(mark, status + progress, env)
+        self.home.env.update({"BUTLER_PLAIN": "0", "CLAUDE_AX_SCREEN_READER": "1"})
+        self.assertIn("✓ Done:", self.home.butler("status").stdout, "BUTLER_PLAIN=0 turns it off")
+
     def test_claude_dry_run_installs_then_opens_the_next_lesson(self):
         proc = self.home.butler("claude", "--yes")
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
