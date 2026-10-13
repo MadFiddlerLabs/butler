@@ -15,6 +15,8 @@ invented data in your report, never a real household's.
 - The reply trust check (`src/butler/inbox.py`) and the reply allowlist (`src/butler/replies.py`).
 - The portal gate (`src/butler/portal.py`): who gets in, and which host names it answers to.
 - Anything that sends personal data somewhere the README says it doesn't go.
+- A secret outside Keychain: in a file, a log, or a command line, which other accounts on the Mac
+  can read in the process list.
 - Prompt injection that turns news, calendar text or email into actions.
 
 ## Supported versions

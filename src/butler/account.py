@@ -9,11 +9,10 @@ the household.
 
 import json
 import os
-import subprocess
 import urllib.error
 import urllib.request
 
-from .config import ROOT, keychain
+from .config import ROOT, keychain, store_secret
 
 API = os.environ.get("BUTLER_API", "https://buildyourbutler.com/api").rstrip("/")
 KEYCHAIN_ACCOUNT = "butler-account"
@@ -90,8 +89,7 @@ def session() -> str | None:
 
 
 def save_session(token: str) -> None:
-    subprocess.run(["security", "add-generic-password", "-U", "-s", KEYCHAIN_ACCOUNT, "-a", "butler",
-                    "-w", token], check=True, capture_output=True)
+    store_secret(KEYCHAIN_ACCOUNT, token)
 
 
 def me() -> dict | None:

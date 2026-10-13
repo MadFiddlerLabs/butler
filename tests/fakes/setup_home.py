@@ -1,7 +1,8 @@
 """A fresh, just-downloaded Butler install for testing the `butler` command and the first-run
 setup: the repo's tracked files in a temp folder, a .venv whose python is this test's Python, a
-temp HOME, and stubs for `security` (a JSON file), `open` and `launchctl`. Nothing touches the
-real Keychain, browser or home folder.
+temp HOME, stubs for `security` (a JSON file), `open` and `launchctl`, and a `curl` that logs its
+command line before running the real one. Nothing touches the real Keychain, browser or home
+folder.
 
     home = SetupHome(api)           # api: a started FakeAccountAPI, or None for offline
     proc = home.butler("town", "Lisbon")
@@ -22,24 +23,44 @@ from . import timeout
 
 REPO = Path(__file__).resolve().parents[2]
 
-SECURITY = """import json, os, sys
+SECURITY = """import json, os, shlex, sys
 path = os.environ["BUTLER_FAKE_KEYCHAIN"]
 store = json.load(open(path)) if os.path.exists(path) else {}
+with open(os.environ["BUTLER_FAKE_ARGV"], "a") as log:
+    log.write(json.dumps(["security", *sys.argv[1:]]) + "\\n")
+def run(args):
+    def opt(flag):
+        return args[args.index(flag) + 1] if flag in args and args.index(flag) + 1 < len(args) else None
+    if args[:1] == ["add-generic-password"]:
+        value = bytes.fromhex(opt("-X")).decode() if "-X" in args else opt("-w")
+        if value is None:
+            return 1          # the prompting form (-w last, no value): never scripted
+        store[opt("-s")] = value
+        json.dump(store, open(path, "w"))
+        return 0
+    if args[:1] == ["find-generic-password"]:
+        service = opt("-s")
+        if service in store:
+            if "-w" in args:
+                print(store[service])
+            return 0
+        return 44
+    return 0
 args = sys.argv[1:]
-def opt(flag):
-    return args[args.index(flag) + 1] if flag in args else None
-if args[:1] == ["add-generic-password"]:
-    store[opt("-s")] = opt("-w")
-    json.dump(store, open(path, "w"))
-    sys.exit(0)
-if args[:1] == ["find-generic-password"]:
-    service = opt("-s")
-    if service in store:
-        if "-w" in args:
-            print(store[service])
-        sys.exit(0)
-    sys.exit(44)
-sys.exit(0)
+if args == ["-i"]:            # commands on stdin, as the real security -i reads them
+    code = 0
+    for line in sys.stdin:
+        if line.strip():
+            code = run(shlex.split(line))
+    sys.exit(code)
+sys.exit(run(args))
+"""
+
+# Every curl the scripts run, logged, then the real one.
+CURL = """import json, os, sys
+with open(os.environ["BUTLER_FAKE_ARGV"], "a") as log:
+    log.write(json.dumps(["curl", *sys.argv[1:]]) + "\\n")
+os.execv("/usr/bin/curl", ["curl", *sys.argv[1:]])
 """
 
 
@@ -78,12 +99,14 @@ class SetupHome:
         fakebin = self.tmp / "fakebin"
         fakebin.mkdir()
         _script(fakebin / "security", SECURITY)
+        _script(fakebin / "curl", CURL)
         _script(fakebin / "open", "import sys\nopen(__import__('os').environ['BUTLER_FAKE_OPENED'], 'a')"
                                   ".write(' '.join(sys.argv[1:]) + '\\n')\n")
         _script(fakebin / "launchctl", "print('PID\\tStatus\\tLabel')\n")
         # No login records, so `butler doctor` never reports this machine's own restarts.
         _script(fakebin / "last", "")
         self.keychain = self.tmp / "keychain.json"
+        self.argv_log = self.tmp / "argv.jsonl"
         self.opened = self.tmp / "opened.txt"
         self.env = {
             **os.environ,
@@ -91,6 +114,7 @@ class SetupHome:
             # Only the system's tools, so whatever this machine has installed (Claude Code, uv) stays out.
             "PATH": os.pathsep.join([str(fakebin), "/usr/bin", "/bin", "/usr/sbin", "/sbin"]),
             "BUTLER_FAKE_KEYCHAIN": str(self.keychain),
+            "BUTLER_FAKE_ARGV": str(self.argv_log),
             "BUTLER_FAKE_OPENED": str(self.opened),
             # A wrapper, not a symlink: it must keep this test run's packages (yaml, flask, ...).
             "BUTLER_BOOTSTRAP": (f"mkdir -p .venv/bin && printf '#!/bin/sh\\nexec {sys.executable} \"$@\"\\n'"
@@ -122,6 +146,12 @@ class SetupHome:
 
     def secrets(self) -> dict:
         return json.loads(self.keychain.read_text()) if self.keychain.exists() else {}
+
+    def command_lines(self) -> list[list[str]]:
+        """The argv of every `security` and `curl` the install ran: what the process list showed."""
+        if not self.argv_log.exists():
+            return []
+        return [json.loads(line) for line in self.argv_log.read_text().splitlines()]
 
     def settings(self) -> dict:
         import yaml

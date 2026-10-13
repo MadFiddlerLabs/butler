@@ -67,6 +67,15 @@ class FirstRunTest(unittest.TestCase):
         for f in h.root.rglob("*"):
             if f.is_file() and f.suffix in {".yaml", ".txt", ".log", ".md", ".json", ""}:
                 self.assertNotIn(token, f.read_text(errors="replace"), str(f))
+        # Nor on a command line, where other accounts on the Mac see it in the process list: not the
+        # session token, not the poll secret (scripts/lib/keychain.sh, post() in first-run.sh).
+        lines = [" ".join(argv) for argv in h.command_lines()]
+        self.assertTrue(any(line.startswith("curl ") for line in lines))
+        self.assertIn("security -i", lines)
+        self.assertEqual(len(self.api.issued), 2)
+        for secret in self.api.issued:
+            for line in lines:
+                self.assertNotIn(secret, line)
         s = h.settings()
         self.assertEqual((s["name"], s["timezone"]), ("Bento", "Europe/Lisbon"))
         request = self.api.requests[next(iter(self.api.requests))]

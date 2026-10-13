@@ -9,6 +9,7 @@ import hashlib
 import json
 import re
 import shutil
+import subprocess
 import tempfile
 import unittest
 from datetime import date, datetime
@@ -569,6 +570,96 @@ class OneListenerTest(unittest.TestCase):
         self.assertTrue(sites)
         for address, body in sites:
             self.assertIn("import portal", body, address)
+
+
+class SecretsOffTheCommandLineTest(unittest.TestCase):
+    """A command line shows in the process list to every account on the Mac. Secrets go to
+    `security` on stdin and to curl on stdin or through a pipe, never as arguments."""
+
+    # Checked on whole commands: lines ending in a backslash are joined first.
+    SHELL = [r"add-generic-password\b(?!.*\|\s*security\s+-i\b).*\s-[wpX]\s+\S",  # a value, unless piped to security -i
+             r"-H\s+[\"']?Authorization",                          # a header typed on the line
+             r"Bearer\s+\$(?!.*printf)",
+             r"\bcurl\b.*\s(-d|--data|--data-binary|--data-raw)\s+[\"']?[^@\s]*\$",   # a body built from variables
+             r"\bcurl\b.*\s-u\s+[\"']?\S*\$"]                       # user:password
+    PYTHON = [r"[\[,]\s*[\"']add-generic-password[\"']",           # security add-generic-password in an argv list
+              r"[\"']-[wp][\"']\s*,\s*[A-Za-z_]",                 # "-w", token
+              r"[\"']curl[\"']"]
+
+    def files(self, *globs: str) -> list[Path]:
+        out = []
+        for pattern in globs:
+            out += [p for p in sorted(REPO.glob(pattern)) if p.is_file()]
+        return out
+
+    def scan(self, paths: list[Path], patterns: list[str]) -> list[str]:
+        found = []
+        for path in paths:
+            text = re.sub(r"\\\n\s*", " ", path.read_text(errors="replace"))
+            for n, line in enumerate(text.splitlines(), 1):
+                if line.lstrip().startswith("#"):
+                    continue
+                if any(re.search(p, line) for p in patterns):
+                    found.append(f"{path.relative_to(REPO)}:{n}: {line.strip()}")
+        return found
+
+    def test_no_script_puts_a_secret_in_argv(self):
+        shell = self.files("scripts/**/*.sh", "scripts/*.command", "bin/butler", "run.sh", "launchd/*.sh",
+                           "packaging/macos/scripts/*", "helpers/**/*.sh")
+        self.assertGreater(len(shell), 8)
+        self.assertEqual(self.scan(shell, self.SHELL), [])
+
+    def test_no_python_puts_a_secret_in_argv(self):
+        python = self.files("src/butler/*.py", "scripts/*.py", "bin/*.py")
+        self.assertGreater(len(python), 20)
+        self.assertEqual(self.scan(python, self.PYTHON), [])
+
+    def test_docs_and_skills_give_only_the_prompting_form(self):
+        docs = self.files("*.md", "docs/*.md", ".claude/skills/**/*.md")
+        found = [line for path in docs for line in path.read_text().splitlines()
+                 if re.search(r"add-generic-password\b[^`]*\s-[wpX]\s+[^`\s]", line)]
+        self.assertEqual(found, [])
+
+    def test_the_patterns_catch_the_old_forms(self):
+        old_shell = ['security add-generic-password -U -s "$service" -a butler -w "$secret"',
+                     '  [ -n "${3:-}" ] && auth=(-H "Authorization: Bearer $3")',
+                     '  curl -sS -H \'Content-Type: application/json\' -d "$2" -w \'\\n%{http_code}\' "$api$1"']
+        for line in old_shell:
+            self.assertTrue(any(re.search(p, line) for p in self.SHELL), line)
+        old_python = 'subprocess.run(["security", "add-generic-password", "-U", "-s", S, "-a", "butler", "-w", token])'
+        self.assertTrue(any(re.search(p, old_python) for p in self.PYTHON))
+
+    def test_store_secret_sends_the_secret_on_stdin(self):
+        from butler import config
+        secret = 'inv"ent\\ed $x  0000000000000000000000000000000 é'    # invented
+        with mock.patch.object(config.subprocess, "run") as run:
+            config.store_secret("butler-account", secret)
+        argv, stdin = run.call_args.args[0], run.call_args.kwargs["input"]
+        self.assertEqual(argv, ["security", "-i"])
+        command = stdin.split()
+        self.assertEqual(command[:7], ["add-generic-password", "-U", "-s", "butler-account", "-a", "butler", "-X"])
+        self.assertEqual(bytes.fromhex(command[7]).decode(), secret)
+        with self.assertRaises(ValueError):
+            config.store_secret("other; rm -rf ~", secret)
+
+    def test_the_shell_helper_round_trips_any_secret_through_stdin(self):
+        from fakes.setup_home import SECURITY, _script
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        (tmp / "bin").mkdir()
+        _script(tmp / "bin" / "security", SECURITY)
+        env = {"PATH": f"{tmp / 'bin'}:/usr/bin:/bin", "BUTLER_FAKE_KEYCHAIN": str(tmp / "keychain.json"),
+               "BUTLER_FAKE_ARGV": str(tmp / "argv.jsonl")}
+        secret = "a\"b'c\\d $HOME `x` " + "0" * 40 + " é"     # invented; repeats exercise od -v
+        script = f'. "{REPO}/scripts/lib/keychain.sh"; printf %s "$1" | keychain_store butler-lunchmoney'
+        proc = subprocess.run(["bash", "-c", script, "bash", secret], env=env, capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(json.loads((tmp / "keychain.json").read_text()), {"butler-lunchmoney": secret})
+        logged = (tmp / "argv.jsonl").read_text()
+        self.assertEqual(logged.strip(), json.dumps(["security", "-i"]))
+        refused = subprocess.run(["bash", "-c", f'. "{REPO}/scripts/lib/keychain.sh"; echo x | keychain_store evil'],
+                                 env=env, capture_output=True, text=True)
+        self.assertEqual(refused.returncode, 2)
 
 
 class IdNumberTest(unittest.TestCase):

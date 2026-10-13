@@ -37,7 +37,9 @@ one sentence, and offer the next step.
    goes straight into Keychain. If the dialog is cancelled or doesn't open, still never ask for
    the secret in the chat: offer to open the dialog again, or give them
    `security add-generic-password -U -s <service> -a butler -w` to run themselves with the `!`
-   prefix (it asks for the value without showing it). If they paste a secret into the chat
+   prefix. With `-w` last and no value after it, it asks for the value twice without showing
+   it. Never put the value on that line: a command line shows in the Mac's process list, where
+   other accounts can read it. If they paste a secret into the chat
    anyway, don't repeat it. Tell them to store it with the dialog and to make a new one,
    because chats are kept.
 2. **No ID numbers** (passport, residence, tax, health) in settings, notes or prompts. They
