@@ -146,8 +146,15 @@ butler brief
 ```
 
 Then `butler claude` moves into [Claude Code](https://claude.com/claude-code), where the rest of
-the setup happens one step at a time. `butler status` says where you are, and `butler help`
-lists the rest. When a step's check passes, Butler ticks that module off on your course account
+the setup happens one step at a time. The first time, it asks how Claude Code should work with
+you: ask first (the default: Claude checks with you before each change) or auto (Claude acts more
+on its own). `butler claude-mode ask` or `auto` changes it later.
+
+To come back any time, open the **Butler** app (in `~/Applications`) or type `butler` in
+Terminal: it says where you are in the course and the one thing to do next, then lists the
+commands. Installing again over an existing Butler offers to pick up where you left off or to
+start fresh; starting fresh moves your settings to `backups/` and deletes nothing. `butler status`
+says what's set up, and `butler help` lists the commands. When a step's check passes, Butler ticks that module off on your course account
 by itself (lesson names and dates, nothing from the household); `butler progress` shows what it
 sent.
 

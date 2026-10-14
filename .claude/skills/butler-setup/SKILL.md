@@ -18,6 +18,18 @@ one sentence, and offer the next step by its module, title and command.
 - Read `CLAUDE.md` first. Its hard rules apply throughout, and so does "Talking to someone
   learning with the course".
 - Use plain words. Explain any technical term the first time, in one short sentence.
+- **Start each step from its course page.** Before anything else in a step, read the step's
+  `url` in `src/butler/course_progress.json` (never type a course address from memory). Show it
+  and ask: "Open it in your browser now? (yes / no)". Yes is the default: on yes, or a plain
+  Enter, run `open <url>`, then say "Read or watch as much as you like. Tell me when you're
+  back." and wait for them. On no, carry on. Ask once per step.
+- **Ask first, or auto.** `claude_mode` in `config/settings.yaml` is how they chose Claude Code
+  should work: `ask` (the default: you check in before each change) or `auto` (you act more on
+  your own, and a safety check reviews each step). If it isn't set, ask once, in plain words,
+  as "Module 1 · How I work with you", and run `bin/butler claude-mode ask` or
+  `bin/butler claude-mode auto`. It takes effect the next time they type `butler claude`; in
+  this session, Shift+Tab changes the mode, and the line under the typing box shows it
+  ("manual mode on" is ask first). Never switch it for them.
 - **They decide what Butler gets.** At the start of each step, say in one line what it adds and
   offer to skip it: every module is optional, and they can come back to it later. Never press
   for personal details. If they'd rather not share something, accept it, leave that setting
@@ -322,11 +334,17 @@ The win: the portal on their phone, for their household only.
    personal login (a personal Google, Apple or Microsoft account), not a work one: a work
    login joins the employer's network instead. Tell iPhone users that an iPhone runs one VPN
    at a time, so turning on Tailscale turns off any other VPN (a work VPN, a privacy app).
+   The Tailscale app from the App Store or tailscale.com doesn't put a `tailscale` command on
+   the PATH, so always run it by its full path, as `src/butler/portal.py` does:
+   `/Applications/Tailscale.app/Contents/MacOS/Tailscale`. If that file is missing, Tailscale
+   isn't installed in Applications yet.
 3. **Rename the Mac first.** The portal's address and its HTTPS certificate use the machine's
    name, and certificate names are public. In the Tailscale admin console, Machines > the Mac
-   > Edit machine name, or run `tailscale set --hostname=butler`. Then, in the admin
-   console's DNS page, they turn on MagicDNS and HTTPS certificates.
-4. Run `tailscale serve --bg 8787`. Put the address it prints in `portal.url`.
+   > Edit machine name, or run
+   `/Applications/Tailscale.app/Contents/MacOS/Tailscale set --hostname=butler`. Then, in the
+   admin console's DNS page, they turn on MagicDNS and HTTPS certificates.
+4. Run `/Applications/Tailscale.app/Contents/MacOS/Tailscale serve --bg 8787`. Put the
+   address it prints in `portal.url`.
 5. Put each adult's Tailscale login in `portal.allowed_logins`, and map it to a name in
    `portal.people`.
 6. Explain in one sentence: the portal opens only in browsers they've paired, so other

@@ -1,12 +1,22 @@
 #!/bin/bash
-# Runs right after the package puts Butler in ~/Butler. It names the butler from the package's
-# filename (the website serves it as "<Name>.pkg"), then opens the guided first run in Terminal.
-# On an upgrade (the household is set up already) it changes nothing and opens nothing.
+# Runs right after the package puts Butler in ~/Butler and the Butler app in ~/Applications.
+#
+#   A fresh install: names the butler from the package's filename (the website serves it as
+#   "<Name>.pkg") and opens the guided first run in Terminal.
+#   Over an existing Butler (its first run started or finished): changes nothing of the
+#   household's and opens Terminal with a choice: resume where you left off, or start fresh.
+#   A command-line install (the overnight updater, `installer` in CI) opens nothing.
+#
+# Terminal opens in the logged-in user's session (launchctl asuser), since Installer may run this
+# script as root or outside that session. Every outcome goes to logs/install.log, so a window that
+# didn't open can be explained. It never fails the install.
 #   $1: the package's path   $2: where it installed
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source-path=SCRIPTDIR source=../../../scripts/lib/names.sh
 . "$here/names.sh"
+# shellcheck source-path=SCRIPTDIR source=../../../scripts/lib/install.sh
+. "$here/install.sh"
 pkg="${1:-}"
 target="${2:-}"
 user="$(id -un)"
@@ -22,22 +32,52 @@ fi
 [ -d "$dir" ] || exit 0
 if [ "$(id -u)" = 0 ]; then
   chown -R "$user" "$dir"
+  [ -d "$home/Applications/Butler.app" ] && chown -R "$user" "$home/Applications/Butler.app"
 fi
 
-upgrade=""
-[ -f "$dir/config/settings.yaml" ] && upgrade=1
+mkdir -p "$dir/logs"
+note() {
+  printf '%s %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(cat "$dir/.butler-version" 2>/dev/null || echo dev)" "$*" \
+    >> "$dir/logs/install.log"
+}
+
+state="$(install_state "$dir")"
 name="$(name_from_pkg "$pkg")"
-if [ -n "$name" ] && [ -z "$upgrade" ]; then
+if [ -n "$name" ] && [ "$state" = fresh ]; then
   printf '%s\n' "$name" > "$dir/.butler-name"
-  [ "$(id -u)" = 0 ] && chown "$user" "$dir/.butler-name"
 fi
+[ "$(id -u)" = 0 ] && chown "$user" "$dir/logs" "$dir/.butler-name" 2>/dev/null
+# `butler` in any new Terminal window, so "open Terminal and type butler" works even if no window
+# opens. The first run adds the same line, once.
+add_to_path "$dir" "$home/.zprofile" && note "added Butler to the PATH in ~/.zprofile"
+[ "$(id -u)" = 0 ] && chown "$user" "$home/.zprofile"
 
-if [ -n "$upgrade" ] || [ -n "${COMMAND_LINE_INSTALL:-}" ] || [ -n "${BUTLER_PKG_NO_OPEN:-}" ]; then
+if [ -n "${COMMAND_LINE_INSTALL:-}" ] || [ -n "${BUTLER_PKG_NO_OPEN:-}" ]; then
+  note "installed ($state), from the command line: Terminal not opened"
+  [ "$(id -u)" = 0 ] && chown "$user" "$dir/logs/install.log"
   exit 0
 fi
+
+file="$dir/scripts/$(install_opens "$state")"
+uid="$(id -u "$user")"
 if [ "$(id -u)" = 0 ]; then
-  launchctl asuser "$(id -u "$user")" sudo -u "$user" open -a Terminal "$dir/scripts/first-run.command"
+  how="launchctl asuser $uid sudo -u $user open"
+  launchctl asuser "$uid" sudo -u "$user" open -a Terminal "$file"
+  code=$?
 else
-  open -a Terminal "$dir/scripts/first-run.command"
+  how="launchctl asuser $uid open"
+  launchctl asuser "$uid" open -a Terminal "$file"
+  code=$?
+  if [ "$code" != 0 ]; then
+    how="open"
+    open -a Terminal "$file"
+    code=$?
+  fi
 fi
+if [ "$code" = 0 ]; then
+  note "installed ($state): opened Terminal with $(basename "$file") ($how)"
+else
+  note "installed ($state): could not open Terminal with $(basename "$file") ($how, exit $code)"
+fi
+[ "$(id -u)" = 0 ] && chown "$user" "$dir/logs/install.log"
 exit 0

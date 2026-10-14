@@ -58,6 +58,43 @@ class MappingTest(unittest.TestCase):
             self.assertIn(f"(`/butler-setup {after}`)", body[step], step)
         self.assertIn("\nNext: Module 12, Graduation", body[COURSE_STEPS[-1]])
 
+    def test_every_step_has_its_module_page_in_the_sites_shape(self):
+        """/butler-setup offers each module's page before the step. The address comes from this
+        file (the contract check compares its slugs with the course), never from Claude's memory."""
+        data = json.loads(progress.MAP_FILE.read_text())
+        self.assertEqual(data["site"], "https://buildyourbutler.com")
+        modules = progress.course_modules()
+        self.assertEqual(sorted(modules), list(range(13)))
+        for n, m in modules.items():
+            self.assertRegex(m["slug"], r"^[a-z0-9]+(-[a-z0-9]+)*$", n)
+            self.assertTrue(m["title"] and m["title"] == m["title"].strip(), n)
+        for step, entry in MAP.items():
+            self.assertRegex(entry["url"], r"^https://buildyourbutler\.com/course/[a-z0-9-]+/$", step)
+            self.assertEqual(entry["url"], progress.module_url(entry["module"]), step)
+        self.assertEqual(MAP["calendar"]["url"], "https://buildyourbutler.com/course/show-your-butler-your-calendar/")
+
+    def test_the_skill_titles_match_the_module_titles(self):
+        skill = (REPO / ".claude" / "skills" / "butler-setup" / "SKILL.md").read_text()
+        modules = progress.course_modules()
+        for step, entry in MAP.items():
+            self.assertRegex(skill, rf"(?m)^## {step} \((course )?Module {entry['module']}: "
+                                    rf"{re.escape(modules[entry['module']]['title'])}\)$", step)
+
+    def test_the_skill_offers_the_course_page_first_and_waits(self):
+        skill = (REPO / ".claude" / "skills" / "butler-setup" / "SKILL.md").read_text()
+        rule = skill.split("**Start each step from its course page.**")[1].split("\n- ")[0]
+        for words in ("`url` in `src/butler/course_progress.json`", "Open it in your browser now? (yes / no)",
+                      "Yes is the default", "run `open <url>`", "wait for them", "On no, carry on"):
+            self.assertIn(words, " ".join(rule.split()), words)
+
+    def test_the_skill_runs_tailscale_by_its_full_path(self):
+        """The Mac app puts no `tailscale` on the PATH (council #213)."""
+        skill = (REPO / ".claude" / "skills" / "butler-setup" / "SKILL.md").read_text()
+        self.assertNotRegex(skill, r"`tailscale ")
+        self.assertIn("`/Applications/Tailscale.app/Contents/MacOS/Tailscale serve --bg 8787`", " ".join(skill.split()))
+        from butler import portal
+        self.assertEqual(portal.TAILSCALE, "/Applications/Tailscale.app/Contents/MacOS/Tailscale")
+
     def test_the_skill_lets_them_skip_and_labels_questions(self):
         skill = (REPO / ".claude" / "skills" / "butler-setup" / "SKILL.md").read_text()
         self.assertIn("offer to skip it", skill)
@@ -379,10 +416,26 @@ class TickTest(unittest.TestCase):
              mock.patch.object(tick.daily, "main") as daily, \
              mock.patch.object(tick.progress, "sync") as sync, \
              mock.patch.object(tick.logging, "basicConfig"), \
-             mock.patch.object(tick, "ROOT", Path(tempfile.mkdtemp())):
+             mock.patch.object(tick, "ROOT", Path(tempfile.mkdtemp())) as root:
+            (root / "config").mkdir()
+            (root / "config" / "settings.yaml").write_text("name: Bento\n")
             tick.main()
         sync.assert_called_once_with()
         daily.assert_called_once()
+
+    def test_without_the_households_settings_the_tick_does_nothing(self):
+        """After "Start fresh" moved the settings to a backup, the schedule may still run. It must
+        never fall back to the invented example household and send its emails."""
+        from butler import tick
+        with mock.patch.object(tick.replies, "process") as replies, mock.patch.object(tick.updates, "tick"), \
+             mock.patch.object(tick.mailer, "flush") as flush, \
+             mock.patch.object(tick.daily, "main") as daily, mock.patch.object(tick.progress, "sync"), \
+             mock.patch.object(tick.logging, "basicConfig"), \
+             mock.patch.object(tick, "ROOT", Path(tempfile.mkdtemp())):
+            tick.main()
+        replies.assert_not_called()
+        flush.assert_not_called()
+        daily.assert_not_called()
 
 
 class JohnsonsIntegrationTest(unittest.TestCase):

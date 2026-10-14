@@ -29,11 +29,20 @@ CLAUDE_INSTALL = "curl -fsSL https://claude.ai/install.sh | bash"
 FIRST_CLAUDE_PROMPT = (
     "Hi! I've just set up my butler and I'm starting Module 1 of the Build Your Butler course, "
     "Meet Claude Code. Please welcome me in plain words: say what you are, what you can do in this "
-    "Butler folder, and that you'll always ask before changing anything. Don't change any files yet. "
+    "Butler folder, and {manners}. Don't change any files yet. "
     "Then suggest one simple first question I could ask you."
 )
+# What the welcome promises depends on the student's choice (`claude_mode`), so it stays true.
+MANNERS = {
+    "ask": "that you'll always ask before changing anything",
+    "auto": ("that I chose auto mode, so you'll act more on your own while a safety check reviews each "
+             "step, and that I can switch back any time by typing butler claude-mode ask in Terminal"),
+}
 NEXT_CLAUDE_PROMPT = "/butler-setup"
 CLAUDE_WELCOMED = ROOT / "data" / "claude-welcomed"
+# Written by scripts/first-run.sh when the first run is over; the installer reads it too.
+FIRST_RUN_DONE = ROOT / "data" / "first-run-done"
+ASK_DOCTOR = "Open Claude Code (type: butler claude) and type /butler-doctor"
 
 
 def _width() -> int:
@@ -87,16 +96,19 @@ def cmd_town(args) -> int:
         say("I couldn't look that up just now. Check your internet connection and try again.")
         return 1
     if not place:
-        say(f"I couldn't find \"{query}\". Try adding the country, like this: butler town \"{query}, Portugal\"")
+        say(f"I couldn't find \"{query}\". Check the spelling, or try a bigger town nearby. "
+            "If two towns share the name, add your state or country after a comma.")
         return 1
     s = ss.load()
     ss.set_town(s, place)
     ss.save(s)
     progress.report("setup.town")
     unit = "Fahrenheit" if s["weather"]["unit"] == "fahrenheit" else "Celsius"
-    where = f"{place.name}, {place.country}" if place.country else place.name
-    say(f"Got it: {where}. Your timezone is {place.timezone}, and weather comes in {unit}.")
-    say(f'Not the right {place.name}? Add the country, like this: butler town "{place.name}, Portugal"')
+    say(f"Got it: {place.label()}. Your timezone is {place.timezone}, and weather comes in {unit}.")
+    if place.others:
+        say(f'Not the right {place.name}? Add the state or country, like this: butler town "{place.others[0]}"')
+    else:
+        say(f"Not the right {place.name}? Add your state or country after a comma, then paste it again.")
     return 0
 
 
@@ -151,6 +163,35 @@ def _claude_path() -> str | None:
     return str(local) if local.exists() else None
 
 
+def _ask(prompt: str) -> str:
+    """One answer from the keyboard, lowercased. No keyboard (a closed input) counts as Enter."""
+    try:
+        return input(prompt).strip().lower()
+    except EOFError:
+        print(flush=True)
+        return ""
+
+
+MODE_WORDS = {
+    "ask": "Ask first: Claude checks with you before each change.",
+    "auto": "Auto: Claude acts more on its own, and a safety check reviews each step instead of you.",
+}
+
+
+def _choose_mode(s: dict) -> str:
+    """Asks once how Claude Code should work, and keeps the answer in the settings."""
+    say("One choice before Claude Code opens. How should it work with you?")
+    say(f"1. {MODE_WORDS['ask']} (Recommended while you learn.)")
+    say(f"2. {MODE_WORDS['auto']}")
+    answer = _ask("Type 1 or 2, or press Enter for Ask first: ")
+    mode = "auto" if answer in {"2", "auto"} else "ask"
+    s["claude_mode"] = mode
+    ss.save(s)
+    say(f"{'Ask first' if mode == 'ask' else 'Auto'} it is. You can change it any time: "
+        f"butler claude-mode {'auto' if mode == 'ask' else 'ask'}")
+    return mode
+
+
 def cmd_claude(args) -> int:
     dry = args.dry_run or bool(os.environ.get("BUTLER_CLAUDE_DRY_RUN"))
     exe = _claude_path()
@@ -158,7 +199,7 @@ def cmd_claude(args) -> int:
         say("Next, I move into Claude Code: an AI helper that does the rest of the setup with you.")
         say("It needs a paid Claude plan (Pro or Max) and a one-time sign-in in your browser.")
         if not args.yes:
-            answer = input("Install Claude Code now? Press Enter for yes, or type no: ").strip().lower()
+            answer = _ask("Install Claude Code now? Press Enter for yes, or type no: ")
             if answer in {"n", "no"}:
                 say("No problem. When you're ready, type: butler claude")
                 return 0
@@ -174,19 +215,44 @@ def cmd_claude(args) -> int:
                 say("Claude Code is installed, but I can't find it yet. Close this window, open Terminal again, "
                     "and type: butler claude")
                 return 1
+    s = ss.load()
+    mode = ss.claude_mode(s) or ("ask" if args.yes else _choose_mode(s))
     progress.report("setup.claude", "started")
     first = not CLAUDE_WELCOMED.exists()
-    prompt = FIRST_CLAUDE_PROMPT if first else NEXT_CLAUDE_PROMPT
+    prompt = FIRST_CLAUDE_PROMPT.format(manners=MANNERS[mode]) if first else NEXT_CLAUDE_PROMPT
     say("Opening Claude Code in your Butler folder. If it asks you to sign in, follow the link it shows.")
     say("It starts with Module 1: Meet Claude Code." if first else "It picks up where you left off in the course.")
+    # The flag wins over any settings file, so the student's choice holds whatever else is set.
+    argv = [exe, "--permission-mode", ss.PERMISSION_MODES[mode], prompt]
     if dry:
-        say(f"(dry run) would run: {exe} \"{prompt}\" in {ROOT}")
+        say(f"(dry run) would run: {' '.join(argv[:-1])} \"{prompt}\" in {ROOT}")
         return 0
     CLAUDE_WELCOMED.parent.mkdir(exist_ok=True)
     CLAUDE_WELCOMED.touch()
     os.chdir(ROOT)
-    os.execv(exe, [exe, prompt])
+    os.execv(exe, argv)
     return 0  # not reached
+
+
+def cmd_claude_mode(args) -> int:
+    """`butler claude-mode ask|auto`: how Claude Code works with you, from the next `butler claude`."""
+    s = ss.load()
+    wanted = (args.mode or "").strip().lower()
+    if not wanted:
+        mode = ss.claude_mode(s) or "ask"
+        say(f"Claude Code is set to {MODE_WORDS[mode]}")
+        say(f"To change it, type: butler claude-mode {'auto' if mode == 'ask' else 'ask'}")
+        return 0
+    if wanted not in ss.CLAUDE_MODES:
+        say("Choose ask or auto, like this: butler claude-mode ask")
+        return 1
+    s["claude_mode"] = wanted
+    ss.save(s)
+    say(f"Done. {MODE_WORDS[wanted]}")
+    say("It starts the next time you type: butler claude")
+    say("Inside Claude Code, the line under the typing box shows the mode: \"manual mode on\" means "
+        "it asks first, \"auto mode on\" means auto.")
+    return 0
 
 
 # ---------- looking around ----------
@@ -232,6 +298,51 @@ def cmd_status(args) -> int:
     return 0
 
 
+def first_run_done() -> bool:
+    """The guided first run is over: its marker, or, for a Butler from before the marker, its
+    three lessons done."""
+    return FIRST_RUN_DONE.exists() or ss.done_steps() == ["town", "adults", "brief"]
+
+
+def where() -> list[str]:
+    """Where the student is in the course and the one thing to do next, in plain words, from the
+    same checks that mark the course (progress.py)."""
+    who = _butler(ss.load())
+    who = who[0].upper() + who[1:]
+    modules = progress.course_modules()
+
+    def module(n: int) -> str:
+        return f"Module {n}, {modules[n]['title']}"
+    if not first_run_done():
+        return [f"{who}'s first run isn't finished yet.", "To pick up where you left off, type: butler setup"]
+    if not CLAUDE_WELCOMED.exists():
+        return [f"{who} is set up through {module(0)}.", f"Next: {module(1)}. Type: butler claude"]
+    state = progress.load()
+    done = set(state["steps"]) | set(progress.passed(progress.mac_folder(), skip=set(state["steps"])))
+    through = 1
+    for step, entry in progress.course_map().items():
+        if step not in done:
+            n = entry["module"]
+            return [f"{who} is set up through {module(through)}.", f"Next: {module(n)}. Type: butler claude",
+                    f"The lesson page: {progress.module_url(n)}"]
+        through = entry["module"]
+    return [f"{who} is set up through {module(through)}. Well done.",
+            f"Next: {module(12)}, on the course website: {progress.module_url(12)}"]
+
+
+def cmd_home(args) -> int:
+    """`butler` on its own: the way back. Where you are, the one thing to do next, the commands."""
+    for line in where():
+        say(line)
+    if not first_run_done() and sys.stdin.isatty():
+        if _ask("Pick up where you left off now? Press Enter for yes, or type no: ") not in {"n", "no"}:
+            first_run = ROOT / "scripts" / "first-run.sh"
+            os.execv(str(first_run), [str(first_run)])
+    say()
+    print_help()
+    return 0
+
+
 def cmd_progress(args) -> int:
     """What the course knows: each setup step, done or not, and whether it reached the account."""
     state, problem = progress.sync(force=True)
@@ -248,27 +359,27 @@ def cmd_progress(args) -> int:
 def cmd_doctor(args) -> int:
     problems = []
     if sys.version_info < (3, 12):
-        problems.append(("Python is too old for Butler.", "Run: scripts/bootstrap.sh"))
+        problems.append(("Python is too old for Butler.", ASK_DOCTOR))
     try:
         s = ss.load()
         for key in ("timezone", "email", "household", "calendar", "news", "llm", "portal"):
             if key not in s:
-                problems.append((f"Your settings are missing '{key}'.", "Run: butler town, or ask for help"))
+                problems.append((f"Your settings are missing '{key}'.", ASK_DOCTOR))
     except Exception as e:
         problems.append((f"Your settings file can't be read ({str(e).splitlines()[0]}).",
-                         "Restore config/settings.yaml from a backup, or ask for help"))
+                         ASK_DOCTOR))
     log = ROOT / "logs" / "butler.log"
     if log.exists():
         recent = log.read_text(errors="replace").splitlines()[-300:]
         errors = [l for l in recent if " ERROR " in l]
         if errors:
             problems.append((f"The log has {len(errors)} recent error(s).",
-                             "Open Claude Code and type /butler-doctor to have them explained"))
+                             ASK_DOCTOR + " to have them explained"))
         problems += doctor.log_problems(recent)
     problems += doctor.restart_check(getpass.getuser())
     briefs = ROOT / "logs" / "brief-errors.log"
     if briefs.exists():
-        problems.append(("The last `butler brief` failed.", "Its details are in logs/brief-errors.log"))
+        problems.append(("The last `butler brief` failed.", ASK_DOCTOR + " to have it explained"))
     if problems:
         say("I found something to fix:")
         for what, fix in problems:
@@ -303,7 +414,7 @@ def cmd_portal(args) -> int:
     port = load_settings()["portal"]["port"]
     who = _butler(ss.load())
     if not _listening(port):
-        say("The portal isn't running. Start it with ./run.sh portal, or let launchd/install.sh keep it running.")
+        say(f"The portal isn't running. {ASK_DOCTOR}.")
         return 1
     code = devices.new_code()
     page = (f'<!doctype html><meta charset="utf-8"><title>Opening {html.escape(who)}</title>'
@@ -324,24 +435,68 @@ def cmd_portal(args) -> int:
     return 0
 
 
-HELP = """The butler command. Each course lesson gives you one line to paste.
+# Every command, grouped the way students meet them, each with a short plain description.
+COMMANDS = [
+    ("Getting started", [
+        ("butler setup", "the first run, or pick up where you left off"),
+        ('butler name "Bento"', "change your butler's name"),
+        ('butler town "Lisbon"', "where you live, for the weather and the time"),
+        ("butler adults Sam Alex", "who the emails are for"),
+        ("butler brief", "write a brief now and open it"),
+        ("butler claude", "continue the course in Claude Code"),
+        ("butler claude-mode ask", "Claude Code asks before each change (or: auto)"),
+    ]),
+    ("Every day", [
+        ("butler", "where you are in the course, and what's next"),
+        ("butler status", "what's set up, and what's next"),
+        ("butler progress", "what your butler has told the course"),
+        ("butler portal", "open the portal in this Mac's browser"),
+        ("butler update", "install a new version, if there is one"),
+    ]),
+    ("When something's wrong", [
+        ("butler doctor", "check for problems"),
+        ("butler help", "show this list"),
+    ]),
+]
 
-  butler setup                  the guided first run
-  butler name "Bento"           change your butler's name
-  butler town "Lisbon"          where you live, for the weather and the time
-  butler adults Sam Alex        who the emails are for
-  butler brief                  write a brief now and open it
-  butler status                 what's set up, and what's next
-  butler progress               what your butler has told the course
-  butler claude                 continue in Claude Code
-  butler doctor                 check for problems
-  butler portal                 open the portal in this Mac's browser
-  butler update                 install a new version, if there is one
-"""
+
+def help_lines(width: int | None = None) -> list[str]:
+    """The command list. Each command starts its own line, so it can be read and copied whole: its
+    description beside it when the window is wide enough, else on the line below. A description
+    that doesn't fit wraps under itself."""
+    width = width or _width()
+    col = max(len(command) for _, group in COMMANDS for command, _ in group) + 2
+    out = textwrap.wrap("The butler command. Each course lesson gives you one line to paste.", width)
+    for title, group in COMMANDS:
+        out += ["", f"{title}:"]
+        for command, what in group:
+            room = width - 2 - col
+            if room >= 24:
+                lines = textwrap.wrap(what, room, break_on_hyphens=False)
+                out.append(f"  {command.ljust(col)}{lines[0]}")
+                out += [" " * (2 + col) + line for line in lines[1:]]
+            else:
+                out.append(f"  {command}")
+                out += [f"    {line}" for line in textwrap.wrap(what, max(width - 4, 12), break_on_hyphens=False)]
+    return out
+
+
+def print_help() -> None:
+    for line in help_lines():
+        print(line, flush=True)
+
+
+class _Mistyped(Exception):
+    """argparse would print its own error, in its own words; the student gets ours instead."""
+
+
+class _Parser(argparse.ArgumentParser):
+    def error(self, message):
+        raise _Mistyped(message)
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="butler", add_help=False)
+    parser = _Parser(prog="butler", add_help=False)
     sub = parser.add_subparsers(dest="cmd")
     p = sub.add_parser("name")
     p.add_argument("name", nargs="*")
@@ -355,22 +510,32 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("claude")
     p.add_argument("--yes", action="store_true")
     p.add_argument("--dry-run", action="store_true")
+    p = sub.add_parser("claude-mode")
+    p.add_argument("mode", nargs="?")
     sub.add_parser("doctor")
     sub.add_parser("portal")
     p = sub.add_parser("update")
     p.add_argument("--check", action="store_true")
     p.add_argument("--yes", action="store_true")
     sub.add_parser("help")
-    try:
-        args = parser.parse_args(argv)
-    except SystemExit:
-        say(HELP)
-        return 1
     handlers = {"name": cmd_name, "town": cmd_town, "adults": cmd_adults, "brief": cmd_brief,
-                "status": cmd_status, "progress": cmd_progress, "claude": cmd_claude, "doctor": cmd_doctor,
-                "update": cmd_update, "portal": cmd_portal}
-    if args.cmd not in handlers:
-        say(HELP)
+                "status": cmd_status, "progress": cmd_progress, "claude": cmd_claude,
+                "claude-mode": cmd_claude_mode, "doctor": cmd_doctor, "update": cmd_update,
+                "portal": cmd_portal, None: cmd_home}
+    words = sys.argv[1:] if argv is None else argv
+    try:
+        args = parser.parse_args(words)
+    except _Mistyped:
+        first = words[0] if words else ""
+        if first in handlers or first == "help":
+            say(f"That's not quite how butler {first} works. Here's the list, with an example of each:")
+        else:
+            say(f"I don't know \"butler {first}\". Check the spelling. Here's what I can do:")
+        say()
+        print_help()
+        return 1
+    if args.cmd == "help":
+        print_help()
         return 0
     # Progress that couldn't be sent before (offline, or not signed in yet) goes now, and a step
     # finished since the last tick is noticed. Quietly: it never blocks or fails a command.

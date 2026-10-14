@@ -21,6 +21,11 @@ updates: auto
 update_hour: 3
 update_report: true
 
+# How Claude Code works with you in this folder, when you open it with `butler claude`.
+# ask (the default): Claude checks with you before each change. auto: Claude acts more on its own,
+# and a safety check reviews each action instead of you. Change it with: butler claude-mode ask
+claude_mode: ask
+
 currency:
   primary: EUR     # what Lunch Money reports in (its "primary currency")
   second: USD      # optional: budget lines priced in another currency; leave as is if unused
@@ -153,6 +158,7 @@ weather:
   latitude: 38.72
   longitude: -9.14
   unit: celsius         # or fahrenheit
+  country: PT           # set by `butler town`: a new town in another country resets the unit
 
 # Optional. A phrase of the day for someone learning the local language, tied to the calendar.
 language_learning:
@@ -188,6 +194,7 @@ budget:
 
 # Net worth line in the brief: explained when the change is at least this big (primary currency).
 networth:
+  in_emails: true       # false leaves net worth out of the brief, the letter and the look-back (the portal keeps it)
   notable_daily: 2500
   notable_weekly: 5000
   # Known reasons for big moves; they override what transactions suggest. Remove when stale.

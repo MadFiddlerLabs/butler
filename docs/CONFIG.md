@@ -21,6 +21,7 @@ Plus the budget workbook, `budget/budget.xlsx`, and the household notes Claude r
 | `updates` | `auto` (default): install new versions overnight; a major version still asks. `notify`: always ask. `off`: never check. See [UPDATES.md](UPDATES.md) |
 | `update_hour` | The hour the daily update check runs, in your timezone (default 3). A Mac asleep then checks when it next wakes |
 | `update_report` | `true` (default): after each update, tell buildyourbutler.com the version updated from, the version updated to, and whether it worked, so a broken release can be stopped. Nothing else, and linked to no one. `false` turns it off. See [UPDATES.md](UPDATES.md#telling-the-website-how-it-went) |
+| `claude_mode` | How Claude Code works with you when you open it with `butler claude`. `ask` (the default): Claude checks with you before each change (Claude Code's `default` mode, shown as "manual mode on"). `auto`: Claude acts more on its own, and a safety check reviews each action instead of you. Absent until chosen: the first `butler claude` asks once. Change it with `butler claude-mode ask` or `butler claude-mode auto`. The Butler folder's `.claude/settings.json` starts any other Claude Code session there in ask-first mode |
 | `currency.primary` | Lunch Money's primary currency |
 | `currency.second` | Optional second currency for budget lines (converted at Assumptions!C5) |
 | `currency.scale` | Optional. How many units of your currency Butler's money thresholds count as one euro, such as "100 over pace" or "right on pace within 25". Set from `currency.primary` when absent: 150 for JPY, 20 for MXN, 10 for SEK and NOK, 7 for DKK, 1 otherwise. A rough size, not an exchange rate |
@@ -44,13 +45,14 @@ Plus the budget workbook, `budget/budget.xlsx`, and the household notes Claude r
 | `news.language` | The language summaries are written in |
 | `llm.model`, `effort` | The Claude model and effort level. The example uses Sonnet 5.5: the model check (`scripts/model_check.py`, docs/TESTING.md) scored it with Opus at about a third of the cost. Any current model works |
 | `llm.monthly_limit` | Optional: the monthly spend limit set in the Anthropic Console, in US dollars. The portal's Money page shows "Claude this month: about $1.20 of your $5 limit", or only the spend without it. Butler estimates the spend from the token counts each answer reports, priced in Python from the table in `src/butler/claude_usage.py`, and keeps one line per call in `data/claude_usage.jsonl` (the day, the model and the token counts; never a prompt or an answer). An estimate: the Console has the bill. Never in the emails |
-| `weather` | Optional: `place`, `latitude`, `longitude`, `unit` |
+| `weather` | Optional: `place`, `latitude`, `longitude`, `unit` (`celsius` or `fahrenheit`), and `country` (the town's country code). `butler town` writes them. Pasting a town again keeps the rest of the block and the unit, unless the new town is in another country: then the unit becomes that country's usual one |
 | `language_learning` | Optional: a phrase of the day for `learner` in `language` at `level` |
 | `score_tracker` | Optional: practice-test scores for `person` toward `pass_score`/`out_of` |
 | `portal` | Port, public URL, allowed Tailscale logins, login-to-name map |
 | `portal.hosts` | Optional: more names the portal answers to, besides the host in `portal.url` (e.g. the `.ts.net` name next to your own domain). Any other name is refused |
 | `budget.fee_label` | What Assumptions!C6 is (shown on the Budget page) |
 | `networth` | Thresholds for explaining a change, known reasons, short account labels |
+| `networth.in_emails` | `true` (default): the brief, the weekly letter and the monthly look-back show net worth. `false` leaves it out of all three. Butler still takes its daily snapshot, so the portal's Money page keeps the history |
 
 ## category_map.yaml
 

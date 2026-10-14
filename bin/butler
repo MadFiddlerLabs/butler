@@ -11,6 +11,16 @@ if [ "${1:-}" = "setup" ]; then
   exec "$home/scripts/first-run.sh" "$@"
 fi
 if [ ! -x "$home/.venv/bin/python" ]; then
+  # `butler` on its own is the way back: before Python exists, that means the first run.
+  if [ $# -eq 0 ] && [ -t 0 ]; then
+    echo "Your butler's first run isn't finished yet."
+    printf 'Pick up where you left off now? Press Enter for yes, or type no: '
+    read -r answer || answer=no
+    case "$answer" in
+      n|N|no|No|NO) echo "When you're ready, type: butler setup"; exit 0 ;;
+    esac
+    exec "$home/scripts/first-run.sh"
+  fi
   echo "Butler is still getting ready. Type: butler setup"
   exit 1
 fi

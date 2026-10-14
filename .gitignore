@@ -12,6 +12,7 @@
 /reports/
 /out/
 /logs/
+/backups/
 
 # Your budget workbook and its history (the template stays tracked)
 /budget/*

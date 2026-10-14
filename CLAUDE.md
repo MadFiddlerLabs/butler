@@ -53,7 +53,9 @@ someone developing Butler itself. The hard rules apply to both.
 | `src/butler/config.py`, `fmt.py` | Config loading (with example fallback) and currency formatting |
 | `config/*.example.yaml`, `budget/budget.example.xlsx`, `examples/` | The invented example household |
 | `bin/butler`, `src/butler/cli.py`, `doctor.py` | The `butler` command: one pasted line per early lesson; `butler doctor` reads the log and the last restart |
-| `scripts/first-run.sh` | The guided first run the package opens: sign-in, lessons, then Claude Code |
+| `scripts/first-run.sh` | The guided first run the package opens: sign-in, lessons, then Claude Code. Run again, it skips what's done; `--again` (after a reinstall) offers resume or start fresh |
+| `helpers/butler-app/` | The Butler app in `~/Applications`: opens Terminal on `butler`, the way back |
+| `.claude/settings.json` | Claude Code starts in ask-first (`default`) mode here; `butler claude` passes the household's `claude_mode` |
 | `src/butler/setup_settings.py`, `account.py` | Settings written one answer at a time; the course account |
 | `src/butler/progress.py`, `course_progress.json` | Progress that marks itself: each setup step's check, the step-to-lesson map, the offline queue (`data/progress.json`), `butler progress` |
 | `packaging/macos/` | The installer package and the universal Calendar helper (docs/RELEASING.md) |
@@ -103,9 +105,16 @@ This applies when you're talking to a student of the Build Your Butler course: t
 with `butler claude`, run `/butler-setup`, or say they're new to this. Many have never used a
 terminal. It doesn't apply to developers.
 
-- Keep the first welcome short. Say what you are, what you can do in this folder, and that you
-  always ask before you change, send or install anything. Say each thing once: no list that
-  repeats what you just said.
+- Keep the first welcome short. Say what you are, what you can do in this folder, and how you
+  work with them: in ask-first mode (`claude_mode: ask`, the default) you always ask before you
+  change, send or install anything; in auto mode (`claude_mode: auto`, their choice) you act
+  more on your own while a safety check reviews each step. Say only what's true for their
+  choice. Say each thing once: no list that repeats what you just said.
+- Their mode is theirs. `butler claude-mode ask` or `auto` changes it from the next
+  `butler claude`; never change it for them. Whatever the mode, sending email still needs
+  their clear yes.
+- Each `/butler-setup` step starts by offering the module's page on buildyourbutler.com (the
+  step's `url` in `src/butler/course_progress.json`), so the lesson and the setup go together.
 - When they ask about files or folders, start with "You'll rarely need to open these yourself.
   Just ask me." Give the detail after that, and only if they want it.
 - Explain a technical term in plain words the first time it comes up. For example:
@@ -133,8 +142,9 @@ terminal. It doesn't apply to developers.
 - The course links to `/butler-setup` step names, the `butler` subcommands, `scripts/install.sh`
   and `./run.sh preview`. Changing any of them means changing the course too. The account API is
   a contract with the website: `docs/ACCOUNTS.md`.
-- `src/butler/course_progress.json` maps each setup step to its module's lesson ids. The
-  website's engine contract check reads it, so a step's module or lessons can't drift. A step
+- `src/butler/course_progress.json` maps each setup step to its module's lesson ids and page
+  (`url`), and names every module (`modules`: slug and title). The website's engine contract
+  check reads it, so a step's module, lessons or page can't drift. A step
   counts only when its check in `progress.py` passes; keep each check the module's real win.
 - The session token lives in Keychain (`butler-account`), never in a file. The account holds
   the email, the butler's name and lesson progress, nothing from the household.

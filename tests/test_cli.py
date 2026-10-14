@@ -51,6 +51,88 @@ class CliTest(unittest.TestCase):
         proc = self.home.butler("help")
         self.assertEqual(proc.returncode, 0)
         self.assertIn('butler town "Lisbon"', proc.stdout)
+        for group in ("Getting started:", "Every day:", "When something's wrong:"):
+            self.assertIn(group, proc.stdout)
+
+    def test_a_mistyped_command_says_so_in_plain_words_and_lists_the_commands(self):
+        for args, first in ((["fly"], 'I don\'t know "butler fly". Check the spelling.'),
+                            (["update", "--now"], "That's not quite how butler update works.")):
+            proc = self.home.butler(*args)
+            self.assertEqual(proc.returncode, 1, args)
+            self.assertIn(first, proc.stdout)
+            self.assertIn("  butler doctor ", proc.stdout)
+            for jargon in ("usage:", "error:", "invalid choice", "unrecognized arguments"):
+                self.assertNotIn(jargon, proc.stdout + proc.stderr, args)
+
+    def test_butler_alone_before_the_first_run_ends_says_how_to_pick_it_up(self):
+        proc = self.home.butler()
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("Your butler's first run isn't finished yet.", proc.stdout)
+        self.assertIn("To pick up where you left off, type: butler setup", proc.stdout)
+        self.assertIn("  butler setup ", proc.stdout, "then the commands")
+
+    def test_butler_alone_says_where_you_are_and_the_one_thing_next(self):
+        self.home.butler("name", "Bento")
+        self.home.butler("town", "Lisbon")
+        self.home.butler("adults", "Sam", "Alex")
+        (self.home.root / "data" / "first-run-done").write_text("2026-10-12T08:00:00Z\n")
+        out = self.home.butler().stdout
+        self.assertIn("Bento is set up through Module 0, Your first two minutes.", out)
+        self.assertIn("Next: Module 1, Meet Claude Code. Type: butler claude", out)
+        (self.home.root / "data" / "claude-welcomed").touch()
+        out = self.home.butler().stdout
+        self.assertIn("Bento is set up through Module 1, Meet Claude Code.", out)
+        self.assertIn("Next: Module 2, Hire your butler properly. Type: butler claude", out)
+        self.assertIn("The lesson page: https://buildyourbutler.com/course/hire-your-butler/", out)
+        # The calendar step passes; Module 2 hasn't: the next one is still Module 2.
+        (self.home.root / "bin" / "butler-ek").write_text("#!/bin/sh\n")
+        settings = self.home.root / "config" / "settings.yaml"
+        settings.write_text(settings.read_text().replace("include: []", "include:\n  - Johnson Family"))
+        self.assertIn("Next: Module 2, Hire your butler properly.", self.home.butler().stdout)
+
+    def test_claude_mode_round_trips_and_explains_itself(self):
+        proc = self.home.butler("claude-mode")
+        self.assertIn("Claude Code is set to Ask first: Claude checks with you before each change.", proc.stdout)
+        proc = self.home.butler("claude-mode", "auto")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("Done. Auto: Claude acts more on its own", proc.stdout)
+        self.assertIn("It starts the next time you type: butler claude", proc.stdout)
+        self.assertEqual(self.home.settings()["claude_mode"], "auto")
+        self.assertIn("Claude Code is set to Auto", self.home.butler("claude-mode").stdout)
+        self.home.butler("claude-mode", "ASK")
+        self.assertEqual(self.home.settings()["claude_mode"], "ask")
+        bad = self.home.butler("claude-mode", "yolo")
+        self.assertEqual(bad.returncode, 1)
+        self.assertIn("Choose ask or auto, like this: butler claude-mode ask", bad.stdout)
+        self.assertEqual(self.home.settings()["claude_mode"], "ask")
+
+    def test_claude_opens_in_the_chosen_mode(self):
+        for mode, flag in (("ask", "--permission-mode default"), ("auto", "--permission-mode auto")):
+            self.home.butler("claude-mode", mode)
+            proc = self.home.butler("claude", "--yes")
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            self.assertIn(f"would run: claude {flag} \"", proc.stdout)
+        self.assertIn("that I chose auto mode", proc.stdout, "the welcome doesn't promise asking")
+        self.assertNotIn("you'll always ask", proc.stdout)
+
+    def test_claude_asks_the_mode_once(self):
+        proc = self.home.butler("claude", stdin="\n2\n")       # yes, install; 2, auto
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("One choice before Claude Code opens. How should it work with you?", proc.stdout)
+        self.assertIn("1. Ask first: Claude checks with you before each change. (Recommended while you learn.)",
+                      proc.stdout)
+        self.assertIn("Auto it is. You can change it any time: butler claude-mode ask", proc.stdout)
+        self.assertIn("--permission-mode auto", proc.stdout)
+        self.assertEqual(self.home.settings()["claude_mode"], "auto")
+        again = self.home.butler("claude", stdin="\n")
+        self.assertNotIn("One choice", again.stdout)
+        self.assertIn("--permission-mode auto", again.stdout)
+
+    def test_claude_with_enter_is_ask_first(self):
+        proc = self.home.butler("claude", stdin="\n\n")
+        self.assertIn("Ask first it is.", proc.stdout)
+        self.assertIn("--permission-mode default", proc.stdout)
+        self.assertIn("you'll always ask before changing anything", proc.stdout)
 
     def test_name(self):
         proc = self.home.butler("name", "Mr", "Hudson")
@@ -67,10 +149,25 @@ class CliTest(unittest.TestCase):
         s = self.home.settings()
         self.assertEqual((s["timezone"], s["weather"]["unit"]), ("Europe/Lisbon", "celsius"))
 
-    def test_unknown_town_suggests_the_country(self):
+    def test_unknown_town_says_what_to_try(self):
         proc = self.home.butler("town", "Nowhereville")
         self.assertEqual(proc.returncode, 1)
-        self.assertIn("Try adding the country", proc.stdout)
+        self.assertIn("add your state or country after a comma", proc.stdout)
+        self.assertNotIn("Portugal", proc.stdout)
+
+    def test_town_with_a_state_picks_that_state_and_says_so(self):
+        """The course's own examples (Module 0): the biggest Springfield and Paris are the wrong ones."""
+        proc = self.home.butler("town", "Springfield, Illinois")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("Got it: Springfield, Illinois, United States. Your timezone is America/Chicago, and "
+                      "weather comes in Fahrenheit.", proc.stdout)
+        self.assertEqual(self.home.settings()["weather"]["latitude"], 39.8)
+        proc = self.home.butler("town", "Springfield")
+        self.assertIn("Got it: Springfield, Missouri, United States.", proc.stdout)
+        self.assertIn('Not the right Springfield? Add the state or country, like this: '
+                      'butler town "Springfield, Illinois"', proc.stdout)
+        for words in (proc.stdout, self.home.butler("town", "Paris, Texas").stdout):
+            self.assertNotIn("Portugal", words)
 
     def test_town_offline(self):
         offline = SetupHome(None)
@@ -186,6 +283,57 @@ class CliTest(unittest.TestCase):
         self.assertIn("looks healthy", proc.stdout)
 
 
+class HelpTest(unittest.TestCase):
+    """`butler help` and a mistyped command: one command per line, aligned, grouped (council P8)."""
+
+    COMMANDS = [c for _, group in cli.COMMANDS for c, _ in group]
+
+    def check(self, lines: list[str], width: int) -> None:
+        commands = re.compile(r"butler(?: (?:setup|name|town|adults|brief|claude-mode|claude|status|progress|"
+                              r"portal|update|doctor|help)\b)?")
+        for line in lines:
+            self.assertLessEqual(len(line), width, line)
+        # Which command each line starts with: the longest one it begins with, then a space or nothing.
+        started = []
+        for line in lines:
+            found = [c for c in self.COMMANDS if line == f"  {c}" or line.startswith(f"  {c} ")]
+            if found:
+                started.append(max(found, key=len))
+        self.assertEqual(sorted(started), sorted(self.COMMANDS), f"at {width} columns")
+        for line in lines:
+            if line.startswith("  butler"):
+                self.assertEqual(len(commands.findall(line.split("  ")[1])), 1, line)
+
+    def test_every_command_starts_its_own_line_at_80_columns(self):
+        lines = cli.help_lines(76)
+        self.check(lines, 76)
+        # Wide enough: the descriptions line up beside the commands.
+        columns = {line.index(what) for line in lines for _, group in cli.COMMANDS for c, what in group
+                   if line.startswith(f"  {c} ") and what in line}
+        self.assertEqual(len(columns), 1, "descriptions aren't aligned")
+
+    def test_every_command_starts_its_own_line_at_40_columns(self):
+        self.check(cli.help_lines(36), 36)
+
+    def test_the_help_through_the_command_at_both_widths(self):
+        for columns in ("80", "40"):
+            out = io.StringIO()
+            with mock.patch.dict(os.environ, {"BUTLER_COLUMNS": columns}), redirect_stdout(out):
+                self.assertEqual(cli.main(["help"]), 0)
+            self.check(out.getvalue().splitlines(), int(columns) - 4)
+            out = io.StringIO()
+            with mock.patch.dict(os.environ, {"BUTLER_COLUMNS": columns}), redirect_stdout(out), \
+                 mock.patch.object(cli.progress, "sync"):
+                self.assertEqual(cli.main(["fly"]), 1)
+            self.check([l for l in out.getvalue().splitlines() if l.startswith("  ")], int(columns) - 4)
+
+    def test_every_parser_command_is_listed(self):
+        source = Path(cli.__file__).read_text()
+        parsed = set(re.findall(r'add_parser\("([a-z-]+)"', source))
+        listed = {c.split()[1] for c in self.COMMANDS if " " in c}
+        self.assertEqual(parsed | {"setup"}, listed, "`butler setup` is bin/butler's own")
+
+
 class PortalCommandTest(unittest.TestCase):
     """`butler portal` pairs this Mac's browser. The one-time code travels in an owner-only file,
     never on a command line, where other accounts on the Mac could read it."""
@@ -207,7 +355,10 @@ class PortalCommandTest(unittest.TestCase):
         out = io.StringIO()
         with mock.patch.object(cli, "_listening", return_value=False), redirect_stdout(out):
             self.assertEqual(cli.main(["portal"]), 1)
-        self.assertIn("The portal isn't running. Start it with ./run.sh portal", out.getvalue())
+        self.assertIn("The portal isn't running. Open Claude Code (type: butler claude) and type /butler-doctor.",
+                      out.getvalue())
+        for jargon in ("run.sh", "launchd"):
+            self.assertNotIn(jargon, out.getvalue())
         self.assertFalse(cli.PORTAL_OPENER.exists())
 
     def test_opens_an_owner_only_page_that_pairs_once(self):

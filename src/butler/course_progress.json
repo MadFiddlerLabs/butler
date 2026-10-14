@@ -1,40 +1,65 @@
 {
-  "about": "Which course lessons each /butler-setup step completes. A step's check (src/butler/progress.py) is the module's win, so a passing check reports every lesson in that module as done. The website's engine contract check (buildyourbutler.com, scripts/check-engine-contract.mjs) fails when these ids drift from the course. Lesson ids are permanent: never rename one.",
+  "about": "Which course lessons each /butler-setup step completes. A step's check (src/butler/progress.py) is the module's win, so a passing check reports every lesson in that module as done. The website's engine contract check (buildyourbutler.com, scripts/check-engine-contract.mjs) fails when these ids drift from the course. Lesson ids are permanent: never rename one. Each module's slug and title are the course's (src/content/modules), and each step's url is its module's page, which /butler-setup offers to open at the start of the step. The contract check can compare all three.",
+  "site": "https://buildyourbutler.com",
+  "modules": {
+    "0": {"slug": "your-first-two-minutes", "title": "Your first two minutes"},
+    "1": {"slug": "meet-claude-code", "title": "Meet Claude Code"},
+    "2": {"slug": "hire-your-butler", "title": "Hire your butler properly"},
+    "3": {"slug": "show-your-butler-your-calendar", "title": "Show your butler your calendar"},
+    "4": {"slug": "give-your-butler-a-brain", "title": "Give your butler a brain"},
+    "5": {"slug": "give-your-butler-an-inbox", "title": "Give your butler an inbox"},
+    "6": {"slug": "talk-to-your-butler", "title": "Talk to your butler"},
+    "7": {"slug": "your-butler-keeps-the-books", "title": "Your butler keeps the books"},
+    "8": {"slug": "projects-and-paperwork", "title": "Projects and paperwork"},
+    "9": {"slug": "the-sunday-letter", "title": "The Sunday letter"},
+    "10": {"slug": "train-your-butler", "title": "Train your butler"},
+    "11": {"slug": "your-butler-on-your-phone", "title": "Your butler on your phone"},
+    "12": {"slug": "graduation", "title": "Graduation"}
+  },
   "steps": {
     "install": {
       "module": 2,
+      "url": "https://buildyourbutler.com/course/hire-your-butler/",
       "lessons": ["m2-the-interview", "m2-your-news", "m2-first-brief", "m2-manners", "m2-tour-the-folder"]
     },
     "calendar": {
       "module": 3,
+      "url": "https://buildyourbutler.com/course/show-your-butler-your-calendar/",
       "lessons": ["m3-calendars-on-your-mac", "m3-developer-tools", "m3-allow-access", "m3-who-is-who", "m3-preview-your-day"]
     },
     "brain": {
       "module": 4,
+      "url": "https://buildyourbutler.com/course/give-your-butler-a-brain/",
       "lessons": ["m4-why-a-separate-key", "m4-create-the-key", "m4-store-it-safely", "m4-about-your-household", "m4-the-news-quarantine"]
     },
     "inbox": {
       "module": 5,
+      "url": "https://buildyourbutler.com/course/give-your-butler-an-inbox/",
       "lessons": ["m5-a-new-gmail", "m5-app-password", "m5-store-and-introduce", "m5-first-real-email", "m5-daily-schedule"]
     },
     "replies": {
       "module": 6,
+      "url": "https://buildyourbutler.com/course/talk-to-your-butler/",
       "lessons": ["m6-your-first-reply", "m6-things-you-can-say", "m6-why-strangers-cant", "m6-siri", "m6-every-adult"]
     },
     "money": {
       "module": 7,
+      "url": "https://buildyourbutler.com/course/your-butler-keeps-the-books/",
       "lessons": ["m7-why-lunch-money", "m7-set-up-lunch-money", "m7-the-token", "m7-three-kinds-of-spending", "m7-your-budget", "m7-money-in-the-brief"]
     },
     "projects": {
       "module": 8,
+      "url": "https://buildyourbutler.com/course/projects-and-paperwork/",
       "lessons": ["m8-what-is-a-project", "m8-first-project", "m8-updating-projects", "m8-documents-and-dates"]
     },
     "letters": {
       "module": 9,
+      "url": "https://buildyourbutler.com/course/the-sunday-letter/",
       "lessons": ["m9-the-weekly-letter", "m9-answering-questions", "m9-monthly-look-back"]
     },
     "phone": {
       "module": 11,
+      "url": "https://buildyourbutler.com/course/your-butler-on-your-phone/",
       "lessons": ["m11-what-is-tailscale", "m11-install-tailscale", "m11-open-the-portal", "m11-portal-tour"]
     }
   }

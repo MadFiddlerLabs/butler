@@ -218,6 +218,24 @@ class CourseContractTest(unittest.TestCase):
             self.assertTrue((REPO / path).exists(), path)
         self.assertIn('"$cmd" = "preview"', (REPO / "run.sh").read_text())
 
+    def test_the_butler_subcommands_the_course_names(self):
+        """The website's contract check reads these from cli.py's add_parser calls and bin/butler."""
+        parsed = set(re.findall(r'add_parser\("([a-z][a-z-]*)"', SRC["cli.py"]))
+        self.assertLessEqual({"name", "town", "adults", "brief", "status", "progress", "claude", "claude-mode",
+                              "doctor", "portal", "update", "help"}, parsed)
+        self.assertIn('"${1:-}" = "setup"', (REPO / "bin" / "butler").read_text())
+
+    def test_claude_code_starts_ask_first_in_the_butler_folder(self):
+        """The course and the site promise "Claude asks before it acts" (council #204). Claude Code
+        starts in auto mode by default, and a project's settings may set any starting mode but
+        auto and bypassPermissions (code.claude.com/docs/en/permission-modes). `default` is the
+        one that asks before each change; `butler claude` passes the household's own choice."""
+        import json
+        settings = json.loads((REPO / ".claude" / "settings.json").read_text())
+        self.assertEqual(settings["permissions"]["defaultMode"], "default")
+        self.assertNotIn("allow", settings["permissions"], "no blanket pre-approvals")
+        self.assertNotIn("settings.json", (REPO / ".gitignore").read_text())
+
     def test_keychain_names_agree(self):
         store = (REPO / "scripts" / "store-secret.sh").read_text()
         for name in ("butler-gmail", "butler-anthropic", "butler-lunchmoney"):

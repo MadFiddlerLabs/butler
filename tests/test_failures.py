@@ -326,6 +326,8 @@ class TickKeepsGoingTest(unittest.TestCase):
              mock.patch.object(tick.logging, "basicConfig"), mock.patch.object(sys, "argv", ["tick"]), \
              self.assertLogs("butler", "ERROR") as logs:
             self.addCleanup(shutil.rmtree, root, True)
+            (root / "config").mkdir()
+            (root / "config" / "settings.yaml").write_text("name: Bento\n")
             tick.main()
         self.assertEqual(ran, ["brief"])
         text = "\n".join(logs.output)

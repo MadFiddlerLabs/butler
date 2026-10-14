@@ -17,7 +17,8 @@ from fakes.account_api import FakeAccountAPI
 from fakes.setup_home import SetupHome
 
 REPO = Path(__file__).resolve().parents[1]
-LESSONS = ['butler town "Lisbon, Portugal"', "butler adults Sam Alex", "butler brief", "butler claude", ""]
+# The town, Enter at "Is that right?", the adults, the brief, then Claude Code (Enter installs it).
+LESSONS = ['butler town "Lisbon, Portugal"', "", "butler adults Sam Alex", "butler brief", "butler claude", ""]
 
 
 class HeardTokenTest(unittest.TestCase):
@@ -163,12 +164,12 @@ class FirstRunTest(unittest.TestCase):
 
     def test_the_terms_are_asked_once_per_version(self):
         h = self.home()
-        h.first_run(["", "", "", "skip", *LESSONS[:3], ""])
-        again = h.first_run(["", "skip", *LESSONS[:3], ""])
+        h.first_run(["", "", "", "skip", *LESSONS[:4], ""])
+        again = h.first_run(["", "skip", ""])          # the lessons are done: only the email is asked
         self.assertEqual(again.returncode, 0, again.stdout + again.stderr)
         self.assertNotIn("By continuing", again.stdout)
         (h.root / "TERMS_VERSION").write_text("0.2\n")
-        newer = h.first_run(["", "", "skip", *LESSONS[:3], ""])
+        newer = h.first_run(["", "", "skip", ""])
         self.assertIn("By continuing", newer.stdout)
         self.assertEqual(json.loads((h.root / "data" / "terms.json").read_text())["terms_version"], "0.2")
 
@@ -190,14 +191,14 @@ class FirstRunTest(unittest.TestCase):
 
     def test_where_they_heard_is_asked_once_and_a_skip_sends_nothing(self):
         h = self.home()
-        first = h.first_run(["", "", "12", "", "sam@example.com", ""])     # stops at the first lesson
+        first = h.first_run(["", "", "12", "", "skip"])     # stops at the first lesson
         self.assertIn("Where did you hear about Butler? (optional)", first.stdout)
         self.assertIn("Type a number from 1 to 10, or press Enter to skip.", first.stdout)
         self.assertEqual(json.loads((h.root / "data" / "heard.json").read_text()), {"heard": None})
         again = h.first_run(["", "sam@example.com", ""])
         self.assertNotIn("Where did you hear", again.stdout)
         starts = [body for method, path, body in self.api.calls if path == "/api/auth/start"]
-        self.assertEqual(len(starts), 2)
+        self.assertEqual(len(starts), 1)
         for body in starts:
             self.assertNotIn("heard", body)
 
@@ -218,7 +219,7 @@ class FirstRunTest(unittest.TestCase):
 
     def test_offline_still_reaches_the_first_brief(self):
         h = self.home(api=None)
-        proc = h.first_run(["", "", "", "sam@example.com", *LESSONS[:3], ""])
+        proc = h.first_run(["", "", "", "sam@example.com", *LESSONS[:4], ""])
         out = proc.stdout
         self.assertEqual(proc.returncode, 1, out)   # the town lookup needs the internet
         self.assertIn("I can't reach buildyourbutler.com right now", out)
@@ -272,11 +273,121 @@ class FirstRunTest(unittest.TestCase):
         self.assertNotRegex(out, "[✓·…\x1b]")
         self.assertNotRegex(out, r"ready\.\.")
 
+    def test_a_second_run_skips_what_is_done_and_never_asks_the_name_or_email_when_signed_in(self):
+        h = self.home()
+        first = h.first_run(["", "", "", "sam@example.com", "", *LESSONS])
+        self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+        self.assertTrue((h.root / "data" / "first-run-started").exists())
+        self.assertTrue((h.root / "data" / "first-run-done").exists())
+        again = h.first_run([""])                          # Enter: not now, at Claude Code
+        out = again.stdout
+        self.assertEqual(again.returncode, 0, out + again.stderr)
+        self.assertIn("Hello again! It's Bento, your butler.", out)
+        self.assertIn("Let's pick up where we left off.", out)
+        self.assertIn("Already done: you're signed in as sam@example.com.", out)
+        for done in ("I know where you live.", "I know who I work for.", "your first brief is written."):
+            self.assertIn(f"Already done: {done}", out)
+        for asked in ("Name \u203a", "Your email \u203a"):
+            self.assertNotIn(asked, out)
+        self.assertEqual(out.count("Paste here \u203a"), 1, "only the optional Claude Code line")
+        self.assertEqual(len([c for c in self.api.calls if c[1] == "/api/auth/start"]), 1)
+        self.assertIn("/api/me", [c[1] for c in self.api.calls])
+        self.assertEqual(h.settings()["household"]["adults"][0]["name"], "Sam")
+
+    def test_an_ended_session_asks_for_the_email_again(self):
+        h = self.home()
+        h.keychain.write_text(json.dumps({"butler-account": "an-old-session"}))
+        proc = h.first_run(["", "", "", "skip"])
+        self.assertIn("Hello! I'm Bento, your new butler.", proc.stdout)
+        self.assertIn("Your email \u203a", proc.stdout)
+
+    def test_a_wrong_town_can_be_pasted_again(self):
+        """Module 0's own example: "Paris" is the one in France; pasting it again fixes it (#207, #208)."""
+        h = self.home()
+        proc = h.first_run(["", "", "", "skip", 'butler town "Paris"', 'butler town "Paris, Texas"', "",
+                            *LESSONS[2:]])
+        out = proc.stdout
+        self.assertEqual(proc.returncode, 0, out + proc.stderr)
+        self.assertIn("Got it: Paris, Île-de-France Region, France.", out)
+        self.assertIn('Not the right Paris? Add the state or country, like this: butler town "Paris, Texas"', out)
+        self.assertEqual(out.count("Is that right? Press Enter, or paste the line again \u203a"), 2)
+        self.assertIn("Got it: Paris, Texas, United States. Your timezone is America/Chicago, and weather "
+                      "comes in Fahrenheit.", out)
+        s = h.settings()
+        self.assertEqual((s["timezone"], s["weather"]["unit"], s["weather"]["country"]),
+                         ("America/Chicago", "fahrenheit", "US"))
+        self.assertIn("I work for Sam and Alex.", out, "the run went on to the next lesson")
+
+    def test_anything_else_at_is_that_right_is_explained(self):
+        h = self.home()
+        proc = h.first_run(["", "", "", "skip", LESSONS[0], "butler adults Sam Alex", "", *LESSONS[2:]])
+        self.assertIn("To change the town, paste a line starting with: butler town. If it's right, press Enter.",
+                      proc.stdout)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+
     def test_stop_before_claude(self):
         h = self.home()
-        proc = h.first_run(["", "", "", "skip", *LESSONS[:3], ""])
+        proc = h.first_run(["", "", "", "skip", *LESSONS[:4], ""])
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertIn("When you're ready, open Terminal and type: butler claude", proc.stdout)
+
+
+class WelcomeBackTest(unittest.TestCase):
+    """scripts/welcome-back.command: installed over an existing Butler, resume or start fresh."""
+
+    def setUp(self):
+        self.api = FakeAccountAPI(auto_verify=True).start()
+        self.addCleanup(self.api.stop)
+        self.h = SetupHome(self.api, butler_name="Bento")
+        self.addCleanup(self.h.close)
+        done = self.h.first_run(["", "", "", "skip", *LESSONS])
+        assert done.returncode == 0, done.stdout + done.stderr
+
+    def files(self) -> dict[str, bytes]:
+        """The household's files: what start fresh moves, and resume must leave alone."""
+        return {str(p.relative_to(self.h.root)): p.read_bytes() for p in self.h.root.rglob("*")
+                if p.is_file() and p.relative_to(self.h.root).parts[0] in ("config", "data", "out", "projects", "budget")
+                and ".example." not in p.name and p.name != "progress.json"}
+
+    def test_resume_says_where_you_are_and_changes_nothing(self):
+        before = self.files()
+        proc = self.h.first_run([""], "--again")
+        out = proc.stdout
+        self.assertEqual(proc.returncode, 0, out + proc.stderr)
+        self.assertIn("Welcome back.", out)
+        self.assertIn("1. Resume where you left off.", out)
+        self.assertIn("2. Start fresh. Your old settings go into a backup folder first, and nothing is deleted.", out)
+        self.assertIn("Press Enter to resume, or type 2 to start fresh \u203a", out)
+        self.assertIn("Bento is set up through Module 0, Your first two minutes.", out)
+        self.assertIn("Next: Module 1, Meet Claude Code. Type: butler claude", out)
+        self.assertNotIn("Paste here", out)
+        self.assertEqual(self.files(), before)
+
+    def test_start_fresh_moves_everything_to_a_dated_backup_and_deletes_nothing(self):
+        before = self.files()
+        proc = self.h.first_run(["2", "yes", "", "skip"], "--again")   # then stops at the first lesson
+        out = proc.stdout
+        self.assertIn("Nothing is deleted. Your passwords stay in Keychain.", out)
+        self.assertIn("Done. Your old settings are safe in backups/start-fresh-", out)
+        backups = list((self.h.root / "backups").glob("start-fresh-*"))
+        self.assertEqual(len(backups), 1)
+        self.assertRegex(backups[0].name, r"^start-fresh-\d{4}-\d\d-\d\d-\d{6}$")
+        for path, content in before.items():
+            if path in ("data/terms.json", "data/heard.json"):
+                self.assertEqual((self.h.root / path).read_bytes(), content, "the student's own answers stay")
+            else:
+                self.assertEqual((backups[0] / path).read_bytes(), content, path)
+        self.assertIn("Sam", (backups[0] / "config" / "settings.yaml").read_text())
+        # Then a fresh first run: the town is asked again.
+        self.assertIn("Paste here \u203a", out)
+        self.assertFalse((self.h.root / "data" / "first-run-done").exists())
+
+    def test_start_fresh_needs_a_clear_yes(self):
+        before = self.files()
+        proc = self.h.first_run(["2", ""], "--again")
+        self.assertIn("Alright, nothing moved.", proc.stdout)
+        self.assertFalse((self.h.root / "backups").exists())
+        self.assertEqual(self.files(), before)
 
 
 if __name__ == "__main__":

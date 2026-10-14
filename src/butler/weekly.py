@@ -219,7 +219,7 @@ def build_week(settings: dict, last_day: date) -> Week:
             by = ledger_week.setdefault(t.ledger, {})
             by[t.payee] = by.get(t.payee, 0.0) + t.amount
     nw_line = ""
-    if last_day == datetime.now(zone).date():
+    if last_day == datetime.now(zone).date() and networth.in_emails(settings):
         try:
             cfg = settings.get("networth", {})
             now, ch = networth.change_since(last_day, 7)

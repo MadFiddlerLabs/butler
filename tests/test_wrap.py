@@ -8,7 +8,8 @@ from fakes.account_api import FakeAccountAPI
 from fakes.setup_home import SetupHome
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
-LESSONS = ['butler town "Lisbon, Portugal"', "butler adults Sam Alex", "butler brief", "butler claude", ""]
+# The town, Enter at "Is that right?", the adults, the brief, then Claude Code (Enter installs it).
+LESSONS = ['butler town "Lisbon, Portugal"', "", "butler adults Sam Alex", "butler brief", "butler claude", ""]
 
 
 class WrapTest(unittest.TestCase):
@@ -36,7 +37,7 @@ class WrapTest(unittest.TestCase):
             self.assertLessEqual(len(line), 80, repr(line))
 
     def test_commands_in_sentences_stay_whole(self):
-        proc = self.home.first_run(["", "", "", "skip", *LESSONS[:3], ""])
+        proc = self.home.first_run(["", "", "", "skip", *LESSONS[:4], ""])
         for line in self.lines(proc.stdout):
             self.assertFalse(line.rstrip().endswith(" butler") or line.rstrip() == "butler",
                              f"a command was split after 'butler': {line!r}")

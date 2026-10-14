@@ -50,7 +50,56 @@ class NameFromPackageTest(unittest.TestCase):
             self.assertEqual(in_bash, valid_name(name) is not None, name)
 
 
+INSTALL_LIB = REPO / "scripts" / "lib" / "install.sh"
+
+
+class InstallStateTest(unittest.TestCase):
+    """scripts/lib/install.sh: what the installer finds, and which Terminal script it opens."""
+
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dir, True)
+
+    def state(self) -> tuple[str, str]:
+        out = subprocess.run(["bash", "-c", f'. "{INSTALL_LIB}"; s="$(install_state "$1")"; echo "$s $(install_opens "$s")"',
+                              "bash", str(self.dir)], capture_output=True, text=True, check=True).stdout.split()
+        return out[0], out[1]
+
+    def touch(self, rel: str) -> None:
+        (self.dir / rel).parent.mkdir(parents=True, exist_ok=True)
+        (self.dir / rel).write_text("x\n")
+
+    def test_nothing_yet_is_a_fresh_install(self):
+        self.assertEqual(self.state(), ("fresh", "first-run.command"))
+        self.touch(".butler-name")        # the installer's own work, not the household's
+        self.touch("logs/install.log")
+        self.assertEqual(self.state(), ("fresh", "first-run.command"))
+
+    def test_a_first_run_that_began_is_started(self):
+        self.touch("data/first-run-started")
+        self.assertEqual(self.state(), ("started", "welcome-back.command"))
+
+    def test_settings_alone_are_started(self):
+        """The first run writes settings early (`butler name`): that is not the end of it. This
+        is the case the old installer took for an upgrade, and opened nothing."""
+        self.touch("config/settings.yaml")
+        self.assertEqual(self.state(), ("started", "welcome-back.command"))
+
+    def test_the_marker_means_finished(self):
+        self.touch("data/first-run-started")
+        self.touch("data/first-run-done")
+        self.assertEqual(self.state(), ("finished", "welcome-back.command"))
+
+    def test_a_butler_from_before_the_marker_with_a_brief_is_finished(self):
+        self.touch("config/settings.yaml")
+        self.touch("out/preview/brief-2026-10-12.html")
+        self.assertEqual(self.state(), ("finished", "welcome-back.command"))
+
+
 class PostinstallTest(unittest.TestCase):
+    """packaging/macos/scripts/postinstall, run as Installer runs it for the user (not root), with
+    `launchctl` and `open` replaced by recorders. COMMAND_LINE_INSTALL is unset, as in Installer.app."""
+
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp, True)
@@ -58,44 +107,109 @@ class PostinstallTest(unittest.TestCase):
         self.scripts.mkdir()
         shutil.copy(POSTINSTALL, self.scripts / "postinstall")
         shutil.copy(NAMES, self.scripts / "names.sh")
+        shutil.copy(INSTALL_LIB, self.scripts / "install.sh")
         self.home = self.tmp / "home"
-        (self.home / "Butler" / "scripts").mkdir(parents=True)
+        self.butler = self.home / "Butler"
+        (self.butler / "scripts").mkdir(parents=True)
+        (self.butler / ".butler-version").write_text("v0.5.0\n")
         fakebin = self.tmp / "fakebin"
         fakebin.mkdir()
         self.opened = self.tmp / "opened.txt"
-        (fakebin / "open").write_text(f'#!/bin/bash\necho "$*" >> "{self.opened}"\n')
-        (fakebin / "open").chmod(0o755)
+        self.launchctl = self.tmp / "launchctl.txt"
+        (fakebin / "open").write_text(f'#!/bin/bash\necho "$*" >> "{self.opened}"\nexit "${{FAKE_OPEN_EXIT:-0}}"\n')
+        # `launchctl asuser <uid> <command…>` runs the command in that user's session.
+        (fakebin / "launchctl").write_text(
+            f'#!/bin/bash\necho "$*" >> "{self.launchctl}"\n'
+            '[ -n "${FAKE_ASUSER_FAILS:-}" ] && exit 5\n'
+            '[ "$1" = asuser ] && shift 2 && exec "$@"\nexit 0\n')
+        for f in ("open", "launchctl"):
+            (fakebin / f).chmod(0o755)
         self.env = {**os.environ, "HOME": str(self.home), "PATH": f"{fakebin}:/usr/bin:/bin"}
-        self.env.pop("COMMAND_LINE_INSTALL", None)
+        for inherited in ("COMMAND_LINE_INSTALL", "BUTLER_PKG_NO_OPEN"):
+            self.env.pop(inherited, None)
 
     def run_postinstall(self, pkg_name: str, **env) -> None:
         proc = subprocess.run(["bash", str(self.scripts / "postinstall"), f"/Users/sam/Downloads/{pkg_name}",
                                str(self.home)], env={**self.env, **env}, capture_output=True, text=True)
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
-    def test_first_install_names_the_butler_and_opens_the_first_run(self):
+    def log(self) -> str:
+        return (self.butler / "logs" / "install.log").read_text()
+
+    def test_first_install_names_the_butler_and_opens_the_first_run_in_the_users_session(self):
         self.run_postinstall("Bento (1).pkg")
-        self.assertEqual((self.home / "Butler" / ".butler-name").read_text(), "Bento\n")
-        self.assertIn("-a Terminal", self.opened.read_text())
-        self.assertIn("first-run.command", self.opened.read_text())
+        self.assertEqual((self.butler / ".butler-name").read_text(), "Bento\n")
+        self.assertEqual(self.opened.read_text().strip(), f"-a Terminal {self.butler}/scripts/first-run.command")
+        self.assertEqual(self.launchctl.read_text().split()[:3], ["asuser", str(os.getuid()), "open"])
+        self.assertRegex(self.log(), r"v0\.5\.0 installed \(fresh\): opened Terminal with first-run\.command "
+                                     r"\(launchctl asuser \d+ open\)")
+
+    def test_butler_works_in_terminal_even_if_no_window_opens(self):
+        """The Done screen's fallback is "open Terminal and type butler": the PATH line, once."""
+        self.run_postinstall("Bento.pkg", FAKE_ASUSER_FAILS="1", FAKE_OPEN_EXIT="1")
+        self.run_postinstall("Bento.pkg")
+        profile = (self.home / ".zprofile").read_text()
+        self.assertEqual(profile.count(f'export PATH="{self.butler}/bin:$PATH"'), 1)
 
     def test_generic_download_leaves_the_name_to_the_first_run(self):
         self.run_postinstall("Butler.pkg")
-        self.assertFalse((self.home / "Butler" / ".butler-name").exists())
-        self.assertTrue(self.opened.exists())
+        self.assertFalse((self.butler / ".butler-name").exists())
+        self.assertIn("first-run.command", self.opened.read_text())
 
-    def test_upgrade_changes_nothing_and_opens_nothing(self):
-        (self.home / "Butler" / "config").mkdir()
-        (self.home / "Butler" / "config" / "settings.yaml").write_text("name: Bento\n")
-        (self.home / "Butler" / ".butler-name").write_text("Bento\n")
+    def test_a_half_done_first_run_opens_the_way_back(self):
+        """The bug this replaces: settings.yaml (written early by the first run) was taken for an
+        upgrade, so a reinstall opened nothing while the Done screen said Terminal was opening."""
+        (self.butler / "config").mkdir()
+        (self.butler / "config" / "settings.yaml").write_text("name: Bento\n")
+        (self.butler / ".butler-name").write_text("Bento\n")
         self.run_postinstall("Jeeves.pkg")
-        self.assertEqual((self.home / "Butler" / ".butler-name").read_text(), "Bento\n")
-        self.assertFalse(self.opened.exists())
+        self.assertEqual((self.butler / ".butler-name").read_text(), "Bento\n", "the name stays")
+        self.assertEqual((self.butler / "config" / "settings.yaml").read_text(), "name: Bento\n")
+        self.assertIn("welcome-back.command", self.opened.read_text())
+        self.assertIn("installed (started): opened Terminal with welcome-back.command", self.log())
+
+    def test_over_a_finished_butler_it_offers_the_choice_too(self):
+        (self.butler / "data").mkdir()
+        (self.butler / "data" / "first-run-done").write_text("2026-10-12T08:00:00Z\n")
+        self.run_postinstall("Bento.pkg")
+        self.assertIn("welcome-back.command", self.opened.read_text())
+        self.assertIn("installed (finished)", self.log())
+
+    def test_without_launchctl_asuser_it_still_opens_terminal_and_says_how(self):
+        self.run_postinstall("Bento.pkg", FAKE_ASUSER_FAILS="1")
+        self.assertIn("first-run.command", self.opened.read_text())
+        self.assertIn("opened Terminal with first-run.command (open)", self.log())
+
+    def test_when_terminal_wont_open_the_log_says_so_and_the_install_still_succeeds(self):
+        self.run_postinstall("Bento.pkg", FAKE_ASUSER_FAILS="1", FAKE_OPEN_EXIT="1")
+        self.assertIn("could not open Terminal with first-run.command (open, exit 1)", self.log())
 
     def test_command_line_install_opens_nothing(self):
+        """The overnight updater and CI install with `installer`, which sets COMMAND_LINE_INSTALL."""
         self.run_postinstall("Bento.pkg", COMMAND_LINE_INSTALL="1")
-        self.assertEqual((self.home / "Butler" / ".butler-name").read_text(), "Bento\n")
+        self.assertEqual((self.butler / ".butler-name").read_text(), "Bento\n")
         self.assertFalse(self.opened.exists())
+        self.assertFalse(self.launchctl.exists())
+        self.assertIn("installed (fresh), from the command line: Terminal not opened", self.log())
+
+    def test_the_scripts_it_opens_exist_and_are_executable(self):
+        for name in ("first-run.command", "welcome-back.command", "butler.command"):
+            path = REPO / "scripts" / name
+            self.assertTrue(os.access(path, os.X_OK), name)
+        self.assertIn("first-run.sh\" --again", (REPO / "scripts" / "welcome-back.command").read_text())
+        self.assertIn("bin/butler", (REPO / "scripts" / "butler.command").read_text())
+
+
+class DoneScreenTest(unittest.TestCase):
+    """The installer's last screen, for someone who has never used Terminal."""
+
+    def test_plain_words_and_a_one_line_fallback(self):
+        text = (REPO / "packaging" / "macos" / "resources" / "conclusion.html").read_text()
+        words = re.sub(r"<[^>]+>", "", text)
+        self.assertNotIn("first-run.command", words, "double-clicking a script isn't the normal path")
+        self.assertNotIn("double-click", words.lower())
+        self.assertIn("type butler", " ".join(words.split()))
+        self.assertIn("Butler app", words)
 
 
 @unittest.skipUnless((REPO / ".git").exists(), "needs a git checkout")
@@ -116,8 +230,15 @@ class BuildPackageTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.out = Path(tempfile.mkdtemp())
+        # The Butler app needs the Swift compiler (every Mac with Xcode's tools, and CI's runners).
+        cls.app = None
+        if shutil.which("swiftc"):
+            cls.app = cls.out / "Butler.app"
+            subprocess.run([str(REPO / "packaging" / "macos" / "build-app.sh"), str(cls.app), "v0.0.0-test"],
+                           check=True, capture_output=True)
         proc = subprocess.run([str(REPO / "packaging" / "macos" / "build-pkg.sh"), "--version", "v0.0.0-test",
-                               "--out", str(cls.out)], capture_output=True, text=True)
+                               "--out", str(cls.out), *(["--app", str(cls.app)] if cls.app else [])],
+                              capture_output=True, text=True)
         assert proc.returncode == 0, proc.stdout + proc.stderr
         cls.pkg = Path(proc.stdout.strip().splitlines()[-1])
         cls.expanded = cls.out / "expanded"
@@ -164,6 +285,30 @@ class BuildPackageTest(unittest.TestCase):
         scripts = self.expanded / "Butler-component.pkg" / "Scripts"   # pkgutil --expand unpacks it
         self.assertTrue(os.access(scripts / "postinstall", os.X_OK))
         self.assertTrue((scripts / "names.sh").exists())
+        self.assertTrue((scripts / "install.sh").exists())
+
+    def test_the_scripts_the_installer_opens_are_in_the_package(self):
+        files = subprocess.run(["pkgutil", "--payload-files", str(self.pkg)], capture_output=True,
+                               text=True, check=True).stdout.splitlines()
+        for path in ("./Butler/scripts/welcome-back.command", "./Butler/scripts/butler.command",
+                     "./Butler/scripts/lib/install.sh", "./Butler/.claude/settings.json"):
+            self.assertIn(path, files)
+
+    def test_the_butler_app_goes_to_applications_and_stays_there(self):
+        if not self.app:
+            self.skipTest("needs swiftc")
+        files = subprocess.run(["pkgutil", "--payload-files", str(self.pkg)], capture_output=True,
+                               text=True, check=True).stdout.splitlines()
+        self.assertIn("./Applications/Butler.app/Contents/MacOS/Butler", files)
+        self.assertIn("./Applications/Butler.app/Contents/Info.plist", files)
+        info = (self.expanded / "Butler-component.pkg" / "PackageInfo").read_text()
+        # Never moved into another app with the same identifier somewhere else on the Mac.
+        self.assertIn('relocatable="false"', info)
+        self.assertNotRegex(info, r"<relocate>\s*<bundle")
+        self.assertEqual(subprocess.run(["codesign", "--verify", "--strict", str(self.app)]).returncode, 0)
+        archs = subprocess.run(["lipo", "-archs", str(self.app / "Contents" / "MacOS" / "Butler")],
+                               capture_output=True, text=True, check=True).stdout.split()
+        self.assertEqual(sorted(archs), ["arm64", "x86_64"])
 
 
 def read_lock() -> dict[str, dict]:

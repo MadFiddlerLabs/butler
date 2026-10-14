@@ -347,5 +347,41 @@ class MidCourseTest(unittest.TestCase):
         self.assertNotIn("Next up", html)
 
 
+class NetWorthOffTest(unittest.TestCase):
+    """`networth.in_emails: false` (council #218): no net worth in the brief, the letter or the
+    look-back, while the snapshots go on for the portal. The Johnsons' figures are invented."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.on = Home()
+        cls.on_daily = cls.on.run("daily")
+        cls.home = h = Home()
+        h.edit_settings(lambda s: s["networth"].update(in_emails=False))
+        cls.daily, cls.weekly, cls.monthly = h.run("daily"), h.run("weekly"), h.run("monthly")
+        cls.portal = h.run("portal")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.on.close()
+        cls.home.close()
+
+    def test_on_by_default(self):
+        self.assertIn("Net worth", self.on_daily["mails"][0]["text"])
+
+    def test_off_leaves_it_out_of_every_email(self):
+        for name in ("daily", "weekly", "monthly"):
+            record = getattr(self, name)
+            self.assertIsNone(record["error"], f"{name}:\n{record['error']}")
+            self.assertEqual(len(record["mails"]), 1, name)
+            for part in ("text", "html"):
+                self.assertNotIn("Net worth", record["mails"][0][part], name)
+        for p in self.monthly["prompts"]:
+            self.assertNotIn('"net_worth": {', p["prompt"])
+
+    def test_the_snapshots_go_on_for_the_portal(self):
+        self.assertTrue((self.home.root / "data" / "networth.jsonl").exists())
+        self.assertEqual(self.portal["portal"]["GET /money"]["status"], 200)
+
+
 if __name__ == "__main__":
     unittest.main()
