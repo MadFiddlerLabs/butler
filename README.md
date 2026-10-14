@@ -150,9 +150,13 @@ the setup happens one step at a time. The first time, it asks how Claude Code sh
 you: ask first (the default: Claude checks with you before each change) or auto (Claude acts more
 on its own). `butler claude-mode ask` or `auto` changes it later.
 
-To come back any time, open the **Butler** app (in `~/Applications`) or type `butler` in
-Terminal: it says where you are in the course and the one thing to do next, then lists the
-commands. Installing again over an existing Butler offers to pick up where you left off or to
+To come back any time, open the **Butler** app. It takes you straight to where you left off:
+the first run if it isn't finished, otherwise Claude Code on your next course step (`butler
+resume` does the same in Terminal). The package puts the app in `/Applications` when your Mac
+account is an administrator, and in `~/Applications` otherwise; it never asks for a password,
+and it never touches another app called Butler. At the end of the first run, Butler suggests
+dragging the app to the Dock. Typing `butler` on its own says where you are in the course and the
+one thing to do next, then lists the commands. Installing again over an existing Butler offers to pick up where you left off or to
 start fresh; starting fresh moves your settings to `backups/` and deletes nothing. `butler status`
 says what's set up, and `butler help` lists the commands. When a step's check passes, Butler ticks that module off on your course account
 by itself (lesson names and dates, nothing from the household); `butler progress` shows what it
@@ -198,7 +202,8 @@ Nothing else goes, and it isn't linked to you; `update_report: false` turns it o
 
 ## Documentation
 
-- [docs/SETUP.md](docs/SETUP.md): manual setup, step by step
+- [docs/SETUP.md](docs/SETUP.md): manual setup, step by step, and how to uninstall (the Butler
+  app is in `/Applications` or `~/Applications`)
 - [docs/CONFIG.md](docs/CONFIG.md): every setting and money rule
 - [docs/PROJECTS.md](docs/PROJECTS.md): family projects with steps, dependencies and dates
 - [docs/PORTAL.md](docs/PORTAL.md): the portal over Tailscale, and under your own domain

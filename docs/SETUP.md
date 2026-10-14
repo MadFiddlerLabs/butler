@@ -169,3 +169,7 @@ security delete-generic-password -s butler-gmail
 security delete-generic-password -s butler-anthropic
 security delete-generic-password -s butler-lunchmoney
 ```
+
+If you installed with the package, also move the Butler app to the Bin. It's in
+`/Applications/Butler.app` on an administrator's account, or `~/Applications/Butler.app`
+otherwise. Then move the `~/Butler` folder to the Bin, after keeping anything of yours from it.

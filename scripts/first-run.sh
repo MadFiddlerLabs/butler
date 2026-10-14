@@ -7,6 +7,9 @@
 #   3. the first pasted lessons: butler town, butler adults, butler brief (the first brief opens)
 #   4. butler claude: the rest of the course happens in Claude Code
 #
+# At the end it says where the Butler app is (the way back, `butler resume`), and that it can go
+# in the Dock. It never changes the Dock itself.
+#
 # Run again, it picks up where it stopped: a valid sign-in (Keychain `butler-account`) skips the
 # name and the email, and a lesson already done is skipped. data/first-run-started marks that it
 # began, data/first-run-done that it's over; the installer reads both.
@@ -449,6 +452,14 @@ fi
 # The first run is over. The installer reads this: installing again offers resume or start fresh.
 date -u +%Y-%m-%dT%H:%M:%SZ > "$home/data/first-run-done"
 
+# The Butler app is the way back. Say where it is, once. The Dock stays the student's to change.
+app="$(app_location "$HOME")"
+case "$app" in
+  "") ;;
+  "$HOME"/*) say; say "To come back any time, open the Butler app: it's in the Applications folder inside your home folder, and Spotlight finds it too. Drag it to the Dock to keep it one click away." ;;
+  *) say; say "To come back any time, open the Butler app in your Applications folder. Drag it to the Dock to keep it one click away." ;;
+esac
+
 # ---------- 4. into Claude Code ----------
 
 heading "What's next"
@@ -457,4 +468,8 @@ if lesson claude 'butler claude' optional; then
   exit 0
 fi
 say
-say "See you soon. When you're ready, open Terminal and type: butler claude"
+if [ -n "$app" ]; then
+  say "See you soon. When you're ready, open the Butler app, or open Terminal and type: butler claude"
+else
+  say "See you soon. When you're ready, open Terminal and type: butler claude"
+fi

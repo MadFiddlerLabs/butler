@@ -96,7 +96,7 @@ class SetupHome:
         (self.root / ".butler-version").write_text("v0.0.0-test\n")
         if butler_name is not None:
             (self.root / ".butler-name").write_text(butler_name + "\n")
-        fakebin = self.tmp / "fakebin"
+        fakebin = self.fakebin = self.tmp / "fakebin"
         fakebin.mkdir()
         _script(fakebin / "security", SECURITY)
         _script(fakebin / "curl", CURL)
@@ -127,6 +127,8 @@ class SetupHome:
             "BUTLER_CLAUDE_DRY_RUN": "1",
             "MPLBACKEND": "Agg",
             "BUTLER_COLUMNS": "1000",     # no wrapping, so tests match whole sentences; test_wrap checks 80
+            # Stands in for /Applications, so this machine's own apps never count.
+            "BUTLER_SYSTEM_APPS": str(self.tmp / "Applications"),
         }
         for inherited in ("PYTHONPATH", "BUTLER_PLAIN", "CLAUDE_AX_SCREEN_READER"):
             self.env.pop(inherited, None)
@@ -147,6 +149,16 @@ class SetupHome:
     def first_run(self, lines: list[str], *args: str) -> subprocess.CompletedProcess:
         return subprocess.run([str(self.root / "scripts" / "first-run.sh"), *args], cwd=self.home, env=self.env,
                               input="\n".join(lines) + "\n", capture_output=True, text=True, timeout=timeout(600))
+
+    def stub_claude(self) -> Path:
+        """A `claude` on the PATH that records how it was started (its folder, then each argument
+        on its own line) and exits, and no dry run: `butler claude` and `butler resume` really
+        exec it. Returns the record's path."""
+        record = self.tmp / "claude-launched.txt"
+        _script(self.fakebin / "claude", "import os, sys\nwith open(%r, 'w') as f:\n"
+                                         "    f.write('\\n'.join([os.getcwd(), *sys.argv[1:]]) + '\\n')\n" % str(record))
+        self.env.pop("BUTLER_CLAUDE_DRY_RUN", None)
+        return record
 
     def secrets(self) -> dict:
         return json.loads(self.keychain.read_text()) if self.keychain.exists() else {}

@@ -1,6 +1,11 @@
 #!/bin/bash
 # Runs right after the package puts Butler in ~/Butler and the Butler app in ~/Applications.
 #
+#   The Butler app: moved to /Applications when the student's account is an admin (no password
+#   needed: /Applications is the admin group's), or kept in ~/Applications. A command-line
+#   upgrade keeps it where it was, and another app called Butler is never touched (place_app in
+#   scripts/lib/install.sh).
+#
 #   A fresh install: names the butler from the package's filename (the website serves it as
 #   "<Name>.pkg") and opens the guided first run in Terminal.
 #   Over an existing Butler (its first run started or finished): changes nothing of the
@@ -34,6 +39,10 @@ if [ "$(id -u)" = 0 ]; then
   chown -R "$user" "$dir"
   [ -d "$home/Applications/Butler.app" ] && chown -R "$user" "$home/Applications/Butler.app"
 fi
+command_line=""
+if [ -n "${COMMAND_LINE_INSTALL:-}" ] || [ -n "${BUTLER_PKG_NO_OPEN:-}" ]; then
+  command_line=1
+fi
 
 mkdir -p "$dir/logs"
 note() {
@@ -52,7 +61,13 @@ fi
 add_to_path "$dir" "$home/.zprofile" && note "added Butler to the PATH in ~/.zprofile"
 [ "$(id -u)" = 0 ] && chown "$user" "$home/.zprofile"
 
-if [ -n "${COMMAND_LINE_INSTALL:-}" ] || [ -n "${BUTLER_PKG_NO_OPEN:-}" ]; then
+# The overnight updater and other command-line installs over a household are upgrades: the app
+# stays where it is. Installer.app, or a first install, puts it in /Applications when it may.
+upgrade=no
+[ -n "$command_line" ] && [ "$state" != fresh ] && upgrade=yes
+note "$(place_app "$home" "$user" "$upgrade")"
+
+if [ -n "$command_line" ]; then
   note "installed ($state), from the command line: Terminal not opened"
   [ "$(id -u)" = 0 ] && chown "$user" "$dir/logs/install.log"
   exit 0

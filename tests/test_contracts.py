@@ -222,8 +222,10 @@ class CourseContractTest(unittest.TestCase):
         """The website's contract check reads these from cli.py's add_parser calls and bin/butler."""
         parsed = set(re.findall(r'add_parser\("([a-z][a-z-]*)"', SRC["cli.py"]))
         self.assertLessEqual({"name", "town", "adults", "brief", "status", "progress", "claude", "claude-mode",
-                              "doctor", "portal", "update", "help"}, parsed)
+                              "doctor", "portal", "update", "help", "resume"}, parsed)
         self.assertIn('"${1:-}" = "setup"', (REPO / "bin" / "butler").read_text())
+        # `butler resume` works before Python exists too: it's what the Butler app runs.
+        self.assertIn('"${1:-}" = "resume"', (REPO / "bin" / "butler").read_text())
 
     def test_claude_code_starts_ask_first_in_the_butler_folder(self):
         """The course and the site promise "Claude asks before it acts" (council #204). Claude Code

@@ -1,7 +1,8 @@
-// The Butler app (~/Applications/Butler.app): the way back to your butler without typing a
-// command. It opens Terminal on ~/Butler/scripts/butler.command, which shows where you are in the
-// course and the one thing to do next. If the Butler folder is gone, it opens the course's help
-// page instead. A compiled binary rather than a script, so it signs and notarizes like the
+// The Butler app (/Applications/Butler.app, or ~/Applications/Butler.app when the account isn't an
+// admin): the way back to your butler without typing a command. It opens Terminal on
+// ~/Butler/scripts/butler.command, which runs `butler resume`: the first run if it isn't finished,
+// else Claude Code on your next course step. If the Butler folder is gone, it opens the course's
+// help page instead. A compiled binary rather than a script, so it signs and notarizes like the
 // Calendar helper (packaging/macos/build-app.sh).
 import Foundation
 
