@@ -96,6 +96,71 @@ class InstallStateTest(unittest.TestCase):
         self.assertEqual(self.state(), ("finished", "welcome-back.command"))
 
 
+class AppPlaceTest(unittest.TestCase):
+    """app_place in scripts/lib/install.sh: where the Butler app goes. system is /Applications,
+    home is ~/Applications."""
+
+    def place(self, admin: str, writable: str, there: str, upgrade: str) -> str:
+        return subprocess.run(["bash", "-c", f'. "{INSTALL_LIB}"; app_place "$@"', "bash", admin, writable, there,
+                               upgrade], capture_output=True, text=True, check=True).stdout.strip()
+
+    def test_every_case(self):
+        cases = {
+            # admin, writable, /Applications/Butler.app, upgrade: place
+            ("yes", "yes", "none", "no"): "system",     # an admin's first install: where Finder shows it
+            ("no", "yes", "none", "no"): "home",        # not an admin: never asks for a password
+            ("no", "no", "none", "no"): "home",
+            ("yes", "no", "none", "no"): "home",        # an admin on a Mac whose /Applications is locked
+            ("yes", "yes", "none", "yes"): "home",      # an upgrade keeps the app in ~/Applications
+            ("yes", "yes", "ours", "yes"): "system",    # ... or in /Applications, kept current there
+            ("yes", "yes", "ours", "no"): "system",
+            ("no", "yes", "ours", "yes"): "system",
+            ("yes", "no", "ours", "yes"): "home",       # can't replace it: the new one stays at home
+        }
+        for admin in ("yes", "no"):
+            for writable in ("yes", "no"):
+                for upgrade in ("yes", "no"):
+                    cases[(admin, writable, "other", upgrade)] = "home"   # never another app's place
+        for args, expected in cases.items():
+            self.assertEqual(self.place(*args), expected, args)
+
+
+class AppBundleIdTest(unittest.TestCase):
+    """app_bundle_id reads the identifier with plutil, or by hand where there's no plutil."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def bundle_id(self, app: Path, path: str | None = None) -> str:
+        env = {**os.environ, **({"PATH": path} if path else {})}
+        return subprocess.run(["/bin/bash", "-c", f'. "{INSTALL_LIB}"; app_bundle_id "$1"', "bash", str(app)],
+                              env=env, capture_output=True, text=True, check=True).stdout.strip()
+
+    def test_with_and_without_plutil(self):
+        tools = self.tmp / "tools"          # tr and sed, and no plutil
+        tools.mkdir()
+        for tool in ("tr", "sed"):
+            (tools / tool).symlink_to(shutil.which(tool))
+        app = make_app(self.tmp / "Butler.app")
+        for path in (None, str(tools)):
+            self.assertEqual(self.bundle_id(app, path), "com.buildyourbutler.butler-app", path)
+            self.assertEqual(self.bundle_id(self.tmp / "Missing.app", path), "", path)
+        (app / "Contents" / "Info.plist").write_bytes(b"bplist00\x00\x01binary")
+        self.assertEqual(self.bundle_id(app, str(tools)), "", "a plist it can't read is not ours")
+
+
+def make_app(path: Path, bundle_id: str = "com.buildyourbutler.butler-app", version: str = "new") -> Path:
+    """A stand-in Butler.app: an XML Info.plist with its identifier, and a binary that names its version."""
+    (path / "Contents" / "MacOS").mkdir(parents=True)
+    (path / "Contents" / "Info.plist").write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+        '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n'
+        f'    <key>CFBundleIdentifier</key>\n    <string>{bundle_id}</string>\n</dict>\n</plist>\n')
+    (path / "Contents" / "MacOS" / "Butler").write_text(f"#!/bin/sh\n# {version}\n")
+    return path
+
+
 class PostinstallTest(unittest.TestCase):
     """packaging/macos/scripts/postinstall, run as Installer runs it for the user (not root), with
     `launchctl` and `open` replaced by recorders. COMMAND_LINE_INSTALL is unset, as in Installer.app."""
@@ -122,9 +187,17 @@ class PostinstallTest(unittest.TestCase):
             f'#!/bin/bash\necho "$*" >> "{self.launchctl}"\n'
             '[ -n "${FAKE_ASUSER_FAILS:-}" ] && exit 5\n'
             '[ "$1" = asuser ] && shift 2 && exec "$@"\nexit 0\n')
-        for f in ("open", "launchctl"):
+        # The Mac's own tools, recorded: membership of the admin group, ditto, and the signature check.
+        (fakebin / "dseditgroup").write_text(
+            f'#!/bin/bash\necho "$*" >> "{self.tmp}/dseditgroup.txt"\n[ -n "${{FAKE_ADMIN:-}}" ]\n')
+        (fakebin / "ditto").write_text('#!/bin/bash\n[ -n "${FAKE_DITTO_FAILS:-}" ] && exit 1\ncp -R "$1" "$2"\n')
+        (fakebin / "codesign").write_text('#!/bin/bash\n[ -z "${FAKE_CODESIGN_FAILS:-}" ]\n')
+        for f in ("open", "launchctl", "dseditgroup", "ditto", "codesign"):
             (fakebin / f).chmod(0o755)
-        self.env = {**os.environ, "HOME": str(self.home), "PATH": f"{fakebin}:/usr/bin:/bin"}
+        self.apps = self.tmp / "Applications"          # stands in for /Applications
+        self.apps.mkdir()
+        self.env = {**os.environ, "HOME": str(self.home), "PATH": f"{fakebin}:/usr/bin:/bin",
+                    "BUTLER_SYSTEM_APPS": str(self.apps)}
         for inherited in ("COMMAND_LINE_INSTALL", "BUTLER_PKG_NO_OPEN"):
             self.env.pop(inherited, None)
 
@@ -191,6 +264,142 @@ class PostinstallTest(unittest.TestCase):
         self.assertFalse(self.opened.exists())
         self.assertFalse(self.launchctl.exists())
         self.assertIn("installed (fresh), from the command line: Terminal not opened", self.log())
+
+    # ---------- the Butler app: /Applications when it may, ~/Applications otherwise ----------
+
+    def lay_app(self, version: str = "new") -> Path:
+        """What the package's payload does: the app in ~/Applications."""
+        return make_app(self.home / "Applications" / "Butler.app", version=version)
+
+    def upgrade(self) -> None:
+        """A household whose first run began: a later install is an upgrade."""
+        (self.butler / "data").mkdir(exist_ok=True)
+        (self.butler / "data" / "first-run-started").write_text("2026-10-12T08:00:00Z\n")
+
+    def binary(self, app: Path) -> str:
+        return (app / "Contents" / "MacOS" / "Butler").read_text()
+
+    def test_an_admin_gets_the_app_in_applications(self):
+        self.lay_app()
+        self.run_postinstall("Bento.pkg", FAKE_ADMIN="1")
+        self.assertIn("# new", self.binary(self.apps / "Butler.app"))
+        self.assertFalse((self.home / "Applications").exists(), "no copy left, and no empty folder")
+        self.assertIn(f"the Butler app is in {self.apps} (moved, from ~/Applications)", self.log())
+        self.assertEqual((self.tmp / "dseditgroup.txt").read_text().split(),
+                         ["-o", "checkmember", "-m", subprocess.run(["id", "-un"], capture_output=True,
+                                                                    text=True).stdout.strip(), "admin"])
+        self.assertEqual([p.name for p in self.apps.iterdir()], ["Butler.app"], "no staging copy left behind")
+
+    def test_the_command_line_first_install_does_the_same(self):
+        """CI and the hosted installer's package path: `installer`, on a household with nothing yet."""
+        self.lay_app()
+        self.run_postinstall("Bento.pkg", FAKE_ADMIN="1", COMMAND_LINE_INSTALL="1")
+        self.assertTrue((self.apps / "Butler.app").exists())
+        self.assertFalse((self.home / "Applications" / "Butler.app").exists())
+
+    def test_not_an_admin_keeps_the_app_in_the_home_folder_without_asking(self):
+        self.lay_app()
+        self.run_postinstall("Bento.pkg")
+        self.assertTrue((self.home / "Applications" / "Butler.app").exists())
+        self.assertEqual(list(self.apps.iterdir()), [])
+        self.assertIn("the Butler app stays in ~/Applications:", self.log())
+        self.assertIn("isn't an admin", self.log())
+        self.assertIn("opened Terminal with first-run.command", self.log(), "and the install goes on")
+
+    @unittest.skipIf(os.geteuid() == 0, "root can write anywhere")
+    def test_a_locked_applications_folder_keeps_the_app_at_home(self):
+        self.lay_app()
+        self.apps.chmod(0o555)
+        self.addCleanup(self.apps.chmod, 0o755)
+        self.run_postinstall("Bento.pkg", FAKE_ADMIN="1")
+        self.assertTrue((self.home / "Applications" / "Butler.app").exists())
+        self.assertIn(f"{self.apps} isn't writable for", self.log())
+
+    def test_an_upgrade_replaces_our_app_in_applications(self):
+        make_app(self.apps / "Butler.app", version="old")
+        self.upgrade()
+        self.lay_app("new")
+        self.run_postinstall("Bento.pkg", FAKE_ADMIN="1", COMMAND_LINE_INSTALL="1")
+        self.assertIn("# new", self.binary(self.apps / "Butler.app"))
+        self.assertFalse((self.home / "Applications" / "Butler.app").exists())
+        self.assertIn("(replaced the older one, from ~/Applications)", self.log())
+        self.assertEqual([p.name for p in self.apps.iterdir()], ["Butler.app"])
+
+    def test_an_upgrade_keeps_an_app_that_was_at_home_at_home(self):
+        """The overnight updater never moves the app a student may have put in the Dock."""
+        self.upgrade()
+        self.lay_app()
+        self.run_postinstall("Bento.pkg", FAKE_ADMIN="1", COMMAND_LINE_INSTALL="1")
+        self.assertTrue((self.home / "Applications" / "Butler.app").exists())
+        self.assertEqual(list(self.apps.iterdir()), [])
+        self.assertIn("the Butler app stays in ~/Applications, where it was", self.log())
+
+    def test_installing_again_from_the_website_moves_an_admins_app_to_applications(self):
+        """Installer.app over a v0.5.0 Butler (the app at home): the student chose to install, so
+        the app goes where Finder shows it."""
+        self.upgrade()
+        self.lay_app()
+        self.run_postinstall("Bento.pkg", FAKE_ADMIN="1")
+        self.assertTrue((self.apps / "Butler.app").exists())
+        self.assertFalse((self.home / "Applications" / "Butler.app").exists())
+
+    def test_another_app_called_butler_is_never_touched(self):
+        for upgrade in (False, True):
+            with self.subTest(upgrade=upgrade):
+                other = self.apps / "Butler.app"
+                shutil.rmtree(other, ignore_errors=True)
+                make_app(other, bundle_id="com.example.someone-elses-butler", version="theirs")
+                if upgrade:
+                    self.upgrade()
+                if not (self.home / "Applications" / "Butler.app").exists():
+                    self.lay_app()
+                self.run_postinstall("Bento.pkg", FAKE_ADMIN="1", **({"COMMAND_LINE_INSTALL": "1"} if upgrade else {}))
+                self.assertIn("# theirs", self.binary(other))
+                self.assertEqual(sorted(p.name for p in self.apps.iterdir()), ["Butler.app"])
+                self.assertTrue((self.home / "Applications" / "Butler.app").exists())
+                self.assertIn("is another app, left alone", self.log())
+
+    def test_a_link_called_butler_is_not_ours_either(self):
+        elsewhere = make_app(self.tmp / "elsewhere" / "Butler.app", version="theirs")
+        (self.apps / "Butler.app").symlink_to(elsewhere)
+        self.lay_app()
+        self.run_postinstall("Bento.pkg", FAKE_ADMIN="1")
+        self.assertTrue((self.apps / "Butler.app").is_symlink())
+        self.assertIn("# theirs", self.binary(elsewhere))
+        self.assertIn("is another app, left alone", self.log())
+
+    def test_a_copy_that_fails_leaves_everything_as_it_was(self):
+        for failure in ("FAKE_DITTO_FAILS", "FAKE_CODESIGN_FAILS"):
+            with self.subTest(failure=failure):
+                shutil.rmtree(self.apps / "Butler.app", ignore_errors=True)
+                make_app(self.apps / "Butler.app", version="old")
+                self.upgrade()
+                if not (self.home / "Applications" / "Butler.app").exists():
+                    self.lay_app()
+                self.run_postinstall("Bento.pkg", FAKE_ADMIN="1", COMMAND_LINE_INSTALL="1", **{failure: "1"})
+                self.assertIn("# old", self.binary(self.apps / "Butler.app"), "the working app stays")
+                self.assertEqual(sorted(p.name for p in self.apps.iterdir()), ["Butler.app"], "no half copy")
+                self.assertTrue((self.home / "Applications" / "Butler.app").exists())
+                self.assertIn(f"copying it to {self.apps} failed", self.log())
+
+    def test_other_apps_in_the_home_applications_folder_stay(self):
+        self.lay_app()
+        make_app(self.home / "Applications" / "Other.app", bundle_id="com.example.other")
+        self.run_postinstall("Bento.pkg", FAKE_ADMIN="1")
+        self.assertEqual([p.name for p in (self.home / "Applications").iterdir()], ["Other.app"])
+
+    def test_app_location_finds_ours_first_in_applications(self):
+        def where() -> str:
+            return subprocess.run(["bash", "-c", f'. "{INSTALL_LIB}"; app_location "$1"', "bash", str(self.home)],
+                                  env=self.env, capture_output=True, text=True, check=True).stdout.strip()
+        self.assertEqual(where(), "")
+        self.lay_app()
+        self.assertEqual(where(), str(self.home / "Applications" / "Butler.app"))
+        make_app(self.apps / "Butler.app", bundle_id="com.example.someone-elses-butler")
+        self.assertEqual(where(), str(self.home / "Applications" / "Butler.app"), "not someone else's")
+        shutil.rmtree(self.apps / "Butler.app")
+        make_app(self.apps / "Butler.app")
+        self.assertEqual(where(), str(self.apps / "Butler.app"))
 
     def test_the_scripts_it_opens_exist_and_are_executable(self):
         for name in ("first-run.command", "welcome-back.command", "butler.command"):

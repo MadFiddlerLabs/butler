@@ -149,10 +149,26 @@ notarized". A run by hand only uploads the package as a build artifact. It publi
   checked by hash, and `scripts/lib/uv.sh`, which pins uv by checksum.
 - It includes the Calendar and Reminders helper (`bin/butler-ek`), prebuilt for Apple silicon and
   Intel and signed. Students never need the Xcode tools.
-- It installs the Butler app in `~/Applications/Butler.app` (`helpers/butler-app/`, built by
-  `packaging/macos/build-app.sh`): a universal binary, signed with Developer ID under the
-  hardened runtime like the Calendar helper, that opens Terminal on `butler`. The package marks
-  it not relocatable, so Installer never moves it into another copy elsewhere on the Mac.
+- It installs the Butler app (`helpers/butler-app/`, built by `packaging/macos/build-app.sh`): a
+  universal binary, signed with Developer ID under the hardened runtime like the Calendar helper,
+  that opens Terminal on `scripts/butler.command`, which runs `butler resume`. That resumes the
+  first run while it isn't finished, and otherwise opens Claude Code on the student's next
+  `/butler-setup` step, exactly as `butler claude` does. The payload lays the app in
+  `~/Applications/Butler.app`, marked not relocatable, so Installer never moves it into another
+  copy elsewhere on the Mac. `postinstall` then places it (`place_app` in `scripts/lib/install.sh`):
+  - **An admin account** (`dseditgroup -o checkmember -m <user> admin`) that can write to
+    `/Applications` gets it in `/Applications/Butler.app`, owned by the student: copied with
+    `ditto`, its signature checked, then swapped in. No password: `/Applications` belongs to the
+    admin group. The copy in `~/Applications` is removed.
+  - **Any other account** keeps it in `~/Applications`.
+  - **A command-line upgrade** (the overnight updater, a rollback) keeps it where it was:
+    replaced in `/Applications` if ours is there, left in `~/Applications` otherwise. Installing
+    again from the website (Installer.app) places it afresh, so an admin's v0.5.0 app moves to
+    `/Applications`.
+  - **Another app at `/Applications/Butler.app`** (another bundle identifier, or a link) is never
+    touched: ours stays in `~/Applications`.
+  - **Anything that fails** (the copy, the signature, the swap) leaves the old app working and
+    ours in `~/Applications`. Nothing fails the install, and `logs/install.log` names the place.
 - Its `postinstall` decides from the Butler folder (`scripts/lib/install.sh`):
   - **fresh** (nothing of the household's yet): takes the butler's name from the package's
     filename and opens the guided first run (`scripts/first-run.command`).
@@ -175,13 +191,18 @@ notarized". A run by hand only uploads the package as a build artifact. It publi
 - `tests/e2e/installer-opens.sh`, in `macos-e2e.yml`'s `package` job: runs the built package's
   postinstall the way Installer.app does (no `COMMAND_LINE_INSTALL`) in the runner's logged-in
   session, and checks that Terminal really ran the first run, then the welcome back over a
-  started first run, then that the Butler app opens `butler`. It can't click through
-  Installer.app itself, so the GUI's own way of running the script stays unproven; the script
-  and its log line are the same.
+  started first run. Then the Butler app: in `/Applications` (the runner's account is an admin),
+  owned by the runner, signature intact, no copy left in `~/Applications`; opened, Terminal runs
+  `butler resume`, which resumes the unfinished first run; with the first run finished, it opens
+  Claude Code (a stub that records its folder and arguments) on Module 1's welcome in ask-first
+  mode. It can't click through Installer.app itself, so the GUI's own way of running the script
+  stays unproven; the script and its log line are the same. A non-admin account, another app
+  called Butler and a failed copy are covered with fakes in `tests/test_packaging.py`.
 - `tests/test_first_run.py` and `tests/test_cli.py`: the guided first run and the `butler`
   command, against a fake account API.
 - `.github/workflows/macos-e2e.yml`, job `package`: builds the package and installs it into the
-  runner's home folder with `installer`, then upgrades it and checks nothing personal changed.
+  runner's home folder with `installer`, then upgrades it and checks nothing personal changed
+  and the Butler app was replaced in `/Applications`, where it was.
 
 - `tests/e2e/signed-update.sh`, run in release.yml as job `signed-update`: the update students
   really get, signed to signed. It installs a published release from GitHub Releases (the latest,

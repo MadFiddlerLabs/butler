@@ -11,6 +11,13 @@ if [ "${1:-}" = "setup" ]; then
   exec "$home/scripts/first-run.sh" "$@"
 fi
 if [ ! -x "$home/.venv/bin/python" ]; then
+  # `butler resume` (what the Butler app runs) goes straight back: before Python exists, that
+  # means the first run.
+  if [ "${1:-}" = "resume" ]; then
+    mkdir -p "$home/logs"
+    printf '%s resume: the first run\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$home/logs/setup.log"
+    exec "$home/scripts/first-run.sh"
+  fi
   # `butler` on its own is the way back: before Python exists, that means the first run.
   if [ $# -eq 0 ] && [ -t 0 ]; then
     echo "Your butler's first run isn't finished yet."

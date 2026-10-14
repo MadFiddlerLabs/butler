@@ -2,7 +2,7 @@
 source_pkgs = butler
 branch = true
 parallel = true
-patch = subprocess
+patch = subprocess, execv
 data_file = ${BUTLER_COVERAGE_DIR-.}/.coverage
 
 [paths]

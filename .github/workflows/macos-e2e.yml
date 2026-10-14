@@ -75,8 +75,11 @@ jobs:
           test ! -e "$b/config/settings.yaml"
           out="$("$b/bin/butler" status || true)"
           echo "$out" | grep -q "butler setup"
-          test -x "$HOME/Applications/Butler.app/Contents/MacOS/Butler"
-      - name: The installer opens Terminal in the logged-in session, as Installer.app runs it
+          # This runner's account is an admin: the Butler app goes to /Applications, with no copy left behind.
+          test -x /Applications/Butler.app/Contents/MacOS/Butler
+          test ! -e "$HOME/Applications/Butler.app"
+          grep "the Butler app is in /Applications" "$b/logs/install.log"
+      - name: The installer opens Terminal in the logged-in session, as Installer.app runs it; the Butler app resumes
         run: tests/e2e/installer-opens.sh "$RUNNER_TEMP/Bento (1).pkg"
       - name: Upgrading keeps the household's files
         run: |
@@ -88,6 +91,12 @@ jobs:
           [ "$(cat "$b/config/settings.yaml")" = "name: Bento" ]
           [ "$(cat "$b/data/household_notes.md")" = "- a note" ]
           [ "$(cat "$b/.butler-name")" = "Bento" ]
+          # The upgrade kept the app current where it was: in /Applications, replaced in place.
+          tail -n 3 "$b/logs/install.log"
+          grep -q "the Butler app is in /Applications (replaced the older one, from ~/Applications)" "$b/logs/install.log"
+          test -x /Applications/Butler.app/Contents/MacOS/Butler
+          test ! -e "$HOME/Applications/Butler.app"
+          codesign --verify --strict /Applications/Butler.app
 
   updates:
     # Over-the-air updates with the real Installer: v0.0.1 → v0.0.2 keeps the household's files

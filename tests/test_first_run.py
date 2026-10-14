@@ -330,6 +330,36 @@ class FirstRunTest(unittest.TestCase):
         proc = h.first_run(["", "", "", "skip", *LESSONS[:4], ""])
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertIn("When you're ready, open Terminal and type: butler claude", proc.stdout)
+        self.assertNotIn("Butler app", proc.stdout, "an install without the package has no app")
+
+    def test_the_end_says_where_the_butler_app_is_and_leaves_the_dock_alone(self):
+        h = self.home()
+        apps = Path(h.env["BUTLER_SYSTEM_APPS"])
+        self.make_app(apps / "Butler.app")
+        proc = h.first_run(["", "", "", "skip", *LESSONS[:4], ""])
+        out = proc.stdout
+        self.assertEqual(proc.returncode, 0, out + proc.stderr)
+        self.assertIn("To come back any time, open the Butler app in your Applications folder. Drag it to the "
+                      "Dock to keep it one click away.", out)
+        self.assertIn("When you're ready, open the Butler app, or open Terminal and type: butler claude", out)
+        self.assertLess(out.index("Butler app in your Applications folder"), out.index("What's next"))
+        script = (REPO / "scripts" / "first-run.sh").read_text()
+        self.assertNotIn("com.apple.dock", script)
+        self.assertNotIn("dockutil", script)
+
+    def test_an_app_in_the_home_folder_is_found_too(self):
+        h = self.home()
+        self.make_app(h.home / "Applications" / "Butler.app")
+        proc = h.first_run(["", "", "", "skip", *LESSONS[:4], ""])
+        self.assertIn("To come back any time, open the Butler app: it's in the Applications folder inside your "
+                      "home folder, and Spotlight finds it too.", proc.stdout)
+
+    @staticmethod
+    def make_app(path: Path) -> None:
+        (path / "Contents").mkdir(parents=True)
+        (path / "Contents" / "Info.plist").write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0">\n<dict>\n'
+            "    <key>CFBundleIdentifier</key>\n    <string>com.buildyourbutler.butler-app</string>\n</dict>\n</plist>\n")
 
 
 class WelcomeBackTest(unittest.TestCase):

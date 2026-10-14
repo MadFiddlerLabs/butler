@@ -5,7 +5,8 @@
 #                                [--app Butler.app] [--sign "Developer ID Installer: … (TEAMID)"]
 #
 # The package installs into the current user's home (~/Butler, and the Butler app that
-# build-app.sh makes into ~/Applications), without an admin password. It carries only tracked
+# build-app.sh makes into ~/Applications), without an admin password. postinstall then moves the
+# app to /Applications when the account is an admin (scripts/lib/install.sh). It carries only tracked
 # files, so an upgrade never touches the household's config, data, projects or budget (all
 # git-ignored). postinstall names the butler from the package's filename and opens the guided
 # first run, or, over an existing Butler, the choice to resume or start fresh. Without --sign the
@@ -51,7 +52,7 @@ install -m 755 "$here/scripts/postinstall" "$work/scripts/postinstall"
 install -m 644 "$repo/scripts/lib/names.sh" "$work/scripts/names.sh"
 install -m 644 "$repo/scripts/lib/install.sh" "$work/scripts/install.sh"
 
-# The app always lands in ~/Applications/Butler.app. Without this, Installer would "relocate" it
+# The app always lands in ~/Applications/Butler.app (postinstall may then move it). Without this, Installer would "relocate" it
 # into any other copy with the same identifier it finds on the Mac.
 pkgbuild --analyze --root "$work/root" "$work/component.plist" >/dev/null
 i=0

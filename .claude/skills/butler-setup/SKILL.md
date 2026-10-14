@@ -379,3 +379,7 @@ done is the next step. If they chose to skip that one, say so and offer the one 
 | `portal.url` is set | phone |
 
 Module 10 is `/butler-tune`, and Module 12 is graduation. When everything's done, say so.
+
+When they stop for the day, tell them how to come back: open the Butler app (in Applications,
+or found with Spotlight), or type `butler resume` in Terminal. Either reopens Claude Code here,
+on their next step.

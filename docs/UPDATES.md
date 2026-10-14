@@ -35,6 +35,8 @@ and minor versions overnight on its own. A major version waits for a yes: the br
 6. **The install.** Installer puts the package in `~/Butler` for the current user, with no
    admin password and no prompts. Personal files are never in a package, so config, data,
    projects and the budget stay as they are. postinstall sees the household and opens nothing.
+   It keeps the Butler app where it was: replaced in `/Applications` if it's there, else in
+   `~/Applications` (docs/RELEASING.md, "What the package does").
 7. **The new code's checks.** In a fresh process, the new version:
    - syncs its Python packages to its own lock (`scripts/bootstrap.sh`, see
      [Dependencies](#dependencies)),

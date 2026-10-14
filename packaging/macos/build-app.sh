@@ -1,7 +1,8 @@
 #!/bin/bash
 # Builds the Butler app for the package: a tiny bundle whose one universal binary opens Terminal on
-# ~/Butler/scripts/butler.command (helpers/butler-app/main.swift). The package installs it in
-# ~/Applications, so students can find their butler again from Launchpad, Spotlight or Finder.
+# ~/Butler/scripts/butler.command (helpers/butler-app/main.swift). The package lays it in
+# ~/Applications and postinstall moves it to /Applications when the account is an admin, so
+# students can find their butler again from Finder, Launchpad or Spotlight.
 # With a signing identity it is signed with Developer ID under the hardened runtime, as the
 # Calendar helper is, so the notarized package carries it; without one, ad hoc.
 #

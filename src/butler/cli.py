@@ -18,6 +18,8 @@ import socket
 import subprocess
 import sys
 import textwrap
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 from . import doctor, progress, setup_settings as ss, updates
@@ -39,6 +41,12 @@ MANNERS = {
              "step, and that I can switch back any time by typing butler claude-mode ask in Terminal"),
 }
 NEXT_CLAUDE_PROMPT = "/butler-setup"
+# Every step done: no next lesson to start, so Claude Code asks what they'd like to change.
+DONE_CLAUDE_PROMPT = (
+    "Hi! My butler is all set up: I've done every setup step of the Build Your Butler course. "
+    "Please greet me in a line or two, in plain words, and ask what I'd like to change or improve. "
+    "Don't change any files yet."
+)
 CLAUDE_WELCOMED = ROOT / "data" / "claude-welcomed"
 # Written by scripts/first-run.sh when the first run is over; the installer reads it too.
 FIRST_RUN_DONE = ROOT / "data" / "first-run-done"
@@ -193,12 +201,20 @@ def _choose_mode(s: dict) -> str:
 
 
 def cmd_claude(args) -> int:
-    dry = args.dry_run or bool(os.environ.get("BUTLER_CLAUDE_DRY_RUN"))
+    return open_claude(args.yes, args.dry_run)
+
+
+def open_claude(yes: bool = False, dry_run: bool = False, opening: str | None = None) -> int:
+    """Claude Code in the Butler folder, in the household's `claude_mode`, on the student's next
+    step: Module 1's welcome the first time, `/butler-setup` after that, and, once every step is
+    done, a question about what to change. Installs Claude Code first if it's missing. `opening`
+    replaces the usual two lines about what opens (`butler resume` says it its own way)."""
+    dry = dry_run or bool(os.environ.get("BUTLER_CLAUDE_DRY_RUN"))
     exe = _claude_path()
     if not exe:
         say("Next, I move into Claude Code: an AI helper that does the rest of the setup with you.")
         say("It needs a paid Claude plan (Pro or Max) and a one-time sign-in in your browser.")
-        if not args.yes:
+        if not yes:
             answer = _ask("Install Claude Code now? Press Enter for yes, or type no: ")
             if answer in {"n", "no"}:
                 say("No problem. When you're ready, type: butler claude")
@@ -216,12 +232,18 @@ def cmd_claude(args) -> int:
                     "and type: butler claude")
                 return 1
     s = ss.load()
-    mode = ss.claude_mode(s) or ("ask" if args.yes else _choose_mode(s))
+    mode = ss.claude_mode(s) or ("ask" if yes else _choose_mode(s))
     progress.report("setup.claude", "started")
     first = not CLAUDE_WELCOMED.exists()
-    prompt = FIRST_CLAUDE_PROMPT.format(manners=MANNERS[mode]) if first else NEXT_CLAUDE_PROMPT
-    say("Opening Claude Code in your Butler folder. If it asks you to sign in, follow the link it shows.")
-    say("It starts with Module 1: Meet Claude Code." if first else "It picks up where you left off in the course.")
+    if first:
+        prompt = FIRST_CLAUDE_PROMPT.format(manners=MANNERS[mode])
+    else:
+        prompt = DONE_CLAUDE_PROMPT if position().stage == "done" else NEXT_CLAUDE_PROMPT
+    if opening:
+        say(f"{opening} If it asks you to sign in, follow the link it shows.")
+    else:
+        say("Opening Claude Code in your Butler folder. If it asks you to sign in, follow the link it shows.")
+        say("It starts with Module 1: Meet Claude Code." if first else "It picks up where you left off in the course.")
     # The flag wins over any settings file, so the student's choice holds whatever else is set.
     argv = [exe, "--permission-mode", ss.PERMISSION_MODES[mode], prompt]
     if dry:
@@ -304,30 +326,48 @@ def first_run_done() -> bool:
     return FIRST_RUN_DONE.exists() or ss.done_steps() == ["town", "adults", "brief"]
 
 
-def where() -> list[str]:
-    """Where the student is in the course and the one thing to do next, in plain words, from the
-    same checks that mark the course (progress.py)."""
+@dataclass
+class Position:
+    """Where the student is in the course, from the same checks that mark it (progress.py)."""
+    who: str                 # the butler's name, ready to start a sentence
+    stage: str               # "first run" (not finished), "claude" (Module 1 next), "course", "done"
+    through: int | None      # the last module done; None during the first run
+    next: int | None         # the module to do next; None when every step is done
+
+
+def position() -> Position:
     who = _butler(ss.load())
     who = who[0].upper() + who[1:]
-    modules = progress.course_modules()
-
-    def module(n: int) -> str:
-        return f"Module {n}, {modules[n]['title']}"
     if not first_run_done():
-        return [f"{who}'s first run isn't finished yet.", "To pick up where you left off, type: butler setup"]
+        return Position(who, "first run", None, 0)
     if not CLAUDE_WELCOMED.exists():
-        return [f"{who} is set up through {module(0)}.", f"Next: {module(1)}. Type: butler claude"]
+        return Position(who, "claude", 0, 1)
     state = progress.load()
     done = set(state["steps"]) | set(progress.passed(progress.mac_folder(), skip=set(state["steps"])))
     through = 1
     for step, entry in progress.course_map().items():
         if step not in done:
-            n = entry["module"]
-            return [f"{who} is set up through {module(through)}.", f"Next: {module(n)}. Type: butler claude",
-                    f"The lesson page: {progress.module_url(n)}"]
+            return Position(who, "course", through, entry["module"])
         through = entry["module"]
-    return [f"{who} is set up through {module(through)}. Well done.",
-            f"Next: {module(12)}, on the course website: {progress.module_url(12)}"]
+    return Position(who, "done", through, None)
+
+
+def _module(n: int) -> str:
+    return f"Module {n}, {progress.course_modules()[n]['title']}"
+
+
+def where(p: Position | None = None) -> list[str]:
+    """Where the student is in the course and the one thing to do next, in plain words."""
+    p = p or position()
+    if p.stage == "first run":
+        return [f"{p.who}'s first run isn't finished yet.", "To pick up where you left off, type: butler setup"]
+    if p.stage == "done":
+        return [f"{p.who} is set up through {_module(p.through)}. Well done.",
+                f"Next: {_module(12)}, on the course website: {progress.module_url(12)}"]
+    lines = [f"{p.who} is set up through {_module(p.through)}.", f"Next: {_module(p.next)}. Type: butler claude"]
+    if p.stage == "course":
+        lines.append(f"The lesson page: {progress.module_url(p.next)}")
+    return lines
 
 
 def cmd_home(args) -> int:
@@ -336,11 +376,46 @@ def cmd_home(args) -> int:
         say(line)
     if not first_run_done() and sys.stdin.isatty():
         if _ask("Pick up where you left off now? Press Enter for yes, or type no: ") not in {"n", "no"}:
-            first_run = ROOT / "scripts" / "first-run.sh"
-            os.execv(str(first_run), [str(first_run)])
+            _first_run()
+    say("To go straight there in one step, open the Butler app, or type: butler resume")
     say()
     print_help()
     return 0
+
+
+def _first_run() -> None:
+    first_run = ROOT / "scripts" / "first-run.sh"
+    os.execv(str(first_run), [str(first_run)])
+
+
+def _note(line: str) -> None:
+    """One line in logs/setup.log, so `/butler-doctor` (and the end-to-end test) can tell what the
+    Butler app opened."""
+    try:
+        (ROOT / "logs").mkdir(exist_ok=True)
+        with open(ROOT / "logs" / "setup.log", "a") as f:
+            f.write(f"{datetime.now(timezone.utc):%Y-%m-%dT%H:%M:%SZ} {line}\n")
+    except OSError:
+        pass
+
+
+def cmd_resume(args) -> int:
+    """`butler resume`, what the Butler app runs: straight to where the student left off. The
+    first run while it isn't finished; after it, Claude Code on their next step, exactly as
+    `butler claude` opens it."""
+    p = position()
+    if p.stage == "first run":
+        _note("resume: the first run")
+        _first_run()
+    if p.stage == "done":
+        say(f"{p.who} is set up through {_module(p.through)}. Well done.")
+        opening = "Opening Claude Code, so you can tell it what you'd like to change."
+        _note("resume: Claude Code, every step done")
+    else:
+        say(f"{p.who} is set up through {_module(p.through)}.")
+        opening = f"Opening Claude Code for {_module(p.next)}."
+        _note(f"resume: Claude Code, Module {p.next}")
+    return open_claude(opening=opening)
 
 
 def cmd_progress(args) -> int:
@@ -448,6 +523,7 @@ COMMANDS = [
     ]),
     ("Every day", [
         ("butler", "where you are in the course, and what's next"),
+        ("butler resume", "go straight to where you left off (the Butler app does this)"),
         ("butler status", "what's set up, and what's next"),
         ("butler progress", "what your butler has told the course"),
         ("butler portal", "open the portal in this Mac's browser"),
@@ -506,6 +582,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("names", nargs="*")
     sub.add_parser("brief")
     sub.add_parser("status")
+    sub.add_parser("resume")
     sub.add_parser("progress")
     p = sub.add_parser("claude")
     p.add_argument("--yes", action="store_true")
@@ -521,7 +598,7 @@ def main(argv: list[str] | None = None) -> int:
     handlers = {"name": cmd_name, "town": cmd_town, "adults": cmd_adults, "brief": cmd_brief,
                 "status": cmd_status, "progress": cmd_progress, "claude": cmd_claude,
                 "claude-mode": cmd_claude_mode, "doctor": cmd_doctor, "update": cmd_update,
-                "portal": cmd_portal, None: cmd_home}
+                "portal": cmd_portal, "resume": cmd_resume, None: cmd_home}
     words = sys.argv[1:] if argv is None else argv
     try:
         args = parser.parse_args(words)

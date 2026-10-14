@@ -16,7 +16,7 @@ from unittest import mock
 
 from butler import cli, devices
 from fakes.account_api import FakeAccountAPI
-from fakes.setup_home import SetupHome
+from fakes.setup_home import REPO, SetupHome
 
 
 class CliTest(unittest.TestCase):
@@ -290,7 +290,7 @@ class HelpTest(unittest.TestCase):
 
     def check(self, lines: list[str], width: int) -> None:
         commands = re.compile(r"butler(?: (?:setup|name|town|adults|brief|claude-mode|claude|status|progress|"
-                              r"portal|update|doctor|help)\b)?")
+                              r"resume|portal|update|doctor|help)\b)?")
         for line in lines:
             self.assertLessEqual(len(line), width, line)
         # Which command each line starts with: the longest one it begins with, then a space or nothing.
@@ -332,6 +332,132 @@ class HelpTest(unittest.TestCase):
         parsed = set(re.findall(r'add_parser\("([a-z-]+)"', source))
         listed = {c.split()[1] for c in self.COMMANDS if " " in c}
         self.assertEqual(parsed | {"setup"}, listed, "`butler setup` is bin/butler's own")
+
+
+class ResumeTest(unittest.TestCase):
+    """`butler resume`, what the Butler app runs: straight to where the student left off, with the
+    first run or Claude Code really started (a recorder stands in for each)."""
+
+    STEPS = ["install", "calendar", "brain", "inbox", "replies", "money", "projects", "letters", "phone"]
+
+    def setUp(self):
+        self.home = SetupHome(None)
+        self.addCleanup(self.home.close)
+        self.home.bootstrap()
+        self.launched = self.home.stub_claude()
+        # The first run, replaced by a recorder: what matters here is that resume starts it.
+        self.first_run = self.home.tmp / "first-run-started-by.txt"
+        script = self.home.root / "scripts" / "first-run.sh"
+        script.write_text(f'#!/bin/bash\necho "first-run.sh $*" > "{self.first_run}"\n')
+        script.chmod(0o755)
+
+    def finish_first_run(self, mode: str | None = "ask") -> None:
+        self.home.butler("name", "Bento")
+        if mode:
+            self.home.butler("claude-mode", mode)
+        (self.home.root / "data" / "first-run-done").write_text("2026-10-12T08:00:00Z\n")
+
+    def steps_done(self, steps: list[str]) -> None:
+        (self.home.root / "data" / "claude-welcomed").touch()
+        (self.home.root / "data" / "progress.json").write_text(json.dumps(
+            {"steps": {s: "2026-10-13T08:00:00Z" for s in steps}}))
+
+    def claude(self) -> tuple[str, list[str]]:
+        """The folder Claude Code started in, and its arguments."""
+        lines = self.launched.read_text().splitlines()
+        return lines[0], lines[1:]
+
+    def log(self) -> str:
+        return (self.home.root / "logs" / "setup.log").read_text()
+
+    def test_before_the_first_run_ends_it_resumes_the_first_run(self):
+        proc = self.home.butler("resume")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(self.first_run.read_text(), "first-run.sh \n", "no question first: straight there")
+        self.assertFalse(self.launched.exists())
+        self.assertIn("resume: the first run", self.log())
+
+    def test_before_python_exists_it_resumes_the_first_run_too(self):
+        shutil.rmtree(self.home.root / ".venv")
+        proc = self.home.butler("resume")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(self.first_run.read_text(), "first-run.sh \n")
+        self.assertIn("resume: the first run", self.log())
+
+    def test_after_the_first_run_it_opens_claude_code_on_module_1(self):
+        self.finish_first_run(mode=None)
+        proc = self.home.butler("resume", stdin="\n")        # Enter: ask first, as `butler claude` asks
+        out = proc.stdout
+        self.assertEqual(proc.returncode, 0, out + proc.stderr)
+        self.assertIn("Bento is set up through Module 0, Your first two minutes.", out)
+        self.assertIn("One choice before Claude Code opens.", out)
+        self.assertIn("Opening Claude Code for Module 1, Meet Claude Code. If it asks you to sign in, "
+                      "follow the link it shows.", out)
+        self.assertNotIn("Opening Claude Code in your Butler folder", out, "said once, not twice")
+        folder, argv = self.claude()
+        self.assertEqual(Path(folder).resolve(), self.home.root.resolve())
+        self.assertEqual(argv, ["--permission-mode", "default",
+                                cli.FIRST_CLAUDE_PROMPT.format(manners=cli.MANNERS["ask"])])
+        self.assertTrue((self.home.root / "data" / "claude-welcomed").exists())
+        self.assertIn("resume: Claude Code, Module 1", self.log())
+        self.assertFalse(self.first_run.exists())
+
+    def test_in_the_course_it_opens_claude_code_on_the_next_step_in_the_chosen_mode(self):
+        self.finish_first_run(mode="auto")
+        self.steps_done(["install", "calendar"])
+        proc = self.home.butler("resume")
+        out = proc.stdout
+        self.assertEqual(proc.returncode, 0, out + proc.stderr)
+        self.assertIn("Bento is set up through Module 3, Show your butler your calendar.", out)
+        self.assertIn("Opening Claude Code for Module 4, Give your butler a brain.", out)
+        self.assertEqual(self.claude()[1], ["--permission-mode", "auto", cli.NEXT_CLAUDE_PROMPT])
+        self.assertIn("resume: Claude Code, Module 4", self.log())
+        # `butler claude` starts it exactly the same way.
+        self.launched.unlink()
+        self.home.butler("claude")
+        self.assertEqual(self.claude()[1], ["--permission-mode", "auto", cli.NEXT_CLAUDE_PROMPT])
+
+    def test_a_skipped_step_is_still_next(self):
+        self.finish_first_run()
+        self.steps_done(["install", "calendar", "brain", "inbox", "replies", "projects"])   # no money
+        out = self.home.butler("resume").stdout
+        self.assertIn("Bento is set up through Module 6, Talk to your butler.", out)
+        self.assertIn("Opening Claude Code for Module 7, Your butler keeps the books.", out)
+
+    def test_with_every_step_done_it_asks_what_to_change(self):
+        self.finish_first_run()
+        self.steps_done(self.STEPS)
+        proc = self.home.butler("resume")
+        out = proc.stdout
+        self.assertEqual(proc.returncode, 0, out + proc.stderr)
+        self.assertIn("Bento is set up through Module 11, Your butler on your phone. Well done.", out)
+        self.assertIn("Opening Claude Code, so you can tell it what you'd like to change.", out)
+        self.assertEqual(self.claude()[1], ["--permission-mode", "default", cli.DONE_CLAUDE_PROMPT])
+        self.assertIn("resume: Claude Code, every step done", self.log())
+        self.launched.unlink()
+        self.home.butler("claude")
+        self.assertEqual(self.claude()[1], ["--permission-mode", "default", cli.DONE_CLAUDE_PROMPT])
+
+    def test_without_claude_code_it_offers_to_install_it_as_butler_claude_does(self):
+        self.finish_first_run()
+        (self.home.fakebin / "claude").unlink()
+        self.home.env["BUTLER_CLAUDE_DRY_RUN"] = "1"
+        proc = self.home.butler("resume", stdin="no\n")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("Install Claude Code now?", proc.stdout)
+        self.assertIn("When you're ready, type: butler claude", proc.stdout)
+
+    def test_butler_alone_names_the_one_step_way_back(self):
+        self.finish_first_run()
+        out = self.home.butler().stdout
+        self.assertIn("To go straight there in one step, open the Butler app, or type: butler resume", out)
+        self.assertIn("  butler resume ", out)
+        self.assertFalse(self.launched.exists(), "`butler` alone only tells")
+
+    def test_the_app_runs_butler_resume(self):
+        command = (REPO / "scripts" / "butler.command").read_text()
+        self.assertIn('/../bin/butler" resume', command)
+        self.assertIn("Butler/scripts/butler.command", (REPO / "helpers" / "butler-app" / "main.swift").read_text())
 
 
 class PortalCommandTest(unittest.TestCase):
