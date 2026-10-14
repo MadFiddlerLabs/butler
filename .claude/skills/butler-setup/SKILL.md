@@ -11,12 +11,25 @@ following the Build Your Butler course at buildyourbutler.com, and many have nev
 terminal. The step to run is: **$ARGUMENTS**
 
 If no step was given, work out where they are (see "Where am I?" at the end), tell them in
-one sentence, and offer the next step.
+one sentence, and offer the next step by its module, title and command.
 
 ## How to work with this person
 
-- Read `CLAUDE.md` first. Its hard rules apply throughout.
+- Read `CLAUDE.md` first. Its hard rules apply throughout, and so does "Talking to someone
+  learning with the course".
 - Use plain words. Explain any technical term the first time, in one short sentence.
+- **They decide what Butler gets.** At the start of each step, say in one line what it adds and
+  offer to skip it: every module is optional, and they can come back to it later. Never press
+  for personal details. If they'd rather not share something, accept it, leave that setting
+  empty or at its default, and move on without asking again.
+- **Say which module each question belongs to.** Open every question with the module and a
+  short topic: "Module 3 · Your calendars: which ones should go in the brief?" The module is in
+  each step's heading below; the install step also checks what the Setup Module set up, and
+  says which questions those are. A question without its module leaves people unsure where
+  they are in the course.
+- **End each step with its "Next:" line**, as written at the end of each step below. It names
+  the module, its title and the command, for example "Next: Module 3, Show your butler your
+  calendar (`/butler-setup calendar`)."
 - Do one thing at a time. Say what you're about to do and what they'll see.
 - Don't show long command output. Summarize it in a sentence and keep the details to yourself.
 - Ask for choices with AskUserQuestion, and for names in a plain question.
@@ -55,10 +68,11 @@ Examples you show are invented (the Johnsons and their butler Bento), and you sa
 The win: their household, complete. Their butler knows everyone, the town, the news they want,
 and their first brief looks like theirs.
 
-Students reach this step after Module 0 ("Your first two minutes", the guided first run the
-download opens: email, `butler town`, `butler adults`, `butler brief`) and Module 1 ("Meet
-Claude Code", `butler claude`). So usually their butler is named, `config/settings.yaml` has
-their town and adults, and a brief exists in `out/preview/`. Start by reading the settings and
+Students reach this step after the Setup Module (the course's name for Module 0, "Your first
+two minutes": the guided first run the download opens, with email, `butler town`,
+`butler adults` and `butler brief`) and Module 1 ("Meet Claude Code", `butler claude`). So
+usually their butler is named, `config/settings.yaml` has their town and adults, and a brief
+exists in `out/preview/`. Start by reading the settings and
 running `butler status`. Say warmly what's already done. Then review it with them and complete
 what the first run skips: everyone else in the household (children, a nanny, a carer), nicknames,
 the news. The `butler` command writes the same settings this step does
@@ -69,16 +83,22 @@ If they never ran the first run, do the whole step below.
    missing, run `scripts/bootstrap.sh`. It downloads Python with uv, takes a minute or two,
    and needs no Xcode tools.
 2. If `config/settings.yaml` exists, ask whether to update it or start over.
-3. Interview, in small friendly groups:
-   1. **Your butler's name.** It signs every email and answers to it in Siri. Offer three
-      playful ideas and let them pick their own. It's the fun part, so give it a moment.
-   2. **The adults** the emails are for: first names. Their email addresses come later.
-   3. **Everyone else** whose events matter: children, a nanny, a carer. First names only.
-   4. **Town.** Work out the timezone and the weather coordinates. State them and let them
-      correct you. Celsius or Fahrenheit.
-   5. **News.** Their local paper first: find its feed and check it returns headlines. Then
-      the wider world, and the language for summaries. Swap out the example regions they
-      don't want.
+3. Interview, in small friendly groups. The name, the adults and the town are what the Setup
+   Module set up, so when you check or ask about them, open with "Setup Module ·". The rest is
+   new in Module 2, so open with "Module 2 ·". For example: "Setup Module · Where you live: your
+   settings say Lisbon, so 7 a.m. there is 2 a.m. in New York. Is Lisbon right?"
+   1. **Your butler's name** ("Setup Module · Your butler's name:"). It signs every email and
+      answers to it in Siri. Offer three playful ideas and let them pick their own. It's the
+      fun part, so give it a moment.
+   2. **The adults** ("Setup Module · The adults:") the emails are for: first names. Their
+      email addresses come later.
+   3. **Everyone else** ("Module 2 · Everyone at home:") whose events matter: children, a
+      nanny, a carer. First names only, and only the people they want in the brief.
+   4. **Town** ("Setup Module · Where you live:"). Work out the timezone and the weather
+      coordinates. State them and let them correct you. Celsius or Fahrenheit.
+   5. **News** ("Module 2 · Your news:"). Their local paper first: find its feed and check it
+      returns headlines. Then the wider world, and the language for summaries. Swap out the
+      example regions they don't want.
 4. Write `config/settings.yaml` from `config/settings.example.yaml`. Keep its comments.
    - Set `name`, `email.sender_name` (the butler's name), `timezone`, `weather`,
      `household.place` and `reminders.todo_list` (the butler's name).
@@ -92,6 +112,8 @@ If they never ran the first run, do the whole step below.
 6. Run `./run.sh preview`. It opens the brief in their browser. Point out their butler's name
    at the top, the weather and the headlines. The footer says what's "not connected yet":
    that's the rest of the course.
+
+Next: Module 3, Show your butler your calendar (`/butler-setup calendar`).
 
 ## calendar (Module 3: Show your butler your calendar)
 
@@ -116,6 +138,8 @@ The win: the preview shows their real day, and their to-dos.
 7. Update `calendar.include`, `holidays`, `write_to` and `people[].calendars` / `aliases`.
 8. Check: the config test passes, then `./run.sh preview`. Today's events appear per person.
 
+Next: Module 4, Give your butler a brain (`/butler-setup brain`).
+
 ## brain (Module 4: Give your butler a brain)
 
 The win: Claude writes the news summaries and notes on what to prepare for.
@@ -137,10 +161,14 @@ The win: Claude writes the news summaries and notes on what to prepare for.
 6. Check it's there without printing it:
    `security find-generic-password -s butler-anthropic >/dev/null && echo ok`
 7. Ask for two or three sentences about the household for `household.about`: who lives
-   there, work, what's going on. Remind them it goes to Claude, so no ID numbers.
+   there, work, what's going on. Remind them it goes to Claude, so no ID numbers. They choose
+   how much to say. One plain sentence ("Two adults and a daughter in Lisbon.") is enough for
+   the course to count Module 4.
 8. Ask for one sentence for `news.interests`. It sits next to news from strangers, so no
    names or personal details.
 9. Check: `./run.sh preview`. The news is summarized, and the footer shows no Claude error.
+
+Next: Module 5, Give your butler an inbox (`/butler-setup inbox`).
 
 ## inbox (Module 5: Give your butler an inbox)
 
@@ -177,6 +205,8 @@ The win: the first real morning email, and a daily schedule.
 6. Check: `launchctl list | grep com.buildyourbutler` shows the jobs, and
    `tail -n 5 logs/butler.log` shows a tick within five minutes.
 
+Next: Module 6, Talk to your butler (`/butler-setup replies`).
+
 ## replies (Module 6: Talk to your butler)
 
 The win: "add milk to shopping" works by email and by Siri.
@@ -190,6 +220,8 @@ The win: "add milk to shopping" works by email and by Siri.
    butler's address with the subject set to the butler's name and the message set to the
    Dictated Text; turn "Show Compose Sheet" off. Name it "Tell <butler's name>".
 4. Check: "Hey Siri, Tell <name>", "add eggs to shopping", and the confirmation arrives.
+
+Next: Module 7, Your butler keeps the books (`/butler-setup money`).
 
 ## money (Module 7: Your butler keeps the books)
 
@@ -231,6 +263,8 @@ The win: money in the brief, in three kinds of spending.
    daily categories go in `rules.fixed_lines`. Category names must match the category map.
 9. Check: the full test suite passes, then `./run.sh preview` shows the money section.
 
+Next: Module 8, Projects and paperwork (`/butler-setup projects`).
+
 ## projects (Module 8: Projects and paperwork)
 
 The win: one real household project with steps, and document dates tracked.
@@ -262,6 +296,8 @@ The win: one real household project with steps, and document dates tracked.
 3. Create `data/household_notes.md` with facts they shared that Claude should know.
 4. Check: the project tests pass, and `./run.sh preview` shows "Next up".
 
+Next: Module 9, The Sunday letter (`/butler-setup letters`).
+
 ## letters (Module 9: The Sunday letter)
 
 The win: a weekly letter and a monthly look-back, previewed.
@@ -271,6 +307,9 @@ The win: a weekly letter and a monthly look-back, previewed.
 2. Preview both: `./run.sh weekly --dry-run` and `./run.sh monthly --preview`. Each one
    writes an HTML file in `out/` and says where. Open it and walk through it together.
 3. The schedule already sends them. Nothing more to install.
+
+Next: Module 10, Train your butler (`/butler-tune`), after a week or two of briefs. Then
+Module 11, Your butler on your phone (`/butler-setup phone`).
 
 ## phone (Module 11: Your butler on your phone)
 
@@ -301,11 +340,13 @@ The win: the portal on their phone, for their household only.
    one if it runs out.
 8. Check from their phone: the address opens the portal, not the pairing page.
 
+Next: Module 12, Graduation, on buildyourbutler.com. There's no command: the setup is done.
+
 ## Where am I?
 
 When no step was given, run `bin/butler progress`. It lists each step as done or not, from the
 same checks that mark the course (`src/butler/progress.py`), in this order. The first that isn't
-done is the next step.
+done is the next step. If they chose to skip that one, say so and offer the one after it.
 
 | Done when | Step |
 |---|---|

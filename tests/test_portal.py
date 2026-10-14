@@ -221,6 +221,12 @@ class AccessibleTest(unittest.TestCase):
         self.assertEqual(html.count('aria-current="page"'), 1)
         self.assertIn("nav a[aria-current=page]{color:var(--accent);text-decoration:underline", portal.CSS)
 
+    def test_the_briefs_news_links_follow_the_page_link_color(self):
+        """The brief's "Read" links carry the light link blue inline; the portal swaps in its own
+        --blue, so they stay readable in dark mode."""
+        self.assertEqual(render.LINK, self.LIGHT["blue"])
+        self.assertIn(f'.brief [style*="color:{render.LINK}"]{{color:var(--blue)!important}}', portal.CSS)
+
     def test_list_controls_have_names(self):
         settings = {**SETTINGS, "reminders": {"todo_list": "Johnsons", "shopping_list": "Shopping"}}
         items = [{"id": "r1", "title": "Call the plumber (invented)"}]

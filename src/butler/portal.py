@@ -198,6 +198,7 @@ details.step>summary{color:var(--ink)}
 .brief [style*="color:#1f2328"]{color:var(--ink)!important}
 .brief [style*="color:#656d76"]{color:var(--muted)!important}
 .brief [style*="color:#9a3412"]{color:var(--accent)!important}
+.brief [style*="color:#1f66c1"]{color:var(--blue)!important}
 .brief [style*="#e5e7eb"]{border-color:var(--rule)!important}
 .brief [style*="background:#fdf3e7"]{background:var(--chip)!important}
 /* The emails' "Open" button points here; hide it inside the portal itself. */

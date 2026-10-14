@@ -136,6 +136,43 @@ class OutsideInviteTest(unittest.TestCase):
             self.assertNotIn("invite from outside", render._event_row(own))
 
 
+class NewsLinkTest(unittest.TestCase):
+    """Each story has a visible "Read" link in the link color, to the feed's own link. The bold
+    headline is a link too, but it doesn't look like one. Invented outlet and story."""
+
+    def item(self, link="https://news.example.com/lisbon/trams"):
+        story = SimpleNamespace(region="local", source="Lisbon Example Times", link=link)
+        return {"story": story, "headline": "Trams return to the hills", "summary": "Line 28 runs again."}
+
+    def test_a_visible_read_link_after_the_source(self):
+        html = render.news_item_html(self.item())
+        self.assertIn('Lisbon Example Times</span> · <a href="https://news.example.com/lisbon/trams" '
+                      f'style="color:{render.LINK};font-size:13px"', html)
+        self.assertIn(">Read</a></p>", html)
+        self.assertIn('aria-label="Read: Trams return to the hills"', html)
+
+    def test_the_headline_stays_a_link(self):
+        html = render.news_item_html(self.item())
+        self.assertIn('<a href="https://news.example.com/lisbon/trams" '
+                      f'style="color:{render.INK};font-weight:600;text-decoration:none">Trams return', html)
+        self.assertEqual(html.count('href="https://news.example.com/lisbon/trams"'), 2)
+
+    def test_only_the_feeds_web_link(self):
+        for bad in ("", "javascript:alert(1)", "mailto:pat@example.com"):
+            html = render.news_item_html(self.item(bad))
+            self.assertNotIn("<a ", html, bad)
+            self.assertNotIn(">Read<", html, bad)
+            self.assertIn("<strong", html, bad)
+
+    def test_the_link_color_is_readable(self):
+        self.assertGreaterEqual(render.contrast(render.LINK, render.PAPER), 4.5)
+
+    def test_the_text_version_keeps_the_url(self):
+        brief = render.Brief(day=date(2026, 10, 19), agenda=None, prep=[], news=[self.item()],
+                             region_labels={"local": "Lisbon"})
+        self.assertIn("    https://news.example.com/lisbon/trams", render.to_text(brief))
+
+
 class ReadableTest(unittest.TestCase):
     """Accessibility: text colors reach 4.5:1 on the email's paper, and the email page has a
     language and a title."""

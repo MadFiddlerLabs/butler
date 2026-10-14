@@ -46,6 +46,24 @@ class MappingTest(unittest.TestCase):
                 seen.append(lesson)
         self.assertEqual(len(seen), len(set(seen)))
 
+    def test_each_step_ends_by_naming_the_next_module_and_command(self):
+        """A newcomer couldn't tell where a step sat in the course. Each step's "Next:" line names
+        the next step's module and its command; the last one names graduation."""
+        skill = (REPO / ".claude" / "skills" / "butler-setup" / "SKILL.md").read_text()
+        sections = re.split(r"(?m)^## ", skill)
+        body = {s.split(" ", 1)[0]: s for s in sections}
+        for step, after in zip(COURSE_STEPS, COURSE_STEPS[1:]):
+            self.assertIn("\nNext: Module ", body[step], step)
+            self.assertIn(f"Module {MAP[after]['module']}, ", body[step], step)
+            self.assertIn(f"(`/butler-setup {after}`)", body[step], step)
+        self.assertIn("\nNext: Module 12, Graduation", body[COURSE_STEPS[-1]])
+
+    def test_the_skill_lets_them_skip_and_labels_questions(self):
+        skill = (REPO / ".claude" / "skills" / "butler-setup" / "SKILL.md").read_text()
+        self.assertIn("offer to skip it", skill)
+        self.assertIn("Never press\n  for personal details", skill)
+        self.assertIn('"Setup Module · Where you live:"', skill)
+
     def test_the_skill_tells_claude_to_confirm_each_step(self):
         skill = (REPO / ".claude" / "skills" / "butler-setup" / "SKILL.md").read_text()
         self.assertTrue("bin/butler progress" in skill, "the skill never runs bin/butler progress")

@@ -97,6 +97,29 @@ the portal's test client.
   workbook, `data/household_notes.md`). Change code only for something config can't express.
 - After any change: run the tests and a dry run.
 
+## Talking to someone learning with the course
+
+This applies when you're talking to a student of the Build Your Butler course: they opened you
+with `butler claude`, run `/butler-setup`, or say they're new to this. Many have never used a
+terminal. It doesn't apply to developers.
+
+- Keep the first welcome short. Say what you are, what you can do in this folder, and that you
+  always ask before you change, send or install anything. Say each thing once: no list that
+  repeats what you just said.
+- When they ask about files or folders, start with "You'll rarely need to open these yourself.
+  Just ask me." Give the detail after that, and only if they want it.
+- Explain a technical term in plain words the first time it comes up. For example:
+  - Keychain: the Mac's built-in password safe.
+  - The settings file (`config/settings.yaml`): a plain-text list of your choices.
+  - launchd: the Mac's scheduler, which runs your butler each morning.
+  - A dry run: a practice run that sends nothing.
+  - Terminal: the window where you type commands.
+  - An API key: a password that lets your butler use Claude, billed by what it uses.
+  - A folder: what Finder shows; `~/Butler` is the Butler folder in your home folder.
+- Use short sentences. Show no tables unless they ask for one.
+- The student decides what Butler gets. Any module can be skipped. When they say "I'd rather
+  not share that", accept it, leave that part empty and move on. Don't ask again.
+
 ## When developing Butler
 
 - Keep household specifics out of code. Anything one family needs and another doesn't is a
