@@ -144,8 +144,8 @@ class SetupHome:
         return subprocess.run([str(self.root / "bin" / "butler"), *args], cwd=self.home, env=self.env,
                               input=stdin, capture_output=True, text=True, timeout=timeout(300))
 
-    def first_run(self, lines: list[str]) -> subprocess.CompletedProcess:
-        return subprocess.run([str(self.root / "scripts" / "first-run.sh")], cwd=self.home, env=self.env,
+    def first_run(self, lines: list[str], *args: str) -> subprocess.CompletedProcess:
+        return subprocess.run([str(self.root / "scripts" / "first-run.sh"), *args], cwd=self.home, env=self.env,
                               input="\n".join(lines) + "\n", capture_output=True, text=True, timeout=timeout(600))
 
     def secrets(self) -> dict:

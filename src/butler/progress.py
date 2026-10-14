@@ -36,8 +36,19 @@ log = logging.getLogger("butler")
 
 
 def course_map() -> dict[str, dict]:
-    """{step: {"module": n, "lessons": [ids]}} in course order."""
+    """{step: {"module": n, "url": its page, "lessons": [ids]}} in course order."""
     return json.loads(MAP_FILE.read_text())["steps"]
+
+
+def course_modules() -> dict[int, dict]:
+    """{n: {"slug", "title"}} for every module, as the course names them."""
+    return {int(n): m for n, m in json.loads(MAP_FILE.read_text())["modules"].items()}
+
+
+def module_url(n: int) -> str:
+    """A module's page on the course website, from the same data the contract check compares."""
+    site = json.loads(MAP_FILE.read_text())["site"]
+    return f"{site}/course/{course_modules()[n]['slug']}/"
 
 
 # ---------- what the checks can see ----------

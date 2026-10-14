@@ -16,13 +16,31 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+# Open-Meteo's answers, in its order (the biggest town first) and shape (admin1 is the state or
+# region). Springfield and Paris are the course's own examples (Module 0): the biggest one is the
+# wrong one for "Springfield, Illinois" and "Paris, Texas". A town whose other name matches
+# (Palmyra for "Springfield") comes back too, as it does from the real API.
 TOWNS = {
-    "lisbon": [{"name": "Lisbon", "country": "Portugal", "country_code": "PT", "latitude": 38.71667,
-                "longitude": -9.13333, "timezone": "Europe/Lisbon"},
-               {"name": "Lisbon", "country": "United States", "country_code": "US", "latitude": 44.03,
-                "longitude": -70.1, "timezone": "America/New_York"}],
-    "springfield": [{"name": "Springfield", "country": "United States", "country_code": "US",
-                     "latitude": 39.8, "longitude": -89.64, "timezone": "America/Chicago"}],
+    "lisbon": [{"name": "Lisbon", "country": "Portugal", "country_code": "PT", "admin1": "Lisbon",
+                "latitude": 38.71667, "longitude": -9.13333, "timezone": "Europe/Lisbon"},
+               {"name": "Lisbon", "country": "United States", "country_code": "US", "admin1": "Maine",
+                "latitude": 44.03, "longitude": -70.1, "timezone": "America/New_York"}],
+    "springfield": [
+        {"name": "Springfield", "country": "United States", "country_code": "US", "admin1": "Missouri",
+         "admin2": "Greene", "latitude": 37.21533, "longitude": -93.29824, "timezone": "America/Chicago"},
+        {"name": "Springfield", "country": "United States", "country_code": "US", "admin1": "Illinois",
+         "admin2": "Sangamon", "latitude": 39.80172, "longitude": -89.64371, "timezone": "America/Chicago"},
+        {"name": "Springfield", "country": "United States", "country_code": "US", "admin1": "Massachusetts",
+         "admin2": "Hampden", "latitude": 42.10148, "longitude": -72.58981, "timezone": "America/New_York"},
+        {"name": "Palmyra", "country": "United States", "country_code": "US", "admin1": "Missouri",
+         "latitude": 39.79421, "longitude": -91.52321, "timezone": "America/Chicago"}],
+    "paris": [
+        {"name": "Paris", "country": "France", "country_code": "FR", "admin1": "Île-de-France Region",
+         "latitude": 48.85341, "longitude": 2.3488, "timezone": "Europe/Paris"},
+        {"name": "Paris", "country": "United States", "country_code": "US", "admin1": "Texas",
+         "admin2": "Lamar", "latitude": 33.66094, "longitude": -95.55551, "timezone": "America/Chicago"},
+        {"name": "Paris", "country": "United States", "country_code": "US", "admin1": "Tennessee",
+         "latitude": 36.302, "longitude": -88.32671, "timezone": "America/Chicago"}],
 }
 
 

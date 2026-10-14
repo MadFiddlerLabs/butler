@@ -18,6 +18,12 @@ def main() -> None:
     (ROOT / "logs").mkdir(exist_ok=True)
     logging.basicConfig(filename=ROOT / "logs" / "butler.log", level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s")
+    if not (ROOT / "config" / "settings.yaml").exists():
+        # Without the household's own settings, everything would run on the invented example
+        # household. That happens after "Start fresh" moves the settings to a backup while the
+        # schedule still runs: wait quietly for the new ones, and send nothing.
+        log.info("tick: no config/settings.yaml yet, so nothing to do")
+        return
     try:
         mailer.flush(load_settings())   # anything Gmail refused earlier; hourly while it keeps refusing
     except Exception:

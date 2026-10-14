@@ -8,7 +8,7 @@ import os
 import subprocess
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
@@ -63,6 +63,7 @@ def fresh() -> dict:
     s["portal"].update(url="", allowed_logins=[], people={})
     s["llm"].pop("monthly_limit", None)    # theirs, from the Console: /butler-setup brain asks
     s.pop("weather", None)
+    s.pop("claude_mode", None)              # theirs to choose: `butler claude` asks once
     for key in OPTIONAL_FEATURES:
         s.pop(key, None)
     return s
@@ -107,32 +108,111 @@ class Place:
     latitude: float
     longitude: float
     timezone: str
+    region: str = ""                                   # Open-Meteo's admin1: a state, province or region
+    others: list[str] = field(default_factory=list)    # other towns of the name: "Springfield, Illinois"
+
+    def label(self) -> str:
+        """"Springfield, Illinois, United States": enough to tell it from the others."""
+        return ", ".join(p for p in (self.name, self.region, self.country) if p)
+
+
+# Open-Meteo names US states in full; people often type the two letters ("Paris, TX").
+US_STATES = {
+    "al": "alabama", "ak": "alaska", "az": "arizona", "ar": "arkansas", "ca": "california", "co": "colorado",
+    "ct": "connecticut", "de": "delaware", "dc": "district of columbia", "fl": "florida", "ga": "georgia",
+    "hi": "hawaii", "id": "idaho", "il": "illinois", "in": "indiana", "ia": "iowa", "ks": "kansas",
+    "ky": "kentucky", "la": "louisiana", "me": "maine", "md": "maryland", "ma": "massachusetts",
+    "mi": "michigan", "mn": "minnesota", "ms": "mississippi", "mo": "missouri", "mt": "montana",
+    "ne": "nebraska", "nv": "nevada", "nh": "new hampshire", "nj": "new jersey", "nm": "new mexico",
+    "ny": "new york", "nc": "north carolina", "nd": "north dakota", "oh": "ohio", "ok": "oklahoma",
+    "or": "oregon", "pa": "pennsylvania", "ri": "rhode island", "sc": "south carolina", "sd": "south dakota",
+    "tn": "tennessee", "tx": "texas", "ut": "utah", "vt": "vermont", "va": "virginia", "wa": "washington",
+    "wv": "west virginia", "wi": "wisconsin", "wy": "wyoming",
+}
+
+
+def _names(x: dict) -> set[str]:
+    """What a part after a comma may say to pick this result: its country or country code, its
+    state or region (with or without a trailing "Region"), or its county."""
+    names = {str(x.get(k) or "").lower() for k in ("country", "country_code", "admin1", "admin2")}
+    names |= {n.removesuffix(" region") for n in names}
+    return names - {""}
+
+
+def _matches(x: dict, part: str) -> bool:
+    part = part.lower()
+    names = _names(x)
+    return part in names or US_STATES.get(part, "") in names
+
+
+def _short(x: dict) -> str:
+    return ", ".join(p for p in (x["name"], x.get("admin1") or x.get("country") or "") if p)
 
 
 def find_town(query: str) -> Place | None:
-    """Looks a town up with Open-Meteo's free geocoding (no key). "Lisbon, Portugal" picks the
-    Lisbon in that country."""
-    town, _, country = (part.strip() for part in query.partition(","))
-    params = urllib.parse.urlencode({"name": town, "count": 10, "language": "en", "format": "json"})
+    """Looks a town up with Open-Meteo's free geocoding (no key). Each part after a comma narrows
+    it down: "Springfield, Illinois" and "Paris, TX" by state or region, "Lisbon, Portugal" by
+    country. Otherwise the biggest town of that name wins, so the Place names the others too."""
+    town, *rest = [part.strip() for part in query.split(",")]
+    rest = [part for part in rest if part]
+    params = urllib.parse.urlencode({"name": town, "count": 20, "language": "en", "format": "json"})
     with urllib.request.urlopen(f"{GEOCODE_URL}?{params}", timeout=10) as r:
         results = json.load(r).get("results") or []
-    if country:
-        wanted = country.lower()
-        results = [x for x in results
-                   if wanted in (x.get("country", "").lower(), x.get("country_code", "").lower())] or results
+    # Open-Meteo also returns towns whose other names match ("Springfield" finds Palmyra).
+    results = [x for x in results if x.get("name", "").lower() == town.lower()] or results
+    if rest:
+        results = [x for x in results if all(_matches(x, part) for part in rest)] or results
     if not results:
         return None
     x = results[0]
-    return Place(x["name"], x.get("country", ""), x.get("country_code", ""),
-                 x["latitude"], x["longitude"], x.get("timezone") or "UTC")
+    others = []
+    for o in results[1:]:
+        if _short(o) != _short(x) and _short(o) not in others:
+            others.append(_short(o))
+    return Place(x["name"], x.get("country", ""), x.get("country_code", ""), x["latitude"], x["longitude"],
+                 x.get("timezone") or "UTC", x.get("admin1") or "", others[:2])
 
 
 def set_town(s: dict, place: Place) -> None:
+    """The town, its timezone and the weather's place. The rest of the weather block stays, the
+    unit too, unless the town is in another country now: then it's that country's usual unit."""
+    old = s.get("weather") or {}
     s["timezone"] = place.timezone
     s["household"]["place"] = place.name
-    s["weather"] = {"place": place.name, "latitude": round(place.latitude, 2),
-                    "longitude": round(place.longitude, 2),
-                    "unit": "fahrenheit" if place.country_code in FAHRENHEIT_COUNTRIES else "celsius"}
+    unit = old.get("unit")
+    if not unit or old.get("country", place.country_code) != place.country_code:
+        unit = "fahrenheit" if place.country_code in FAHRENHEIT_COUNTRIES else "celsius"
+    s["weather"] = {**old, "place": place.name, "latitude": round(place.latitude, 2),
+                    "longitude": round(place.longitude, 2), "unit": unit, "country": place.country_code}
+
+
+CLAUDE_MODES = ("ask", "auto")
+# Claude Code's names for them (code.claude.com/docs/en/permission-modes): `default`, shown as
+# "manual mode on", checks in before each change; `auto` has a safety check review actions instead.
+PERMISSION_MODES = {"ask": "default", "auto": "auto"}
+
+
+def claude_mode(s: dict) -> str | None:
+    """How Claude Code works in the Butler folder, "ask" or "auto", or None when not chosen yet."""
+    mode = str(s.get("claude_mode") or "").strip().lower()
+    return mode if mode in CLAUDE_MODES else None
+
+
+def done_steps(root: Path = ROOT) -> list[str]:
+    """The first run's lessons already done, so scripts/first-run.sh can skip them: "town",
+    "adults" and "brief"."""
+    try:
+        s = yaml.safe_load((root / "config" / "settings.yaml").read_text()) or {}
+    except (OSError, yaml.YAMLError):
+        s = {}
+    done = []
+    if s.get("weather"):
+        done.append("town")
+    if (s.get("household") or {}).get("adults"):
+        done.append("adults")
+    if first_brief(root) is not None:
+        done.append("brief")
+    return done
 
 
 def has_secret(service: str) -> bool:
@@ -144,3 +224,10 @@ def has_secret(service: str) -> bool:
 def first_brief(root: Path = ROOT) -> Path | None:
     briefs = sorted((root / "out" / "preview").glob("brief-*.html"))
     return briefs[-1] if briefs else None
+
+
+if __name__ == "__main__":
+    # scripts/first-run.sh asks which lessons it can skip, before the `butler` command is needed.
+    import sys
+    if sys.argv[1:] == ["done"]:
+        print(" ".join(done_steps()))

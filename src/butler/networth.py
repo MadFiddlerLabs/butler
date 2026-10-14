@@ -22,6 +22,13 @@ KIND = {"investment": "investments", "depository": "cash", "cash": "cash", "cred
         "real estate": "property value", "other asset": "asset value"}
 
 
+def in_emails(settings: dict) -> bool:
+    """Whether the brief, the weekly letter and the monthly look-back show net worth. On unless
+    `networth.in_emails` is false: some households would rather not see it in their inbox. The
+    snapshots go on either way, so the portal keeps its history."""
+    return (settings.get("networth") or {}).get("in_emails", True) is not False
+
+
 @dataclass
 class Move:
     account: str

@@ -55,11 +55,12 @@ jobs:
           python -m unittest discover -v -s tests -p test_first_run.py
         env:
           PYTHONPATH: src
-      - name: Build the helper and the package
+      - name: Build the helper, the Butler app and the package
         run: |
           packaging/macos/build-helper.sh "$RUNNER_TEMP/butler-ek"
           [ "$(lipo -archs "$RUNNER_TEMP/butler-ek")" = "x86_64 arm64" ]
-          pkg="$(packaging/macos/build-pkg.sh --version v0.0.0-ci --out "$RUNNER_TEMP/dist" --helper "$RUNNER_TEMP/butler-ek")"
+          packaging/macos/build-app.sh "$RUNNER_TEMP/Butler.app" v0.0.0-ci
+          pkg="$(packaging/macos/build-pkg.sh --version v0.0.0-ci --out "$RUNNER_TEMP/dist" --helper "$RUNNER_TEMP/butler-ek" --app "$RUNNER_TEMP/Butler.app")"
           cp "$pkg" "$RUNNER_TEMP/Bento (1).pkg"
       - name: Install it as a student would, into the home folder, without admin rights
         run: |
@@ -74,6 +75,9 @@ jobs:
           test ! -e "$b/config/settings.yaml"
           out="$("$b/bin/butler" status || true)"
           echo "$out" | grep -q "butler setup"
+          test -x "$HOME/Applications/Butler.app/Contents/MacOS/Butler"
+      - name: The installer opens Terminal in the logged-in session, as Installer.app runs it
+        run: tests/e2e/installer-opens.sh "$RUNNER_TEMP/Bento (1).pkg"
       - name: Upgrading keeps the household's files
         run: |
           b="$HOME/Butler"

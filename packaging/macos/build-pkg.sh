@@ -2,22 +2,24 @@
 # Builds the Butler installer package from this checkout's committed files.
 #
 #   packaging/macos/build-pkg.sh --version v1.2.3 [--out dist] [--helper bin/butler-ek]
-#                                [--sign "Developer ID Installer: … (TEAMID)"]
+#                                [--app Butler.app] [--sign "Developer ID Installer: … (TEAMID)"]
 #
-# The package installs into the current user's home (~/Butler), without an admin password. It
-# carries only tracked files, so an upgrade never touches the household's config, data, projects
-# or budget (all git-ignored). postinstall names the butler from the package's filename and opens
-# the guided first run. Without --sign the result is Butler-unsigned.pkg: fine for tests, but
-# macOS warns before opening it.
+# The package installs into the current user's home (~/Butler, and the Butler app that
+# build-app.sh makes into ~/Applications), without an admin password. It carries only tracked
+# files, so an upgrade never touches the household's config, data, projects or budget (all
+# git-ignored). postinstall names the butler from the package's filename and opens the guided
+# first run, or, over an existing Butler, the choice to resume or start fresh. Without --sign the
+# result is Butler-unsigned.pkg: fine for tests, but macOS warns before opening it.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
-version="v0.0.0-dev"; out="$repo/dist"; helper=""; sign=""
+version="v0.0.0-dev"; out="$repo/dist"; helper=""; app=""; sign=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --version) version="$2"; shift 2 ;;
     --out) out="$2"; shift 2 ;;
     --helper) helper="$2"; shift 2 ;;
+    --app) app="$2"; shift 2 ;;
     --sign) sign="$2"; shift 2 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
@@ -41,11 +43,25 @@ printf '%s\n' "$version" > "$stage/.butler-version"
 if [ -n "$helper" ]; then
   install -m 755 "$helper" "$stage/bin/butler-ek"
 fi
+if [ -n "$app" ]; then
+  mkdir -p "$work/root/Applications"
+  ditto "$app" "$work/root/Applications/Butler.app"
+fi
 install -m 755 "$here/scripts/postinstall" "$work/scripts/postinstall"
 install -m 644 "$repo/scripts/lib/names.sh" "$work/scripts/names.sh"
+install -m 644 "$repo/scripts/lib/install.sh" "$work/scripts/install.sh"
 
-pkgbuild --root "$work/root" --identifier com.buildyourbutler.butler --version "$number" \
-  --install-location / --scripts "$work/scripts" --ownership preserve "$work/Butler-component.pkg" >/dev/null
+# The app always lands in ~/Applications/Butler.app. Without this, Installer would "relocate" it
+# into any other copy with the same identifier it finds on the Mac.
+pkgbuild --analyze --root "$work/root" "$work/component.plist" >/dev/null
+i=0
+while plutil -extract "$i" xml1 -o - "$work/component.plist" >/dev/null 2>&1; do
+  plutil -replace "$i.BundleIsRelocatable" -bool NO "$work/component.plist"
+  i=$((i + 1))
+done
+pkgbuild --root "$work/root" --component-plist "$work/component.plist" --identifier com.buildyourbutler.butler \
+  --version "$number" --install-location / --scripts "$work/scripts" --ownership preserve \
+  "$work/Butler-component.pkg" >/dev/null
 sed "s/__VERSION__/$number/" "$here/distribution.xml" > "$work/distribution.xml"
 if [ -n "$sign" ]; then
   name="Butler.pkg"

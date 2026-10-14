@@ -124,6 +124,8 @@ def build(settings: dict, day: date, use_llm: bool, preview_projects: bool = Fal
         except Exception as e:
             log.exception("net worth failed")
             problems.append(f"net worth unavailable ({_short(e)})")
+        if not networth.in_emails(settings):
+            nw_line = ""     # the snapshot and the budget's exchange rate above still happen
 
     todos: list[dict] = []
     try:

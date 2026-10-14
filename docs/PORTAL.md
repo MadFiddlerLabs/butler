@@ -34,14 +34,16 @@ home folder's subfolders.
 1. Install [Tailscale](https://tailscale.com) on the Mac and on each phone, signed in to the
    same tailnet with personal logins, not work ones. Invite the other adults from the
    Tailscale admin console. An iPhone runs one VPN at a time, so Tailscale replaces any other
-   VPN while it's on.
+   VPN while it's on. The Mac app doesn't put a `tailscale` command on the PATH: the commands
+   below use its full path, `/Applications/Tailscale.app/Contents/MacOS/Tailscale` (as
+   `portal.py` does). Elsewhere on this page, `tailscale` means that path.
 2. Rename the Mac before HTTPS: the address and its certificate use the machine's name, and
    certificate names are public. Use Edit machine name in the admin console, or
-   `tailscale set --hostname=butler`.
+   `/Applications/Tailscale.app/Contents/MacOS/Tailscale set --hostname=butler`.
 3. In the admin console, turn on MagicDNS and HTTPS certificates (DNS page).
 4. On the Mac:
    ```
-   tailscale serve --bg 8787
+   /Applications/Tailscale.app/Contents/MacOS/Tailscale serve --bg 8787
    ```
    It prints the address, like `https://butler.your-tailnet.ts.net`.
 5. Put that address in `portal.url` in `config/settings.yaml`. The emails link to it.

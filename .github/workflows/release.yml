@@ -97,13 +97,21 @@ jobs:
       - name: The Calendar helper (universal)
         run: packaging/macos/build-helper.sh "$RUNNER_TEMP/butler-ek" "${APP_IDENTITY:-}"
 
+      - name: The Butler app (universal, signed like the helper)
+        run: |
+          packaging/macos/build-app.sh "$RUNNER_TEMP/Butler.app" "$VERSION" "${APP_IDENTITY:-}"
+          if [ -n "${APP_IDENTITY:-}" ]; then
+            codesign -dv --verbose=2 "$RUNNER_TEMP/Butler.app" 2>&1 | grep -q "Authority=Developer ID Application"
+            codesign -dv "$RUNNER_TEMP/Butler.app" 2>&1 | grep -q "flags=0x10000(runtime)"
+          fi
+
       - name: The package
         id: build
         run: |
           if [ -n "${INSTALLER_IDENTITY:-}" ]; then
-            pkg="$(packaging/macos/build-pkg.sh --version "$VERSION" --out dist --helper "$RUNNER_TEMP/butler-ek" --sign "$INSTALLER_IDENTITY")"
+            pkg="$(packaging/macos/build-pkg.sh --version "$VERSION" --out dist --helper "$RUNNER_TEMP/butler-ek" --app "$RUNNER_TEMP/Butler.app" --sign "$INSTALLER_IDENTITY")"
           else
-            pkg="$(packaging/macos/build-pkg.sh --version "$VERSION" --out dist --helper "$RUNNER_TEMP/butler-ek")"
+            pkg="$(packaging/macos/build-pkg.sh --version "$VERSION" --out dist --helper "$RUNNER_TEMP/butler-ek" --app "$RUNNER_TEMP/Butler.app")"
           fi
           echo "PKG=$pkg" >> "$GITHUB_ENV"
           echo "pkg=$(basename "$pkg")" >> "$GITHUB_OUTPUT"
@@ -111,6 +119,7 @@ jobs:
           pkgutil --payload-files "$pkg" | grep -qx './Butler/bin/butler'
           pkgutil --payload-files "$pkg" | grep -qx './Butler/requirements.lock'
           pkgutil --payload-files "$pkg" | grep -qx './Butler/scripts/lib/uv.sh'
+          pkgutil --payload-files "$pkg" | grep -qx './Applications/Butler.app/Contents/MacOS/Butler'
 
       - name: Notarize and staple
         if: steps.mode.outputs.signed == 'true'

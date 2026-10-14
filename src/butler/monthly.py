@@ -148,7 +148,7 @@ def build_month(settings: dict, start: date) -> Month:
 
     snaps = [s for s in networth.load() if lo <= s["date"] <= hi]
     nw = ((snaps[0]["total"], snaps[-1]["total"], date.fromisoformat(snaps[0]["date"]),
-           date.fromisoformat(snaps[-1]["date"])) if len(snaps) >= 2 else None)
+           date.fromisoformat(snaps[-1]["date"])) if len(snaps) >= 2 and networth.in_emails(settings) else None)
 
     # Runway: the savings account (latest snapshot) over the monthly draw finance.py averages
     # from the first draw over the last 90 days; none until there's a full month of draws.

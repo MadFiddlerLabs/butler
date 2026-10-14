@@ -149,13 +149,35 @@ notarized". A run by hand only uploads the package as a build artifact. It publi
   checked by hash, and `scripts/lib/uv.sh`, which pins uv by checksum.
 - It includes the Calendar and Reminders helper (`bin/butler-ek`), prebuilt for Apple silicon and
   Intel and signed. Students never need the Xcode tools.
-- Its `postinstall` takes the butler's name from the package's filename and opens the guided
-  first run (`scripts/first-run.command`) in Terminal. On an upgrade it does neither.
+- It installs the Butler app in `~/Applications/Butler.app` (`helpers/butler-app/`, built by
+  `packaging/macos/build-app.sh`): a universal binary, signed with Developer ID under the
+  hardened runtime like the Calendar helper, that opens Terminal on `butler`. The package marks
+  it not relocatable, so Installer never moves it into another copy elsewhere on the Mac.
+- Its `postinstall` decides from the Butler folder (`scripts/lib/install.sh`):
+  - **fresh** (nothing of the household's yet): takes the butler's name from the package's
+    filename and opens the guided first run (`scripts/first-run.command`).
+  - **started** or **finished** (`data/first-run-started`, `data/first-run-done`, or settings
+    from before those markers): keeps the name and opens `scripts/welcome-back.command`, which
+    offers to resume (the default) or start fresh.
+  - **a command-line install** (`installer`, so the overnight updater and CI): opens nothing.
+
+  It opens Terminal in the logged-in user's session (`launchctl asuser`), adds `butler` to the
+  PATH in `~/.zprofile`, and writes every outcome to `logs/install.log`, including a window that
+  couldn't open.
 
 ## The tests that guard it
 
-- `tests/test_packaging.py`: names from filenames, postinstall on a first install and an upgrade,
-  the built package's layout (the lock included), and the lock matching `requirements.txt`.
+- `tests/test_packaging.py`: names from filenames; what postinstall finds (fresh, started,
+  finished) and what it opens for each, through `launchctl asuser`, with a fallback and a log
+  line when Terminal won't open; the Done screen's words; the built package's layout (the lock,
+  the scripts it opens, and the Butler app, signed, universal and not relocatable); and the lock
+  matching `requirements.txt`.
+- `tests/e2e/installer-opens.sh`, in `macos-e2e.yml`'s `package` job: runs the built package's
+  postinstall the way Installer.app does (no `COMMAND_LINE_INSTALL`) in the runner's logged-in
+  session, and checks that Terminal really ran the first run, then the welcome back over a
+  started first run, then that the Butler app opens `butler`. It can't click through
+  Installer.app itself, so the GUI's own way of running the script stays unproven; the script
+  and its log line are the same.
 - `tests/test_first_run.py` and `tests/test_cli.py`: the guided first run and the `butler`
   command, against a fake account API.
 - `.github/workflows/macos-e2e.yml`, job `package`: builds the package and installs it into the
