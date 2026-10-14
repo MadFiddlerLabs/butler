@@ -42,6 +42,7 @@ class Brief:
 
 
 INK, MUTED, RULE, ACCENT, PAPER = "#1f2328", "#656d76", "#e5e7eb", "#9a3412", "#fcfcfb"
+LINK = "#1f66c1"    # the portal's link blue (--blue), so a link looks like one
 
 
 def email_head(title: str) -> str:
@@ -382,6 +383,30 @@ def portal_button(url: str) -> str:
             f'font-weight:600;padding:8px 14px;border-radius:8px">Open {escape(brand())} · {escape(host)} →</a></p>')
 
 
+def news_link(story) -> str:
+    """The story's own link from the feed, or '' when it isn't a web address. Claude's output
+    never supplies a link, and a feed's javascript: or mailto: link stays unclickable."""
+    link = (story.link or "").strip()
+    return link if re.match(r"https?://", link, re.I) else ""
+
+
+def news_item_html(item: dict) -> str:
+    """One story: its headline (a link, styled as a headline), the summary, the source, and a
+    visible "Read" link in the link color, because a bold headline doesn't look clickable."""
+    story = item["story"]
+    headline, link = escape(item["headline"]), news_link(story)
+    if link:
+        href = escape(link, quote=True)
+        headline = (f'<a href="{href}" style="color:{INK};font-weight:600;text-decoration:none">'
+                    f'{headline}</a>')
+        read = (f' · <a href="{href}" style="color:{LINK};font-size:13px" '
+                f'aria-label="Read: {escape(item["headline"], quote=True)}">Read</a>')
+    else:
+        headline, read = f'<strong style="color:{INK}">{headline}</strong>', ""
+    return (f'<p style="margin:0 0 10px">{headline}<br>{escape(item["summary"])} '
+            f'<span style="color:{MUTED};font-size:13px">{escape(story.source)}</span>{read}</p>')
+
+
 def to_html(brief: Brief, image_src=lambda name: f"cid:{name}") -> str:
     """image_src maps a chart name to its <img> src: a cid: for email, a file for previews."""
     parts = [
@@ -478,11 +503,7 @@ def to_html(brief: Brief, image_src=lambda name: f"cid:{name}") -> str:
         if story.region != current:
             current = story.region
             parts.append(_h2(brief.region_labels[current]))
-        parts.append(
-            f'<p style="margin:0 0 10px"><a href="{escape(story.link, quote=True)}" '
-            f'style="color:{INK};font-weight:600;text-decoration:none">'
-            f'{escape(item["headline"])}</a><br>{escape(item["summary"])} '
-            f'<span style="color:{MUTED};font-size:13px">{escape(story.source)}</span></p>')
+        parts.append(news_item_html(item))
 
     footer = (f"Made for {' and '.join(adults())} by {brand()}. Reply to this email to add a "
               "TODO, shopping item or event, mark a project step done, or say what to change.")
