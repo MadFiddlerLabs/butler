@@ -53,7 +53,7 @@ refused() {  # refused <what> <expected message>: the update fails and changes n
 }
 
 step "the published $old and the candidate $new are both signed, notarized and stapled"
-curl -fsSL -o "$work/Bento.pkg" "https://github.com/nerolabs/butler/releases/download/$old/Butler.pkg"
+curl -fsSL -o "$work/Bento.pkg" "https://github.com/MadFiddlerLabs/butler/releases/download/$old/Butler.pkg"
 signed_by_us "$work/Bento.pkg"
 signed_by_us "$candidate"
 

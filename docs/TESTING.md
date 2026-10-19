@@ -124,7 +124,7 @@ The paid checks skip cleanly when `ANTHROPIC_API_KEY` isn't set.
 Set the secret once (it prompts for the value):
 
 ```
-gh secret set ANTHROPIC_API_KEY --repo nerolabs/butler
+gh secret set ANTHROPIC_API_KEY --repo MadFiddlerLabs/butler
 ```
 
 ## Coverage
@@ -199,7 +199,7 @@ The repository is public, so GitHub can enforce the check. This requires `test` 
 the owner able to fix `main` directly in an emergency (`enforce_admins: false`):
 
 ```bash
-gh api -X PUT repos/nerolabs/butler/branches/main/protection --input - <<'JSON'
+gh api -X PUT repos/MadFiddlerLabs/butler/branches/main/protection --input - <<'JSON'
 {"required_status_checks": {"strict": false, "contexts": ["test"]},
  "enforce_admins": false, "required_pull_request_reviews": null, "restrictions": null}
 JSON

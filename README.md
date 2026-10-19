@@ -165,7 +165,7 @@ sent.
 Prefer a terminal? The same install, without the package:
 
 ```
-curl -fsSL https://raw.githubusercontent.com/nerolabs/butler/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/MadFiddlerLabs/butler/main/scripts/install.sh | bash
 ```
 
 In Claude Code, the steps are:
