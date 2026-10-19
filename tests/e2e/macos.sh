@@ -14,7 +14,7 @@ step() { echo; echo "== $*"; }
 
 step "install"
 if [ "${1:-}" = "--hosted" ]; then
-  curl -fsSL https://raw.githubusercontent.com/nerolabs/butler/main/scripts/install.sh | bash
+  curl -fsSL https://raw.githubusercontent.com/MadFiddlerLabs/butler/main/scripts/install.sh | bash
 else
   BUTLER_SOURCE="$repo" "$repo/scripts/install.sh"
 fi

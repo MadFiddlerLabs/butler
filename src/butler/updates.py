@@ -49,7 +49,7 @@ log = logging.getLogger("butler")
 
 TEAM_ID = "VB9CHJM4AN"
 MANIFEST_URL = "https://buildyourbutler.com/updates/stable.json"
-RELEASES_URL = "https://github.com/nerolabs/butler/releases/download"
+RELEASES_URL = "https://github.com/MadFiddlerLabs/butler/releases/download"
 UPDATES = ROOT / "data" / "updates"
 STATE = UPDATES / "state.json"
 REPORTS = "outcomes.json"      # in UPDATES: update outcomes waiting to be sent (update_report.py)

@@ -14,13 +14,13 @@ no colour, tick marks, middle dots or screen clearing. `BUTLER_PLAIN=1` asks for
 The installer downloads the newest release to `~/Butler` and sets up Python:
 
 ```
-curl -fsSL https://raw.githubusercontent.com/nerolabs/butler/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/MadFiddlerLabs/butler/main/scripts/install.sh | bash
 ```
 
 Or, to work on Butler itself, clone it:
 
 ```
-git clone https://github.com/nerolabs/butler.git
+git clone https://github.com/MadFiddlerLabs/butler.git
 cd butler
 scripts/bootstrap.sh
 ```

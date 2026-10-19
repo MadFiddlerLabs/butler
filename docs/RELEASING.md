@@ -2,7 +2,7 @@
 
 A release is a signed, notarized installer package, `Butler.pkg`, attached to a GitHub Release.
 The website serves the latest one from
-`https://github.com/nerolabs/butler/releases/latest/download/Butler.pkg` under each student's
+`https://github.com/MadFiddlerLabs/butler/releases/latest/download/Butler.pkg` under each student's
 chosen name (`<Name>.pkg`).
 
 The version lives only in the tag. The package writes it to `~/Butler/.butler-version`, so
@@ -121,13 +121,13 @@ base64 -i DeveloperIDInstaller.p12 -o installer.b64
 base64 -i DeveloperIDApplication.p12 -o application.b64
 base64 -i AuthKey_XXXXXXXXXX.p8 -o apikey.b64
 
-gh secret set MACOS_INSTALLER_P12_BASE64 -R nerolabs/butler < installer.b64
-gh secret set MACOS_APP_P12_BASE64 -R nerolabs/butler < application.b64
-gh secret set APPLE_API_KEY_P8_BASE64 -R nerolabs/butler < apikey.b64
-gh secret set MACOS_P12_PASSWORD -R nerolabs/butler      # prompts: the .p12 export password
-gh secret set APPLE_API_KEY_ID -R nerolabs/butler        # prompts: the Key ID
-gh secret set APPLE_API_ISSUER_ID -R nerolabs/butler     # prompts: the Issuer ID
-gh secret set APPLE_TEAM_ID -R nerolabs/butler           # prompts: the Team ID
+gh secret set MACOS_INSTALLER_P12_BASE64 -R MadFiddlerLabs/butler < installer.b64
+gh secret set MACOS_APP_P12_BASE64 -R MadFiddlerLabs/butler < application.b64
+gh secret set APPLE_API_KEY_P8_BASE64 -R MadFiddlerLabs/butler < apikey.b64
+gh secret set MACOS_P12_PASSWORD -R MadFiddlerLabs/butler      # prompts: the .p12 export password
+gh secret set APPLE_API_KEY_ID -R MadFiddlerLabs/butler        # prompts: the Key ID
+gh secret set APPLE_API_ISSUER_ID -R MadFiddlerLabs/butler     # prompts: the Issuer ID
+gh secret set APPLE_TEAM_ID -R MadFiddlerLabs/butler           # prompts: the Team ID
 
 rm installer.b64 application.b64 apikey.b64
 ```

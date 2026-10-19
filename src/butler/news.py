@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 import feedparser
 
-USER_AGENT = "butler/1.0 (personal morning brief; https://github.com/nerolabs/butler)"
+USER_AGENT = "butler/1.0 (personal morning brief; https://github.com/MadFiddlerLabs/butler)"
 
 
 @dataclass

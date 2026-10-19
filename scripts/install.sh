@@ -2,13 +2,13 @@
 # Installs Butler, or updates its code: downloads the newest release to ~/Butler and sets up
 # its Python. The course has Claude run it:
 #
-#   curl -fsSL https://raw.githubusercontent.com/nerolabs/butler/main/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/MadFiddlerLabs/butler/main/scripts/install.sh | bash
 #
 # Set BUTLER_HOME to install somewhere else. Running it again updates the code and never
 # touches your settings, data, projects or budget: those files aren't in the download.
 # BUTLER_SOURCE=<a local checkout> installs that instead of downloading (used by the tests).
 set -euo pipefail
-repo="nerolabs/butler"
+repo="MadFiddlerLabs/butler"
 home="${BUTLER_HOME:-$HOME/Butler}"
 
 if [ "$(uname)" != "Darwin" ]; then
