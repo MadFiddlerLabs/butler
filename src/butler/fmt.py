@@ -1,4 +1,5 @@
-"""Money formatting in the household's primary currency (Lunch Money's), from settings."""
+"""Money formatting in the household's primary currency (Lunch Money's), from settings, and
+dates that read the same on every computer."""
 
 from functools import lru_cache
 
@@ -58,3 +59,9 @@ def primary_code() -> str:
 
 def second_code() -> str:
     return _symbols()[2]
+
+
+def strftime(d, pattern: str) -> str:
+    """d.strftime(pattern), where %-d is the day without a leading zero ("Sat 3 Oct"). macOS and
+    Linux know %-d; Windows refuses it, so Butler puts the day in itself."""
+    return d.strftime(pattern.replace("%-d", str(d.day)))

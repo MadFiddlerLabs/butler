@@ -20,7 +20,7 @@ from . import calendar_source, charts, finance, llm, mailer, networth, projects
 from .agenda import COPY_NOTE, OUTSIDE_LABEL, OUTSIDE_MARK, _assign, from_outside, household_addresses
 from .config import ROOT, brand, load_settings, people, portal_url, tz
 from .finance import SPEND, Summary
-from .fmt import money, primary_code, scale
+from .fmt import money, primary_code, scale, strftime
 
 log = logging.getLogger("butler")
 
@@ -266,7 +266,7 @@ def sections(mo: Month, words: dict, by_reply: bool = False) -> list[tuple[str, 
         para.append(" ".join(flows))
     if mo.networth_change:
         a, b, f, t = mo.networth_change
-        para.append(f"Net worth: {money(a)} on {f:%-d %b} → {money(b)} on {t:%-d %b} ({money(b - a)}).")
+        para.append(f"Net worth: {money(a)} on {strftime(f, '%-d %b')} → {money(b)} on {strftime(t, '%-d %b')} ({money(b - a)}).")
     if mo.runway_months:
         para.append(f"Runway: savings ({money(mo.savings_balance)}) cover about "
                     f"{mo.runway_months:.0f} months at the recent draw of {money(mo.money.draw_monthly)} a month.")
@@ -347,7 +347,7 @@ def run(settings: dict, start: date, preview: bool, late: str = "") -> str:
         imgs["categories"] = cats
     for name, png in imgs.items():
         (ROOT / "out" / f"{stem}-{name}.png").write_bytes(png)
-    banner = (f"Preview built {datetime.now(tz(settings)):%a %-d %b %H:%M}. The real look-back is emailed on the 1st."
+    banner = (f"Preview built {strftime(datetime.now(tz(settings)), '%a %-d %b %H:%M')}. The real look-back is emailed on the 1st."
               if preview else late)
     (ROOT / "out" / f"{stem}.html").write_text(to_html(mo, secs, lambda n: f"{stem}-{n}.png", banner))
     text = to_text(mo, secs, late)

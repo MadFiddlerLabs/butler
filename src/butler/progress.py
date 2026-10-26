@@ -22,6 +22,7 @@ import yaml
 
 from . import account, system
 from .config import ROOT, plain_output
+from .fmt import strftime
 
 MAP_FILE = Path(__file__).with_name("course_progress.json")
 STATE_FILE = Path("data") / "progress.json"
@@ -272,7 +273,7 @@ def report(lesson: str, status: str = "done", root: Path | None = None) -> None:
 # ---------- `butler progress` ----------
 
 def _day(iso: str) -> str:
-    return datetime.fromisoformat(iso.replace("Z", "+00:00")).strftime("%-d %B")
+    return strftime(datetime.fromisoformat(iso.replace("Z", "+00:00")), "%-d %B")
 
 
 def lines(state: dict, problem: str | None) -> list[str]:

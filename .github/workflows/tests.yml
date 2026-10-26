@@ -65,6 +65,9 @@ jobs:
         env:
           PYTHONPATH: src
           HYPOTHESIS_PROFILE: ci
+          # Butler reads and writes UTF-8 everywhere. Windows' default is the ANSI code page, so
+          # Butler runs in Python's UTF-8 mode there, as its Windows launcher will (#40).
+          PYTHONUTF8: "1"
 
   screenshots:
     runs-on: ubuntu-latest

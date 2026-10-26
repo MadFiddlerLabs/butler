@@ -10,6 +10,7 @@ from datetime import date, datetime, timedelta
 
 from . import daily, mailer, monthly, progress, replies, updates, weekly
 from .config import ROOT, brand, load_settings, tz
+from .fmt import strftime
 
 log = logging.getLogger("butler")
 
@@ -69,7 +70,7 @@ def _weekly_if_due() -> None:
     except Exception as e:
         log.exception("weekly failed")
         mailer.send_or_queue(settings, f"weekly-failed-{year}-{week:02d}",
-                             f"{brand(settings)} · {day:%A} letter failed {now:%-d %B}",
+                             f"{brand(settings)} · {day:%A} letter failed {strftime(now, '%-d %B')}",
                              f"This week's letter failed to build ({e}). Details are in logs/butler.log.")
     marker.touch()
 

@@ -37,6 +37,17 @@ class SameEverywhereTest(unittest.TestCase):
             for tool in ('"security"', '"launchctl", "list"', '"pgrep", "-x", "VoiceOver"', '["open",', "import fcntl"):
                 self.assertNotIn(tool, text, f"{path.name} calls {tool}: use butler.system")
 
+    def test_dates_never_ask_strftime_for_a_day_without_its_zero(self):
+        """Windows' strftime refuses %-d, so it goes through fmt.strftime, which fills it in."""
+        from datetime import date
+        from butler.fmt import strftime
+        self.assertEqual(strftime(date(2026, 10, 3), "%a %-d %b %Y"), "Sat 3 Oct 2026")
+        self.assertEqual(strftime(date(2026, 10, 13), "%-d %B"), "13 October")
+        for path in SYSTEM.parent.glob("*.py"):
+            for n, line in enumerate(path.read_text().splitlines(), 1):
+                if "%-d" in line and "strftime(" not in line and path.name != "fmt.py":
+                    self.fail(f"{path.name}:{n} formats %-d without fmt.strftime")
+
     def test_this_computer_gets_its_own(self):
         self.assertEqual(system.NAME, "windows" if sys.platform == "win32" else "mac")
 
