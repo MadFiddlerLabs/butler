@@ -5,7 +5,6 @@ as "not connected yet" instead of showing the example household's details."""
 
 import json
 import os
-import subprocess
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
@@ -13,6 +12,7 @@ from pathlib import Path
 
 import yaml
 
+from . import system
 from .config import ROOT
 
 SETTINGS = ROOT / "config" / "settings.yaml"
@@ -216,9 +216,8 @@ def done_steps(root: Path = ROOT) -> list[str]:
 
 
 def has_secret(service: str) -> bool:
-    """Whether Keychain holds this entry, without reading its value."""
-    return subprocess.run(["security", "find-generic-password", "-s", service],
-                          capture_output=True).returncode == 0
+    """Whether the password store holds this entry, without reading its value."""
+    return system.has_secret(service)
 
 
 def first_brief(root: Path = ROOT) -> Path | None:

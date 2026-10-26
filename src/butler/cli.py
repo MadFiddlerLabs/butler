@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import doctor, progress, setup_settings as ss, updates
+from . import doctor, progress, setup_settings as ss, system, updates
 from .config import ROOT, plain_output
 
 CLAUDE_INSTALL = "curl -fsSL https://claude.ai/install.sh | bash"
@@ -285,8 +285,7 @@ def _checks() -> list[tuple[str, bool, str]]:
     named = s.get("name", ss.PLACEHOLDER_NAME) != ss.PLACEHOLDER_NAME
     services = {name: ss.has_secret(name) for name in
                 ("butler-account", "butler-anthropic", "butler-gmail", "butler-lunchmoney")}
-    scheduled = "com.buildyourbutler.butler" in subprocess.run(
-        ["launchctl", "list"], capture_output=True, text=True).stdout if shutil.which("launchctl") else False
+    scheduled = system.scheduled()
     return [
         ("Signed in to the course", services["butler-account"], "butler setup"),
         ("Your butler has a name", named, 'butler name "Bento"'),
@@ -504,7 +503,7 @@ def cmd_portal(args) -> int:
     if os.environ.get("BUTLER_NO_OPEN"):
         say(f"The portal is ready to open: {PORTAL_OPENER}")
         return 0
-    subprocess.run(["open", str(PORTAL_OPENER)], check=False)
+    system.open_file(str(PORTAL_OPENER))
     say(f"{who[0].upper() + who[1:]}'s portal is open in your browser, and this browser is paired. "
         "To add a phone, open Devices in the portal.")
     return 0

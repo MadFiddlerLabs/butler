@@ -68,7 +68,7 @@ class PlainTest(unittest.TestCase):
             config.plain_output.cache_clear()
             clean = {k: v for k, v in os.environ.items() if k not in ("BUTLER_PLAIN", "CLAUDE_AX_SCREEN_READER")}
             with mock.patch.dict(os.environ, {**clean, **env}, clear=True), \
-                 mock.patch.object(config.subprocess, "run", return_value=mock.Mock(returncode=1)):
+                 mock.patch.object(config.system, "screen_reader_on", return_value=False):
                 self.assertEqual(config.plain_output(), want, env)
         config.plain_output.cache_clear()
 

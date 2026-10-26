@@ -1,0 +1,2 @@
+# Tests that don't run on Windows yet (#40), for tests/windows.py. One test module, class or
+# test per line, then a comment saying why. Take a line out when its part is ported.

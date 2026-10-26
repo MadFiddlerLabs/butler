@@ -1,17 +1,19 @@
 import functools
 import os
 import re
-import subprocess
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import yaml
 
+from . import system
+
 ROOT = Path(__file__).resolve().parents[2]
 BUTLER_EK = ROOT / "bin" / "butler-ek"
 
-# Keychain service names. Add them with scripts/store-secret.sh, or by hand with this, which asks
-# for the value (twice) instead of taking it on the command line:
+# Secret names: Keychain services on a Mac, Credential Manager targets on Windows (system/).
+# On a Mac, add them with scripts/store-secret.sh, or by hand with this, which asks for the value
+# (twice) instead of taking it on the command line:
 #   security add-generic-password -U -s <service> -a butler -w
 KEYCHAIN_GMAIL = "butler-gmail"
 KEYCHAIN_ANTHROPIC = "butler-anthropic"
@@ -33,8 +35,8 @@ def butler_ek() -> str:
 def plain_output() -> bool:
     """Terminal text for a screen reader: words only, no tick marks, dots or other symbols that
     VoiceOver reads aloud or skips. On with BUTLER_PLAIN=1, when CLAUDE_AX_SCREEN_READER is set
-    (the course's accessibility page has VoiceOver users set it for Claude Code), or while
-    VoiceOver runs. BUTLER_PLAIN=0 turns it off. scripts/lib/plain.sh decides the same way."""
+    (the course's accessibility page has VoiceOver users set it for Claude Code), or while a
+    screen reader runs. BUTLER_PLAIN=0 turns it off. scripts/lib/plain.sh decides the same way."""
     flag = os.environ.get("BUTLER_PLAIN", "").strip().lower()
     if flag in ("1", "yes", "true"):
         return True
@@ -42,10 +44,7 @@ def plain_output() -> bool:
         return False
     if os.environ.get("CLAUDE_AX_SCREEN_READER", "").strip().lower() not in ("", "0", "no", "false"):
         return True
-    try:
-        return subprocess.run(["pgrep", "-x", "VoiceOver"], capture_output=True, timeout=5).returncode == 0
-    except (OSError, subprocess.SubprocessError):
-        return False
+    return system.screen_reader_on()
 
 
 def config_path(name: str) -> Path:
@@ -89,25 +88,17 @@ def name_for_email(address: str, settings: dict | None = None) -> str | None:
 
 
 def keychain(service: str) -> str | None:
-    """Returns a secret from the login Keychain, or None if it isn't there."""
-    result = subprocess.run(
-        ["security", "find-generic-password", "-s", service, "-w"],
-        capture_output=True, text=True,
-    )
-    if result.returncode != 0:
-        return None
-    return result.stdout.strip() or None
+    """Returns a secret from the computer's password store (Keychain on a Mac), or None if it
+    isn't there."""
+    return system.get_secret(service)
 
 
 def store_secret(service: str, secret: str) -> None:
-    """Saves a secret in the login Keychain. Never on a command line, where any account on this
-    Mac can read it in the process list: `security -i` reads its command from stdin, and the
-    secret travels in it hex-encoded (-X), so no character in it can break the command.
-    scripts/lib/keychain.sh does the same for the shell scripts."""
+    """Saves a secret in the password store. Never on a command line, where any account on the
+    computer can read it in the process list (system/mac.py says how)."""
     if not re.fullmatch(r"butler-[a-z]+", service):
         raise ValueError(f"not a Butler Keychain service: {service}")
-    command = f"add-generic-password -U -s {service} -a butler -X {secret.encode().hex()}\n"
-    subprocess.run(["security", "-i"], input=command, text=True, check=True, capture_output=True)
+    system.store_secret(service, secret)
 
 
 def portal_url(settings: dict | None = None) -> str:

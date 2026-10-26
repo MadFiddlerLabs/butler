@@ -27,7 +27,6 @@ to pull it, each update's outcome goes to the website, anonymously (update_repor
 """
 
 import argparse
-import fcntl
 import hashlib
 import json
 import logging
@@ -42,7 +41,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import mailer, update_report
+from . import mailer, system, update_report
 from .config import ROOT, brand, load_settings
 
 log = logging.getLogger("butler")
@@ -351,7 +350,7 @@ def apply(entry: dict, now: datetime | None = None) -> dict:
     UPDATES.mkdir(parents=True, exist_ok=True)
     with (UPDATES / "lock").open("w") as lock:
         try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            system.lock_exclusive(lock)
         except OSError:
             raise UpdateError("another update is already running") from None
         # Loaded now, while the code on disk is still this version's: if the update and the way
