@@ -19,7 +19,6 @@ Run them quietly and collect the results. Don't show raw output.
 | Area | How to check | Healthy when |
 |---|---|---|
 | Python | `.venv/bin/python --version` | 3.12 or later |
-| Tests | `PYTHONPATH=src .venv/bin/python -m unittest discover tests` | all pass |
 | Settings | `config/settings.yaml` exists; `unittest tests.test_config` | exists and passes |
 | Calendar helper | `bin/butler-ek calendars` | prints a list (not a permission error) |
 | Reminders | `bin/butler-ek reminder-lists` | prints a list, including `reminders.todo_list` |
@@ -35,6 +34,10 @@ Run them quietly and collect the results. Don't show raw output.
 
 While the Mac waits at the login screen, nothing of Butler runs, this check included. So a restart
 shows up only afterwards: the Restarts row reports how long the Mac waited for a login.
+
+Don't run the whole test suite (`unittest discover tests`). It's for people changing Butler's
+code: it takes over ten minutes and needs `requirements-dev.txt`, which an install doesn't have,
+so in a household's install it reports failures that aren't problems.
 
 Skip checks for steps they haven't reached yet (`/butler-setup` with no step works out where
 they are). Something not connected yet is normal mid-course, not a problem.

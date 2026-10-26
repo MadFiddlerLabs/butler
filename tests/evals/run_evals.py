@@ -103,7 +103,7 @@ def transcript(events: list[dict]) -> tuple[list[str], list[dict], dict]:
                 if block.get("type") == "text":
                     texts.append(block["text"])
                 elif block.get("type") == "tool_use":
-                    tools.append({"name": block["name"], "input": block.get("input", {})})
+                    tools.append({"name": block["name"], "input": block.get("input", {}), "texts_before": len(texts)})
         elif e.get("type") == "result":
             result = e
     return texts, tools, result
@@ -174,7 +174,9 @@ def check_install(home: Path, texts, tools, problems) -> None:
 
 
 def check_doctor(home: Path, texts, tools, problems) -> None:
-    final = texts[-1] if texts else ""
+    # The report is the text after the last tool call. A background task that ends later can
+    # add a short follow-up turn, so the report isn't always the last text.
+    final = "\n".join(texts[tools[-1]["texts_before"] if tools else 0:])
     if not re.search(r"✅|⚠", final):
         problems.append("the doctor's report has no ✅/⚠️ lines")
     if not re.search(r"(?i)python", final):

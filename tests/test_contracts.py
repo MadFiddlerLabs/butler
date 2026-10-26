@@ -218,6 +218,13 @@ class CourseContractTest(unittest.TestCase):
             self.assertTrue((REPO / path).exists(), path)
         self.assertIn('"$cmd" = "preview"', (REPO / "run.sh").read_text())
 
+    def test_the_doctor_skips_the_developer_test_suite(self):
+        """A household's install has no requirements-dev.txt packages, so the whole suite fails
+        there and takes over ten minutes: the doctor reported 32 false failures (#34)."""
+        doctor = (REPO / ".claude/skills/butler-doctor/SKILL.md").read_text()
+        rows = [line for line in doctor.splitlines() if line.startswith("|")]
+        self.assertFalse([line for line in rows if "unittest discover" in line])
+
     def test_the_butler_subcommands_the_course_names(self):
         """The website's contract check reads these from cli.py's add_parser calls and bin/butler."""
         parsed = set(re.findall(r'add_parser\("([a-z][a-z-]*)"', SRC["cli.py"]))
