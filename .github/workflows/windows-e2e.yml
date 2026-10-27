@@ -114,7 +114,7 @@ jobs:
           if ((Get-Content -Raw "$b\config\settings.yaml").Trim() -ne "name: Bento") { throw "settings.yaml changed" }
           if ((Get-Content -Raw "$b\data\household_notes.md").Trim() -ne "- a note") { throw "household_notes.md changed" }
           if ((Get-Content -Raw "$b\.butler-name").Trim() -ne "Bento") { throw ".butler-name changed" }
-          if ((Get-Content -Raw "$b\logs\install.log") -notmatch "installed \(started\), silently") { throw "the upgrade wasn't seen as one" }
+          if ((Get-Content -Raw "$b\logs\install.log") -notmatch "installed \(finished\), silently") { throw "the upgrade wasn't seen as one over a finished first run" }
           $paths = [Environment]::GetEnvironmentVariable("Path", "User") -split ";" | Where-Object { $_ -eq "$b\bin" }
           if (@($paths).Count -ne 1) { throw "Butler's bin is on the PATH $(@($paths).Count) times" }
       - name: Uninstalling leaves the household's files
