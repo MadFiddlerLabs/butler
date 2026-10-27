@@ -130,7 +130,8 @@ class FirstRunFlowTest(unittest.TestCase):
         for done in ("I know where you live.", "I know who I work for.", "your first brief is written."):
             self.assertIn(f"Already done: {done}", out)
         self.assertEqual(out.count("Paste here \u203a"), 1, "only the optional Claude Code line")
-        self.assertIn("When you're ready, type butler resume in a new Terminal window.", out)
+        self.assertIn("click Start, type Butler and press Enter, or type butler resume in a new Terminal window." if WINDOWS
+                      else "When you're ready, type butler resume in a new Terminal window.", out)
         self.assertNotIn("I added", out, "the PATH has it already")
 
     def test_an_ended_session_asks_for_the_email_again(self):
