@@ -127,6 +127,7 @@ class HelperContractTest(unittest.TestCase):
         for text in SRC.values():
             called |= set(re.findall(r'_ek\("([a-z-]+)"', text))
             called |= set(re.findall(r'butler_ek\(\), "([a-z-]+)"', text))
+            called |= set(re.findall(r'calendar_source\.(?:run|ask)\(\["([a-z-]+)"', text))
         self.assertTrue(called)
         self.assertLessEqual(called, self.swift_commands(), called - self.swift_commands())
 

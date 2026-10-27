@@ -64,6 +64,9 @@ household:
     mostly in EUR. Pat is Mia's nanny three afternoons a week, paid in cash on Fridays.
 
 calendar:
+  # apple: Calendar and Reminders on this Mac. google: Google Calendar and Google Tasks
+  # (docs/SETUP.md, "Google Calendar and Tasks instead of Apple's"). Absent means apple.
+  source: apple
   # Calendars in the brief, by title as they appear in macOS Calendar.
   include:
     - Johnson Family
@@ -107,7 +110,7 @@ projects:
   # Leave it out for this English list; an empty list hands over none.
   appointment_keywords: [bring, appointment, document, passport, visa, permit, office]
 
-reminders:              # Apple Reminders lists (created if missing)
+reminders:              # Apple Reminders lists, or Google Tasks lists on Google (created if missing)
   todo_list: Bento
   shopping_list: Shopping
 

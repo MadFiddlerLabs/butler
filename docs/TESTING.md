@@ -12,6 +12,7 @@ fails, it opens a GitHub issue.
 | Money rules | `tests/test_money_rules.py` | Every push | One test per rule in `finance.py` that mutation testing found unpinned: each setting it reads (`fixed_lines`, `netted_from_rent`, the recurring cash `weekday` and `since`, `asset_name`, `institution_name`), each threshold (15 still to come, 1 paid, over 50 unbudgeted, 100 and a quarter over pace), and each scaled for the currency in yen, each window (the last week, 8 weeks of cash, 89 days of savings draw, 100 days of subscriptions) and averages over only the history there is and each sort order |
 | Properties | `tests/test_money_properties.py` | Every push | Money invariants that must hold for any input Hypothesis generates: the three kinds of spending add up and never overlap, one-offs never enter the daily pace, order doesn't matter, ledgers stay apart, the cash drawer, budget changes by reply, exchange-rate moves split from real ones, amounts formatted both ways |
 | Integration | `tests/test_flows.py` | Every push | Any email flow breaking end to end: the brief, replies, the weekly letter, the monthly look-back, every portal page |
+| Google calendar | `tests/test_gcal.py` | Every push | Google Calendar and Tasks drifting from the Swift helper's nine commands and JSON; an all-day event or a due day moving a day; a refresh, an `invalid_grant` or a missing sign-in read as a problem instead of "not connected yet"; the sign-in taking a wrong `state` or keeping a token anywhere but Keychain; any edit or delete reaching Google; a brief on Google that differs from the one on Apple |
 | Failure isolation | `tests/test_failures.py` | Every push | One service down (Lunch Money, the weather, the news, Claude, the Calendar helper, Gmail's SMTP or IMAP) taking the whole brief with it, a vague message where the brief should say "couldn't load" or "not connected yet", a log that doesn't say why, a refused send lost or rebuilt (with new Claude calls) instead of re-sent from the outbox, retries that don't back off, a failing letter stopping the brief; a failing reply sent to Claude more than three times, or its actions repeated because the confirmation was refused; an update's brief check passing a release that crashes, or failing one because a service is down |
 | Security | `tests/test_security.py` | Every push | Fuzzed with hostile input: a forged or misplaced DKIM result passing, a stranger's reply reaching Claude, one mail in an unknown charset stopping every reply after it, a reply doing anything off the allowlist, a payee or calendar title escaping its marked data block in a reply prompt, an invite from outside the household reaching Claude unlabelled or outside a data block, a link or address from a stranger's invite reaching an email through what Claude wrote, the portal gate letting in a wrong host, login or origin, or another account on the Mac with forged login headers and no paired browser's device key, another page framing the portal, a second listener, the news call seeing the household, an unsigned or tampered update installing; a secret on a command line, where every account on the Mac sees it in the process list (a scan of the scripts and Python, and the Keychain helper round-tripping any secret through stdin) |
 | Privacy | `tests/test_privacy.py` | Every push | An ID number, phone or secret reaching an email, a prompt, a log or a file; household details reaching the news call |
@@ -52,6 +53,12 @@ repo is never touched. Inside it:
 - **News:** invented stories, one carrying a prompt injection.
 - **Calendar and Reminders:** a stub `butler-ek` that logs every call and refuses any command
   the real helper doesn't have.
+- **Google Calendar and Tasks:** `tests/fakes/google_api.py`, a local HTTP server with Google's
+  desktop sign-in, Calendar API v3 and Tasks API v1. It serves the same invented week as the
+  stub helper, pages its answers, refuses unknown query parameters, answers 405 to any edit or
+  delete, and can expire access tokens or revoke the sign-in. `tests/test_gcal.py` checks that
+  each of the nine commands gives the helper's keys and types, and runs the brief, replies, the
+  portal and the look-back on `calendar.source: google`.
 - **Keychain:** a fake `security` command on `PATH`.
 - **The course account:** `tests/fakes/account_api.py`, a local HTTP server with the website's
   contract (sign-in, `/me`, `/progress` refusing unknown lessons, `/prefs`). The harness lets
@@ -135,8 +142,8 @@ checkout). It counts lines and branches. Its summary shows the table, and the jo
 
 - the total falls below `fail_under` in `.coveragerc`, or
 - a high-risk module falls below its floor in `scripts/check_coverage.py`: the money code, replies,
-  the DKIM check, the portal, updates, course progress, the account, ID-number withholding and net
-  worth.
+  the DKIM check, the portal, updates, course progress, the account, ID-number withholding, net
+  worth and the Google calendar.
 
 | Module | Covered (October 2026) | Floor |
 |---|---|---|
@@ -152,6 +159,8 @@ checkout). It counts lines and branches. Its summary shows the table, and the jo
 | `privacy.py` | 100% | 99% |
 | `networth.py` | 94.5% | 93% |
 | `fmt.py` | 100% | 99% |
+| `gcal.py` | 94.6% | 93% |
+| `calendar_source.py` | 100% | 99% |
 
 The floors sit a point or two under the figures when they were set (October 2026), so coverage
 can't quietly fall. Raise a floor when tests add coverage; lower one only with a reason in the pull

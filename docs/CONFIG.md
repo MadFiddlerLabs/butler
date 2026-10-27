@@ -34,13 +34,14 @@ Plus the budget workbook, `budget/budget.xlsx`, and the household notes Claude r
 | `news.interests` | What you want from the news, in a sentence. With `household.place`, the only household detail the news call sees, so keep names out of it |
 | `household.about` | A short description of the household for Claude. Never put ID numbers here |
 | `household.notes_file` | Facts Claude should know, kept up to date by replies |
-| `calendar.include` | Calendar titles to read, as `bin/butler-ek calendars` lists them |
+| `calendar.source` | Where Calendar and Reminders come from: `apple` (Calendar and Reminders on this Mac, through `bin/butler-ek`) or `google` (Google Calendar and Google Tasks, through `src/butler/gcal.py`). Absent means `apple`. Google needs a one-time sign-in: [SETUP.md](SETUP.md#google-calendar-and-tasks-instead-of-apples) |
+| `calendar.include` | Calendar titles to read, as `bin/butler-ek calendars` lists them (`./run.sh gcal calendars` on Google) |
 | `calendar.holidays` | Holiday calendars, shown as a note on the day |
 | `calendar.write_to` | Where replies add events |
 | `people` | Everyone events can belong to (children too), with aliases, owned calendars and a color (`color`, optional `color_dark` for the portal in dark mode). Names are drawn in their color, so a light one such as Google's Flamingo is darkened until it reaches 4.5:1 against the page |
 | `projects.in_brief` | Show "Next up" in the morning brief |
 | `projects.appointment_keywords` | Optional: words that mark a project step as an appointment or document note. Those steps go to Claude when it flags what to prepare. Write them in your steps' language. Default: `bring, appointment, document, passport, visa, permit, office`. An empty list sends none |
-| `reminders.todo_list`, `shopping_list` | Apple Reminders lists |
+| `reminders.todo_list`, `shopping_list` | Apple Reminders lists, or Google Tasks lists with `calendar.source: google` |
 | `news.regions` | Regions in order, each with RSS feeds |
 | `news.language` | The language summaries are written in |
 | `llm.model`, `effort` | The Claude model and effort level. The example uses Sonnet 5.5: the model check (`scripts/model_check.py`, docs/TESTING.md) scored it with Opus at about a third of the cost. Any current model works |
