@@ -3,6 +3,7 @@ tasks' XML is checked everywhere; installing them in Task Scheduler runs only on
 (tests.yml's windows job), in a throwaway folder.
 
 Run with: PYTHONPATH=src .venv/bin/python -m unittest discover tests"""
+import os
 import secrets
 import shutil
 import string
@@ -74,8 +75,10 @@ class RunPyTest(unittest.TestCase):
             "import os, sys\nprint(sys.flags.utf8_mode, os.getcwd(), sys.argv[1:])\nsys.exit(3 if sys.argv[1:] == ['fail'] else 0)\n")
 
     def run_py(self, *args, cwd=None):
+        # Not under coverage: the probe lives in a folder that's gone before coverage reports.
+        env = {k: v for k, v in os.environ.items() if not k.startswith("COVERAGE_")}
         return subprocess.run([sys.executable, str(self.root / "run.py"), *args], capture_output=True, text=True,
-                              cwd=cwd or tempfile.gettempdir(), timeout=60)
+                              cwd=cwd or tempfile.gettempdir(), env=env, timeout=60)
 
     def test_it_runs_the_module_in_utf8_mode_from_the_butler_folder(self):
         out = self.run_py("probe", "--dry-run")
