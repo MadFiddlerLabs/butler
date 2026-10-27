@@ -1,0 +1,156 @@
+"""The installed Butler in a real Windows console, as a household meets it (#40). Run by
+windows-e2e.yml after the installer, with a Python that has pywinpty; not part of the suite.
+
+Everything else in CI runs Butler with pipes. A household types into a console, where Python
+reads keys differently (getpass reads them one at a time, unechoed) and a prompt's "›" has to
+survive the console's code page. Through a pseudo-console (ConPTY, what Windows Terminal uses),
+this checks:
+
+  - A new terminal finds `butler`: a cmd.exe and a PowerShell started with the environment
+    Windows gives a new window (the system and user PATH from the registry, expanded), not this
+    process's, run plain `butler help`. PATHEXT turns `butler` into bin\\butler.cmd.
+  - `butler secret butler-anthropic` takes a key typed hidden: it never shows on screen, and it
+    lands in Credential Manager. The key is an invented test value.
+  - `butler setup` asks its questions in the console and takes the answers: Enter keeps the
+    name from the installer, and "no" to the Terms stops it politely, with nothing sent.
+
+  python tests/e2e/windows_console.py "%USERPROFILE%\\Butler"
+"""
+import ctypes
+import os
+import re
+import subprocess
+import sys
+import threading
+import time
+import winreg
+from pathlib import Path
+
+from winpty import PtyProcess
+
+TEST_KEY = "sk-ant-console-test-0000"
+ESCAPES = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[=>()][0-9A-Za-z]?")
+
+
+def new_window_environment() -> dict:
+    """The environment Explorer gives a window opened now: this process's, with the PATH rebuilt
+    from the registry (system, then user), as it is after WM_SETTINGCHANGE."""
+    def read(root, key):
+        try:
+            with winreg.OpenKey(root, key) as k:
+                return str(winreg.QueryValueEx(k, "Path")[0])
+        except FileNotFoundError:
+            return ""
+    machine = read(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment")
+    user = read(winreg.HKEY_CURRENT_USER, "Environment")
+    buffer = ctypes.create_unicode_buffer(32767)
+    ctypes.windll.kernel32.ExpandEnvironmentStringsW(f"{machine};{user}", buffer, len(buffer))
+    env = {k: v for k, v in os.environ.items() if k.upper() != "PATH"}
+    env["Path"] = buffer.value
+    return env
+
+
+class Console:
+    """One program in a pseudo-console, its screen read as plain text."""
+
+    def __init__(self, argv: str, cwd: str, env: dict):
+        self.process = PtyProcess.spawn(argv, cwd=cwd, env=env, dimensions=(50, 220))
+        self.screen = ""
+        self._lock = threading.Lock()
+        threading.Thread(target=self._pump, daemon=True).start()
+
+    def _pump(self) -> None:
+        while True:
+            try:
+                data = self.process.read(4096)
+            except (EOFError, OSError):
+                return
+            if data:
+                with self._lock:
+                    self.screen += data
+
+    def text(self) -> str:
+        with self._lock:
+            return ESCAPES.sub("", self.screen).replace("\r", "")
+
+    def wait_for(self, what: str, seconds: float = 60) -> None:
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            if what in self.text():
+                return
+            time.sleep(0.2)
+        raise AssertionError(f"waited {seconds}s for {what!r}; the console shows:\n{self.text()[-3000:]}")
+
+    def type(self, line: str) -> None:
+        self.process.write(line + "\r")
+
+    def close(self) -> None:
+        if self.process.isalive():
+            self.process.terminate(force=True)
+
+
+def check(name: str, ok: bool, detail: str = "") -> None:
+    print(f"{'ok' if ok else 'FAILED'}: {name}", flush=True)
+    if not ok:
+        if detail:
+            print(detail, flush=True)
+        sys.exit(1)
+
+
+def main(butler: Path) -> None:
+    env = new_window_environment()
+    env.pop("BUTLER_PYTHON", None)
+    check("Butler's bin is on the PATH a new window gets",
+          any(os.path.normcase(p.rstrip("\\")) == os.path.normcase(str(butler / "bin")) for p in env["Path"].split(";")),
+          env["Path"])
+
+    home = str(Path.home())
+    for shell in ("cmd.exe /d /k", "powershell.exe -NoLogo -NoProfile -NoExit"):
+        console = Console(shell, home, env)
+        try:
+            console.type("butler help")
+            console.wait_for("butler doctor")
+        finally:
+            console.close()
+        check(f"plain `butler` works in a new {shell.split('.')[0]} window", True)
+
+    # A key typed hidden. Typed one character at a time, as fingers (or a paste) deliver it.
+    console = Console("cmd.exe /d /k", home, env)
+    try:
+        console.type("butler secret butler-anthropic")
+        console.wait_for("Your Claude API key › ")
+        shown = len(console.text())
+        for ch in TEST_KEY:
+            console.process.write(ch)
+            time.sleep(0.01)
+        console.process.write("\r")
+        console.wait_for("Stored butler-anthropic in Credential Manager.")
+        check("the prompt's › shows in the console", "›" in console.text())
+        check("the key never shows on screen", TEST_KEY not in console.text()[shown:], console.text()[shown:])
+    finally:
+        console.close()
+    python = butler / ".venv" / "Scripts" / "python.exe"
+    stored = subprocess.run([str(python), "-X", "utf8", "-c",
+                             "from butler import system; import sys; "
+                             f"sys.exit(0 if system.get_secret('butler-anthropic') == {TEST_KEY!r} else 1)"],
+                            cwd=butler, env={**os.environ, "PYTHONPATH": str(butler / "src")})
+    check("the key is in Credential Manager, as typed", stored.returncode == 0)
+
+    # The first run's questions, answered at the keyboard: no to the Terms stops it.
+    console = Console("cmd.exe /d /k", home, env)
+    try:
+        console.type("butler setup")
+        console.wait_for("Hello! I'm Bento, your new butler.")
+        console.wait_for("Name › ")
+        console.type("")
+        console.wait_for("Press Enter to agree, or type no to stop › ", seconds=180)
+        console.type("no")
+        console.wait_for("Nothing has been sent anywhere.")
+    finally:
+        console.close()
+    check("butler setup asks in the console and takes the answer", True)
+    check("saying no records no agreement", not (butler / "data" / "terms.json").exists())
+
+
+if __name__ == "__main__":
+    main(Path(sys.argv[1]))
