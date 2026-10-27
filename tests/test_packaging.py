@@ -598,6 +598,20 @@ class LockTest(unittest.TestCase):
             self.assertRegex(uv_sh, rf'{target}\) echo "[0-9a-f]{{64}}"', target)
         self.assertIn('[ "$got" != "$sha" ]', uv_sh, "a download that doesn't match is never used")
 
+    def test_windows_bootstrap_reads_the_same_pins_and_checks_them(self):
+        """bootstrap.ps1 (#40) has no pins of its own: it reads uv.sh's, and refuses a download
+        whose SHA-256 doesn't match, as bootstrap.sh does."""
+        uv_sh = (REPO / "scripts" / "lib" / "uv.sh").read_text()
+        for target in ("x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"):
+            self.assertRegex(uv_sh, rf'{target}\) echo "[0-9a-f]{{64}}"', target)
+        script = (REPO / "scripts" / "bootstrap.ps1").read_text()
+        self.assertIn('scripts\\lib\\uv.sh', script)
+        self.assertNotRegex(script, r"[0-9a-f]{64}", "no checksum of its own")
+        self.assertIn("if ($got -ne $sha) { throw", script)
+        self.assertRegex(script, r"pip sync [^\n]*--require-hashes[^\n]*--no-build[^\n]*requirements\.lock")
+        self.assertNotIn("requirements.txt", script)
+        self.assertNotRegex(script, r"(iex|Invoke-Expression)", "nothing run straight from the network")
+
     def test_ci_tests_the_locked_packages_and_checks_the_lock(self):
         workflows = REPO / ".github" / "workflows"
         self.assertIn("scripts/lock.sh --check", (workflows / "tests.yml").read_text())
