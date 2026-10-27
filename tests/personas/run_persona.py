@@ -4,6 +4,8 @@ types into real terminal windows, talks to the real Claude Code in the Butler fo
 its permission questions itself), and does what a person would do on screen through a small set
 of actions the harness carries out: download and open the installer, check the inbox, click the
 sign-in link, look at the brief in the browser. It makes the run's drawn choices and slips.
+Past Module 2, outside.py stands in for the services a student signs up for (Claude Console,
+Gmail, Lunch Money, Tailscale), and the windows that open on screen come to the persona.
 
 Paid (the Claude API) and CI only (.github/workflows/personas.yml): it installs into this
 machine's real home folder and signs in, so it must never run on a computer someone uses.
@@ -36,7 +38,9 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(REPO / "tests"))
+import events  # noqa: E402
 from fakes.account_api import FakeAccountAPI  # noqa: E402
+from outside import Outside  # noqa: E402
 from screens import DRY_CLAUDE, page_text, side_question, site_name  # noqa: E402
 from terminal import Terminal  # noqa: E402
 
@@ -70,13 +74,25 @@ TOOLS = [
          {"message": {"type": "string"}}, ["message"]),
     tool("on_screen", "Do something on the computer outside a terminal, the way a person would with the mouse: "
          "check the computer's version, download Butler from the website (put the name you type in 'text'), open "
-         "the downloaded file, check your email inbox, click the link or button in an email, click a button on a "
-         "web page (its label in 'text'), open a buildyourbutler.com page (its address in 'text'), look at what the browser shows, buy or sign in to a Claude plan, open the "
-         "Butler app (Mac) or Butler in the Start menu (Windows), open a folder. Describe it in 'what' and pick the "
-         "closest 'action'.",
+         "the downloaded file, check your email inbox, read an email (its number in 'text'), reply to the email you "
+         "read (your reply in 'text'), click the link or button in an email, click a button on a web page (its label "
+         "in 'text'), open a buildyourbutler.com page (its address in 'text'), look at what the browser shows, buy or "
+         "sign in to a Claude plan, open the Butler app (Mac) or Butler in the Start menu (Windows), open a folder, "
+         "open an app such as Reminders, Calendar or Google Tasks, or wait a few minutes (how many in 'text'). On "
+         "other sites, each action does what takes a few clicks there: in the Claude Console, set a monthly spend "
+         "limit (the amount in 'text') or create an API key (its name in 'text'); at Google, create a Gmail account "
+         "(the address you want in 'text'), turn on 2-Step Verification, or create an app password (its name in "
+         "'text'); at Lunch Money, sign up and connect your bank, or create an access token (its name in 'text'); "
+         "install Tailscale ('computer' or 'phone' in 'text'), use Tailscale's admin console (what you do in 'what', "
+         "a new machine name in 'text'), or open an address in your phone's browser (in 'text'). Describe it in "
+         "'what' and pick the closest 'action'.",
          {"action": {"type": "string", "enum": ["check_version", "download_butler", "open_download", "check_inbox",
-                                                "click_email_link", "click_on_page", "open_web_page", "look_at_browser",
-                                                "claude_plan", "open_butler_app", "open_folder", "other"]},
+                                                "read_email", "reply_to_email", "click_email_link", "click_on_page",
+                                                "open_web_page", "look_at_browser", "claude_plan", "open_butler_app",
+                                                "open_folder", "open_app", "wait", "console_set_limit",
+                                                "console_create_key", "gmail_create_account", "google_two_step",
+                                                "google_app_password", "lunchmoney_sign_up", "lunchmoney_create_token",
+                                                "tailscale_install", "tailscale_admin", "phone_open", "other"]},
           "what": {"type": "string"},
           "text": {"type": "string", "description": "What you type, if anything (the butler's name for download_butler); else empty."}},
          ["action", "what", "text"]),
@@ -96,6 +112,10 @@ PERMISSION_TOOL = tool("answer", "Answer Claude Code's question.",
                        {"choice": {"type": "string", "enum": ["yes", "no"]},
                         "say": {"type": "string", "description": "If no: what you tell Claude instead, or empty."}},
                        ["choice", "say"])
+WINDOW_TOOL = tool("window", "Answer the window on screen: the button you click, what you type or paste into its box "
+                   "(empty if it has none), and the boxes you tick (empty if none).",
+                   {"button": {"type": "string"}, "text": {"type": "string"},
+                    "ticked": {"type": "array", "items": {"type": "string"}}}, ["button", "text", "ticked"])
 REPORT_TOOL = tool("report", "Your report on the session, for the people who make the course.",
                    {"findings": {"type": "array", "items": {"type": "object", "additionalProperties": False,
                      "required": ["severity", "lesson", "what_happened", "expected", "suggestion"],
@@ -128,10 +148,15 @@ class Run:
         self.briefs_seen: set[str] = set()
         self.outcome = {"outcome": "budget", "why": "spent the run's budget"}
         self.api = FakeAccountAPI().start()
+        self.outside = Outside(self.persona["name"], self.email, lambda: self.spent() < self.budget - 0.1, BUTLER)
+        self.events_seen: set[str] = set()
+        self.pending: list[str] = []   # windows and pages that came up during the last action
         self.env = {**os.environ, "BUTLER_API": self.api.url + "/api", "BUTLER_CLAUDE_DRY_RUN": "1",
                     "BUTLER_NO_OPEN": "1", "BUTLER_POLL_SECONDS": "2", "BUTLER_COLUMNS": "1000"}
         if not WINDOWS:   # a Mac's login shell is zsh; the runner's account says bash
             self.env["SHELL"] = "/bin/zsh"
+        self.env = self.outside.path(self.env)
+        os.environ["PATH"] = self.env["PATH"]     # Claude Code's commands find the stubs too
         self.claude_pending, self.claude_mode, self.claude_prompt = False, "default", ""
         self.claude_model = args.claude_model or None
         self.trusted = False
@@ -146,7 +171,7 @@ class Run:
 
     # ---------- money ----------
     def spent(self) -> float:
-        return self.cost["persona"] + self.cost["claude_code"]
+        return self.cost["persona"] + self.cost["claude_code"] + self.outside.relay.cost
 
     def charge(self, usage) -> None:
         self.cost["persona"] += (usage.input_tokens * PRICES["input"] + usage.output_tokens * PRICES["output"]
@@ -177,6 +202,11 @@ How this works:
 - Keep going, lesson after lesson, until read_lesson tells you that was the last lesson. Use finish only then,
   or if you're truly stuck and would give up.
 - This computer is already signed in to Claude (claude.ai), so Claude Code won't ask you to sign in.
+- Other websites (the Claude Console, Google and Gmail, Lunch Money, Tailscale) and your phone are on_screen
+  actions too. You read and answer your email with check_inbox, read_email and reply_to_email.
+- This test computer's calendars and bank hold an invented family's sample data (the Johnsons, in Lisbon)
+  instead of yours. Treat it as yours; it isn't something to report.
+- When a window or page appears while you're doing something, you'll be asked about it in that moment.
 - When Claude Code asks permission for something, you'll be asked in that moment, and what you answer is your
   own choice: the claude_code result then shows the question and your answer.
 
@@ -207,6 +237,9 @@ In this session, you will also:
             for call in calls:
                 self.say(f"{self.persona['name']} → {call.name}", "```json\n" + json.dumps(call.input, ensure_ascii=False) + "\n```")
                 out = await self.do(call.name, call.input, messages)
+                if self.pending:
+                    out += "\n\n" + "\n\n".join(self.pending)
+                    self.pending.clear()
                 self.say(f"screen ({call.name})", f"```\n{out[-6000:]}\n```")
                 results.append({"type": "tool_result", "tool_use_id": call.id, "content": out[-12000:] or "(nothing)"})
             messages.append({"role": "user", "content": results})
@@ -215,6 +248,8 @@ In this session, you will also:
         self.messages = messages
 
     async def do(self, name: str, args: dict, messages: list) -> str:
+        if self.outside.hook():
+            self.say("harness", "the start-up hook is in Butler's Python now")
         if name == "read_lesson":
             if args["which"] == "next":
                 self.at += 1
@@ -331,13 +366,22 @@ In this session, you will also:
         if action == "check_inbox":
             mine = [r for r in self.api.requests.values() if r["email"].strip().lower() == self.email]
             if not mine:
-                return "Your inbox has nothing new from Build Your Butler."
+                return self.outside.inbox([])
             name = mine[-1]["butler_name"] or "your butler"
-            return (f"{len(mine)} email(s) from Build Your Butler. The newest: \"Your link to wake up {name}\".\n\n"
+            return self.outside.inbox([f"{len(mine)} email(s) from Build Your Butler. The newest: \"Your link to wake up {name}\".\n\n"
                     f"Hello,\n\nHere's your link to finish setting up {name}, your new butler:\n\n[Wake up {name}]\n\n"
                     "It works once, for the next 15 minutes. It opens a page that asks you to confirm it's you. Then go "
                     f"back to your Terminal. {name} carries on from there.\n\nIf you didn't ask for this, ignore it. "
-                    "Nothing happens without the link.\n\nBuild Your Butler · support@buildyourbutler.com")
+                    "Nothing happens without the link.\n\nBuild Your Butler · support@buildyourbutler.com"])
+        if action == "read_email":
+            return self.outside.read(typed or what)
+        if action == "reply_to_email":
+            return self.outside.reply(typed or what) if (typed or what).strip() else "Your reply is empty: type it in 'text'."
+        if action == "wait":
+            return self.outside.wait(typed or what)
+        answer = self.outside.site(action, what, typed)
+        if answer:
+            return answer
         if action == "click_email_link":
             pending = [(i, r) for i, (rid, r) in enumerate(self.api.requests.items())
                        if r["email"].strip().lower() == self.email and r["status"] == "pending"]
@@ -397,6 +441,7 @@ In this session, you will also:
             p = subprocess.run([str(self.downloads), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"], capture_output=True)
             if p.returncode != 0:
                 return f"The installer says it couldn't finish (exit {p.returncode})."
+            self.outside.after_install()
             first = self.open_window(["cmd.exe", "/d", "/k", str(BUTLER / "bin" / "butler.cmd"), "setup"])
             return (f"Windows asks nothing (the test signs nothing; a real download may show SmartScreen first). The "
                     f"installer shows Ready to Install; you click Install, it says \"Getting Butler's own Python. This "
@@ -406,6 +451,7 @@ In this session, you will also:
                            capture_output=True, text=True)
         if p.returncode != 0:
             return f"Installer says: The installation failed. ({p.stderr.strip()[-300:]})"
+        self.outside.after_install()
         opens = subprocess.run(["bash", "-c", f'. "{BUTLER}/scripts/lib/install.sh"; install_opens "$(install_state "{BUTLER}")"'],
                                capture_output=True, text=True).stdout.strip() or "first-run.command"
         first = self.open_window(["/bin/bash", str(BUTLER / "scripts" / opens)])
@@ -513,6 +559,55 @@ In this session, you will also:
                            + "; ".join(a or "(nothing)" for a in answers.values()))
         return PermissionResultAllow(updated_input={**tool_input, "answers": answers})
 
+    # ---------- windows and pages that appear ----------
+    async def watch(self) -> None:
+        """Windows a stub put on screen and pages Butler opened (events.py), answered by the
+        persona as they come, while its terminal or Claude Code action is still running."""
+        while True:
+            await asyncio.sleep(1)
+            for name, event in events.waiting(self.events_seen):
+                try:
+                    await self.on_event(name, event)
+                except Exception as e:  # noqa: BLE001 - a window the harness can't show is a harness error
+                    self.say("harness", f"window failed: {type(e).__name__}: {e}")
+                    events.reply(name, {"button": "", "text": "", "ticked": []})
+
+    async def window(self, question: str) -> dict:
+        snapshot = side_question(self.messages, question)
+        try:
+            response = await self.ask(snapshot, [WINDOW_TOOL], max_tokens=1500)
+            return next(b.input for b in response.content if b.type == "tool_use")
+        except Exception:  # noqa: BLE001
+            self.fallbacks += 1
+            return {"button": "", "text": "", "ticked": []}
+
+    async def on_event(self, name: str, event: dict) -> None:
+        if event["kind"] == "browser":
+            screen, form = self.outside.browser(event["url"])
+            if form:
+                answer = await self.window(self.describe(form, screen))
+                result = await asyncio.to_thread(self.outside.google_answer, event["url"], answer)
+                screen += f"\nYou ticked {answer.get('ticked') or 'nothing'} and clicked {answer.get('button')!r}. {result}"
+            events.reply(name, {})
+            self.pending.append(screen)
+        else:
+            answer = await self.window(self.describe(event))
+            events.reply(name, answer)
+            typed = " typed into the box and" if event.get("box") and answer.get("text") else ""
+            self.pending.append(f"A window appeared: {event.get('title') or event.get('text')}. You{typed} clicked "
+                                f"{answer.get('button')!r}.")
+        self.say(f"{self.persona['name']} answers a window", self.pending[-1])
+
+    @staticmethod
+    def describe(form: dict, before: str = "") -> str:
+        box = ""
+        if form.get("box"):
+            box = "\n  [a box to type or paste into" + (", which shows dots instead of what you type" if form.get("hidden") else "") + "]"
+        boxes = "\n  Boxes you can tick: " + "; ".join(form["boxes"]) if form.get("boxes") else ""
+        return (f"{before}\n\nA window appears on screen" + (f", titled {form['title']!r}" if form.get("title") else "")
+                + f":\n\n  {form.get('text', '')}{box}{boxes}\n  Buttons: " + " | ".join(form.get("buttons", []))
+                + "\n\nThis is your decision, as you. Answer it with the window tool.")
+
     # ---------- the end ----------
     async def report(self) -> dict:
         ask = ("The session is over. Write your report for the people who make the course: every place you got "
@@ -543,10 +638,18 @@ In this session, you will also:
             "lessons_reported": sorted({p.get("lesson") for p in self.api.progress if p.get("lesson")}),
             "tracebacks": len(re.findall(r"Traceback \(most recent call last\)", screens)),
             "harness_answered": self.fallbacks,
+            "butler_mails": len(list((events.FAKES / "mail").glob("*.json"))) if (events.FAKES / "mail").exists() else 0,
+            "mails_to_you": len(self.outside.mails()),
+            "replies_sent": self.outside.replies,
+            "replies_read": len(json.loads((events.FAKES / "imap-seen.json").read_text())) if (events.FAKES / "imap-seen.json").exists() else 0,
+            "butler_claude_calls": self.outside.relay.calls,
+            "google_connected": bool(self.outside.google.access),
         }
 
     async def main(self) -> int:
         started = time.monotonic()
+        self.messages = [{"role": "user", "content": "(starting)"}]
+        watcher = asyncio.create_task(self.watch())
         try:
             await self.persona_loop()
         except Exception as e:  # noqa: BLE001 - the run so far is still worth its report
@@ -558,6 +661,7 @@ In this session, you will also:
                     await self.claude.disconnect()
                 except Exception:  # noqa: BLE001
                     pass
+        watcher.cancel()
         try:
             report = await self.report()
         except Exception as e:  # noqa: BLE001 - the run is saved whatever happens here
@@ -566,7 +670,8 @@ In this session, you will also:
                   "cards": self.cards, "outcome": self.outcome, "reached": self.current()["id"],
                   "lessons_total": len(self.lessons), "lessons_read": self.at + 1, "notes": self.notes,
                   "report": report, "checks": self.checks(),
-                  "cost_usd": {k: round(v, 3) for k, v in {**self.cost, "total": self.spent()}.items()},
+                  "cost_usd": {k: round(v, 3) for k, v in {**self.cost, "butler_claude": self.outside.relay.cost,
+                                                           "total": self.spent()}.items()},
                   "minutes": round((time.monotonic() - started) / 60, 1)}
         (self.out / "run.json").write_text(json.dumps(result, indent=2, ensure_ascii=False))
         (self.out / "transcript.md").write_text(
@@ -575,6 +680,7 @@ In this session, you will also:
         for w in self.windows:
             w.close()
         self.api.stop()
+        self.outside.stop()
         print(json.dumps({k: result[k] for k in ("persona", "platform", "seed", "outcome", "reached", "cost_usd")}))
         return 0
 

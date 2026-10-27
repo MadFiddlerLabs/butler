@@ -3,7 +3,9 @@
 # installer, Butler and Claude Code, and the fake account API. Every run draws its own choices and
 # slips, and starts with no memory of any other. One report collects the findings.
 #
-# By hand only, on each major change: it costs about $3-4.50 a run for Modules 0-2 (docs/TESTING.md).
+# By hand only, on each major change: about $1-1.50 a run for Modules 0-2, and an estimated $5-8 for
+# the whole course (docs/TESTING.md). Past Module 2, tests/personas/outside.py fakes the sites a
+# student signs up for, and Butler's own Claude calls go through a relay that counts their cost.
 # Needs ANTHROPIC_API_KEY, and COURSE_READ_TOKEN: a fine-grained token that can only read the
 # private website repo's contents (the organization allows no deploy keys).
 name: personas
@@ -97,7 +99,7 @@ jobs:
       max-parallel: 6
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
+    timeout-minutes: 300   # the whole course, with real waits for Butler's five-minute inbox check
     env:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
