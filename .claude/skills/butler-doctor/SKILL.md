@@ -19,7 +19,7 @@ Mac and `win32` for Windows. Run only that computer's checks, and say only what'
 The checks are written for a Mac. On Windows, `bin/butler` is `bin/butler.cmd`, `./run.sh` is
 `.venv/Scripts/python.exe run.py`, and `.venv/bin/python` is `.venv/Scripts/python.exe`. Where
 a check or a fix differs on Windows, its row says so. Where a row says "the Mac", say "the
-computer" on Windows.
+computer" on Windows. On Windows, Claude Code runs commands in Git Bash when Git for Windows is installed, and in PowerShell when it isn't. Write each command for the shell it runs in: in PowerShell, `PYTHONPATH=src <command>` is `$env:PYTHONPATH = "src"; <command>`, and a program in the folder runs as `.\.venv\Scripts\python.exe`.
 
 ## Run the checks
 

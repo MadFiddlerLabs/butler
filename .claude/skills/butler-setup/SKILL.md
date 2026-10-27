@@ -70,6 +70,8 @@ The steps are written for a Mac. On Windows, change the commands like this:
 | `.venv/bin/python` | `.venv/Scripts/python.exe` |
 | `open <url>` | `.venv/Scripts/python.exe -m webbrowser <url>` |
 
+On Windows, Claude Code runs commands in Git Bash when Git for Windows is installed, and in PowerShell when it isn't. Write each command for the shell it runs in: in PowerShell, `PYTHONPATH=src <command>` is `$env:PYTHONPATH = "src"; <command>`, and a program in the folder runs as `.\.venv\Scripts\python.exe`.
+
 Where a step says "the Mac", say "the computer" to a Windows student. Where a step works
 differently on Windows, it says so with "On Windows". Explain Windows' own terms the first time:
 Credential Manager is Windows' built-in password safe (Keychain on a Mac), and Task Scheduler is

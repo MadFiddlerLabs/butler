@@ -19,7 +19,7 @@ Every config change still needs the user's yes.
 Butler runs on a Mac or Windows. Check which once: Claude Code's environment names the platform,
 `darwin` for a Mac and `win32` for Windows. The commands here are written for a Mac. On Windows,
 `.venv/bin/python` is `.venv/Scripts/python.exe`, and `./run.sh` is
-`.venv/Scripts/python.exe run.py`. Show the user only their computer's commands.
+`.venv/Scripts/python.exe run.py`. Show the user only their computer's commands. On Windows, Claude Code runs commands in Git Bash when Git for Windows is installed, and in PowerShell when it isn't. Write each command for the shell it runs in: in PowerShell, `PYTHONPATH=src <command>` is `$env:PYTHONPATH = "src"; <command>`, and a program in the folder runs as `.\.venv\Scripts\python.exe`.
 
 ## 1. Gather
 
