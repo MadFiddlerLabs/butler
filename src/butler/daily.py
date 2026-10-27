@@ -230,10 +230,18 @@ def _last_brief_time(day: date, zone) -> datetime:
 
 
 def _raw_headlines(settings: dict, stories) -> list[dict]:
+    """Each region's first stories, as the feeds give them, before Claude is connected. A story
+    in two regions' feeds (BBC's World feed carries its Europe stories) shows once, in the first
+    region; the next story takes its place."""
     n = settings["news"]["stories_per_region"]
-    out = []
+    out, seen = [], set()
     for region in settings["news"]["regions"]:
-        picks = [s for s in stories if s.region == region["key"]][:n]
+        picks = []
+        for s in stories:
+            key = s.link or " ".join(s.title.lower().split())
+            if s.region == region["key"] and key not in seen and len(picks) < n:
+                seen.add(key)
+                picks.append(s)
         out += [{"story": s, "headline": s.title, "summary": s.summary[:200]} for s in picks]
     return out
 
