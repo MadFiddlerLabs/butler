@@ -102,6 +102,9 @@ jobs:
           & "$b\.venv\Scripts\python.exe" "$b\run.py" preview
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not (Get-ChildItem "$b\out\preview\brief-*.html")) { throw "no brief" }
+          # The butler command, as the Start menu shortcut and a new terminal run it.
+          & "$b\bin\butler.cmd" help
+          if ($LASTEXITCODE -ne 0) { throw "butler.cmd help exited $LASTEXITCODE" }
       - name: Upgrading keeps the household's files
         shell: pwsh
         run: |
