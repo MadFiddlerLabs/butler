@@ -27,6 +27,14 @@ GOOD_PKGUTIL = """Package "Butler.pkg":
 """
 
 
+def setUpModule():
+    """The manifests here are a Mac's, with the package at the top level, so the same tests run on
+    Windows. ManifestPerComputerTest and WindowsSignatureTest set Windows for its own cases."""
+    patch = mock.patch.object(updates.system, "NAME", "mac")
+    patch.start()
+    unittest.addModuleCleanup(patch.stop)
+
+
 def done(cmd, code=0, out="", err=""):
     return subprocess.CompletedProcess(cmd, code, out, err)
 
@@ -434,6 +442,7 @@ class ReportTest(ApplySandbox):
         self.assertEqual([o.get("reason") for o in self.api.outcomes], ["checksum", "signature"])
         self.assertEqual({o["outcome"] for o in self.api.outcomes}, {"failed"})
         self.assertEqual(self.installed, [], "nothing was installed")
+        self.assertFalse(updates.kept_package("v0.2.0").exists(), "a refused package isn't kept")
 
     def test_the_macs_own_problems_report_nothing(self):
         with self.assertRaisesRegex(updates.UpdateError, "couldn't download"):

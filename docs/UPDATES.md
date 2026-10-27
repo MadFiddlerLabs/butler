@@ -21,7 +21,8 @@ and minor versions overnight on its own. A major version waits for a yes: the br
    - With a `rollout_percent`, only that share of installs takes the version. A stable random
      id in `data/updates/install-id` decides.
 3. **The checks on the package**, before anything is installed:
-   - Its SHA-256 and size must match the manifest. A mismatch deletes the download.
+   - Its SHA-256 and size must match the manifest. A mismatch deletes the download, and so does
+     any of the checks below that fails.
    - `pkgutil --check-signature` must show the Developer ID Installer chain for Team ID
      `VB9CHJM4AN`.
    - Gatekeeper (`spctl --assess --type install`) must accept it.

@@ -398,10 +398,14 @@ def apply(entry: dict, now: datetime | None = None) -> dict:
         rollback_pkg = ensure_rollback_package(previous)
         try:
             pkg = download(entry["pkg_url"], kept_package(new), entry.get("sha256"), entry.get("size"))
-            verify_signature(pkg)
+            try:
+                verify_signature(pkg)
+            except UpdateError:
+                pkg.unlink(missing_ok=True)      # never kept, so never mistaken for a copy to go back to
+                raise
         except UpdateError as e:
             # A package that doesn't check out is the release's fault: report it. A download that
-            # didn't arrive is the network's, and the Mac tries again tomorrow.
+            # didn't arrive is the network's, and the computer tries again tomorrow.
             if e.code:
                 _report(settings, previous, new, "failed", e.code)
             raise
