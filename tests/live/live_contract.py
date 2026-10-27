@@ -73,7 +73,8 @@ def main() -> int:
     if not os.environ.get("ANTHROPIC_API_KEY"):
         print("ANTHROPIC_API_KEY isn't set: skipping the Claude calls.")
         return 0 if lunch_money_ok else 1
-    llm.keychain = lambda service: None          # use ANTHROPIC_API_KEY, not the Mac's Keychain
+    key = os.environ["ANTHROPIC_API_KEY"]
+    llm.keychain = lambda service: key           # the key from the environment, not the Mac's Keychain
     settings = load_settings()                   # the example: its model, effort and beta
     settings["llm"]["effort"] = "low"
     failed = False
