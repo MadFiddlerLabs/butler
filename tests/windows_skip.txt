@@ -1,25 +1,6 @@
 # Tests that don't run on Windows yet (#40), for tests/windows.py. One test module, class or
 # test per line, then a comment saying why. Take a line out when its part is ported.
 
-# The flows run in tests/fakes/harness.py, whose fake Keychain (fakebin/security) and fake
-# Calendar helper (bin/butler-ek) are scripts with a #! line, which Windows can't run.
-test_flows.BudgetByReplyTest                  # fake Keychain and Calendar helper are #! scripts
-test_flows.FullHouseholdTest                  # the same
-test_flows.NetWorthOffTest                    # the same
-test_flows.WeeklyOnFridayTest                 # the same
-test_failures.GmailSendDownTest               # the same
-test_failures.NotConnectedYetTest             # the same
-test_failures.ReplyWhenClaudeKeepsFailingTest # the same
-test_failures.ReplyWhenGmailRefusesTest       # the same
-test_failures.ServicesDownTest                # the same
-test_failures.TickWithImapDownTest            # the same
-test_failures.TimeoutAndBrokenHelperTest      # the same
-test_privacy.PrivacyTest                      # the same
-test_progress.JohnsonsIntegrationTest         # the same
-test_model_check.EndToEndTest                 # the same
-test_gcal.GoogleHouseholdTest                 # the same
-test_gcal.GoogleNotConnectedTest              # the same
-
 # bash: bin/butler, scripts/first-run.sh, bootstrap.sh and scripts/lib/*.sh, until the entry
 # points move to Python. On a runner, `bash` can also be WSL's, which has no Linux installed.
 test_cli.CliTest                              # runs bin/butler and a bash-made .venv

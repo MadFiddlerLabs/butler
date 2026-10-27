@@ -294,6 +294,24 @@ def fake_request(settings, system, prompt, schema):
 
 # ---------- flows ----------
 
+def _windows_fakes() -> None:
+    """Windows can't run the fake home's #! scripts (fakebin/security and bin/butler-ek). So here
+    the password store reads the same fake secrets file, and the Calendar helper stub runs
+    through this Python."""
+    import subprocess
+    from butler import config, system
+    path = Path(os.environ["BUTLER_FAKE_SECRETS"])
+    system._impl.get_secret = lambda service: json.loads(path.read_text()).get(service)
+    system._impl.has_secret = lambda service: service in json.loads(path.read_text())
+    real_run = subprocess.run
+
+    def run(cmd, *args, **kwargs):
+        if isinstance(cmd, list) and cmd and str(cmd[0]) == str(config.BUTLER_EK):
+            cmd = [sys.executable, *cmd]
+        return real_run(cmd, *args, **kwargs)
+    subprocess.run = run
+
+
 def install_fakes() -> None:
     import feedparser
     import imaplib
@@ -304,6 +322,8 @@ def install_fakes() -> None:
     feedparser.parse = fake_feedparse
     from butler import llm
     llm._request = fake_request
+    if sys.platform == "win32":
+        _windows_fakes()
 
 
 def run(flow: str) -> None:
