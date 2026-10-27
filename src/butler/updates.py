@@ -21,6 +21,11 @@ the settings, and today's brief built from the household's own settings, sending
 a failure reinstalls the kept package. The next brief says what happened, in a line. If going
 back fails too, a plain email says so straight away, since the code left may not send a brief.
 
+On Windows the update is the installer the website serves, Butler-Setup.exe: Windows must trust
+its Authenticode signature and the signer must be Butler's publisher; Inno Setup installs it
+silently into %USERPROFILE%\\Butler, and its bootstrap gives a new lock a virtualenv of its own
+beside the one Butler is running from (scripts/bootstrap.ps1). The rest is the same.
+
 The website's manifest is the kill switch: a held version is never offered. To tell the owner when
 to pull it, each update's outcome goes to the website, anonymously (update_report.py), unless
 `update_report: false`. See docs/UPDATES.md.
@@ -47,6 +52,9 @@ from .config import ROOT, brand, load_settings
 log = logging.getLogger("butler")
 
 TEAM_ID = "VB9CHJM4AN"
+# The Windows installer's signer, as its certificate names it (common name and organization).
+# Confirm the exact legal name once Artifact Signing has validated AELaboratories (#40).
+PUBLISHER = "AELaboratories"
 MANIFEST_URL = "https://buildyourbutler.com/updates/stable.json"
 RELEASES_URL = "https://github.com/MadFiddlerLabs/butler/releases/download"
 UPDATES = ROOT / "data" / "updates"
@@ -59,7 +67,6 @@ VERSION_FILE = ROOT / ".butler-version"
 # relaxed. A signed package never carries it, and a stale one from an older build doesn't match
 # the installed version, so a real install can't relax its checks.
 UNSIGNED_MARKER = ROOT / ".butler-unsigned-build"
-PORTAL_LABEL = "com.buildyourbutler.portal"
 
 
 class UpdateError(RuntimeError):
@@ -146,6 +153,18 @@ def fetch_manifest() -> dict:
         raise UpdateError(f"couldn't read the update list ({e})") from None
 
 
+def for_this_computer(manifest):
+    """The manifest as this computer reads it. A Mac's package is at the top level; Windows' is in
+    `windows` ({url, sha256, size}), and a manifest without one has nothing for Windows yet."""
+    if system.NAME != "windows" or not isinstance(manifest, dict):
+        return manifest
+    entry = manifest.get("windows")
+    if not isinstance(entry, dict) or not entry.get("url"):
+        return {"available": False}
+    return {**{k: v for k, v in manifest.items() if k not in ("pkg_url", "sha256", "size", "windows")},
+            "pkg_url": entry["url"], "sha256": entry.get("sha256"), "size": entry.get("size")}
+
+
 @dataclass
 class Decision:
     action: str          # "none" | "install" | "ask" | "reinstall"
@@ -158,6 +177,7 @@ def decide(settings: dict, manifest: dict, installed: str, ident: str) -> Decisi
     mode = settings.get("updates", "auto")
     if mode == "off":
         return Decision("none", "updates are off")
+    manifest = for_this_computer(manifest)
     if not isinstance(manifest, dict):
         return Decision("none", "the update list isn't readable")
     new = manifest.get("version")
@@ -203,12 +223,29 @@ def unsigned_allowed() -> bool:
 
 
 def verify_signature(pkg: Path) -> None:
-    """Refuses a package not signed by our Developer ID, or one Gatekeeper wouldn't open. The
-    signing certificate (the chain's first line) must end in our Team ID: any Developer ID passes
-    Gatekeeper, so this line is what ties the package to Butler's publisher."""
+    """Refuses an installer that isn't Butler's publisher's, signed, as this computer checks it."""
     if unsigned_allowed():
         log.warning("update: signature checks relaxed for a test build")
         return
+    if system.NAME == "windows":
+        verify_exe(pkg)
+    else:
+        verify_pkg(pkg)
+
+
+def verify_exe(exe: Path) -> None:
+    """Windows must trust the Authenticode signature (system.installer_signer), and its signer's
+    certificate must name Butler's publisher, as common name and organization: any trusted
+    certificate passes WinVerifyTrust, so these are what tie the installer to Butler."""
+    signer = system.installer_signer(str(exe))
+    if not signer or signer.get("name") != PUBLISHER or signer.get("organization") != PUBLISHER:
+        raise UpdateError("the new version isn't signed by Butler's publisher, so I didn't install it", "signature")
+
+
+def verify_pkg(pkg: Path) -> None:
+    """Refuses a package not signed by our Developer ID, or one Gatekeeper wouldn't open. The
+    signing certificate (the chain's first line) must end in our Team ID: any Developer ID passes
+    Gatekeeper, so this line is what ties the package to Butler's publisher."""
     sig = _run(["pkgutil", "--check-signature", str(pkg)])
     out = sig.stdout + sig.stderr
     if (sig.returncode != 0 or "signed by a developer certificate issued by Apple" not in out
@@ -249,7 +286,7 @@ def download(url: str, dest: Path, sha256: str | None = None, size: int | None =
 
 
 def kept_package(version: str) -> Path:
-    return UPDATES / f"Butler-{version}.pkg"
+    return UPDATES / f"Butler-{version}{Path(system.INSTALLER).suffix}"
 
 
 def ensure_rollback_package(version: str) -> Path:
@@ -258,7 +295,7 @@ def ensure_rollback_package(version: str) -> Path:
     path = kept_package(version)
     if not path.exists():
         base = os.environ.get("BUTLER_RELEASES_URL") or RELEASES_URL
-        url = f"{base.rstrip('/')}/{version}/Butler.pkg"
+        url = f"{base.rstrip('/')}/{version}/{system.INSTALLER}"
         try:
             download(url, path)
         except UpdateError as e:
@@ -269,7 +306,7 @@ def ensure_rollback_package(version: str) -> Path:
 
 
 def prune(keep: set[str]) -> None:
-    for pkg in UPDATES.glob("Butler-*.pkg"):
+    for pkg in UPDATES.glob(f"Butler-*{Path(system.INSTALLER).suffix}"):
         if pkg.name not in keep:
             pkg.unlink(missing_ok=True)
 
@@ -288,10 +325,11 @@ def can_update() -> str | None:
 
 
 def install_package(pkg: Path) -> None:
-    """Installer, into the current user's home: no admin password, no prompts. postinstall sees
-    an existing household and opens nothing."""
+    """The installer, into the current user's home: no admin password, no prompts. What it runs
+    after copying (postinstall, butler.installed) sees an existing household and opens nothing."""
+    (ROOT / "logs").mkdir(exist_ok=True)
     try:
-        result = _run(["installer", "-pkg", str(pkg), "-target", "CurrentUserHomeDirectory"], timeout=900)
+        result = _run(system.install_command(str(pkg), str(ROOT / "logs" / "update-install.log")), timeout=900)
     except (subprocess.TimeoutExpired, OSError) as e:
         raise UpdateError(f"Installer didn't finish ({e})") from None
     if result.returncode != 0:
@@ -301,10 +339,9 @@ def install_package(pkg: Path) -> None:
 def _fresh_process(args: list[str], timeout: int) -> dict:
     """Runs `python -m butler.updates <args>` with the code on disk now, in a fresh process, and
     reads the JSON line it prints last."""
-    python = ROOT / ".venv" / "bin" / "python"
     env = {**os.environ, "PYTHONPATH": str(ROOT / "src")}
     try:
-        result = subprocess.run([str(python), "-m", "butler.updates", *args],
+        result = subprocess.run([*system.python_command(ROOT), "-m", "butler.updates", *args],
                                 capture_output=True, text=True, env=env, cwd=ROOT, timeout=timeout)
     except subprocess.TimeoutExpired:
         return {"ok": False, "problem": f"its checks took longer than {timeout // 60} minutes"}
@@ -601,18 +638,20 @@ def health() -> list[str]:
 
 
 def _restart_jobs() -> None:
-    if not shutil.which("launchctl"):
+    """The portal, restarted on the new code, when it's installed (launchd, or Task Scheduler)."""
+    check, restart = system.portal_restart()
+    if not shutil.which(check[0]):
         return
-    uid = os.getuid()
-    if _run(["launchctl", "print", f"gui/{uid}/{PORTAL_LABEL}"]).returncode == 0:
-        _run(["launchctl", "kickstart", "-k", f"gui/{uid}/{PORTAL_LABEL}"])
+    if _run(check).returncode == 0:
+        for cmd in restart:
+            _run(cmd)
 
 
 def _sync_dependencies() -> str | None:
-    """New versions may need new packages: bootstrap.sh is safe to run again."""
+    """New versions may need new packages: the bootstrap is safe to run again."""
     if os.environ.get("BUTLER_UPDATE_SKIP_BOOTSTRAP"):
         return None
-    result = _run(["bash", str(ROOT / "scripts" / "bootstrap.sh")], timeout=900)
+    result = _run(system.bootstrap_command(ROOT), timeout=900)
     return None if result.returncode == 0 else f"dependencies didn't install ({result.stderr.strip()[-200:]})"
 
 
@@ -683,7 +722,7 @@ def command(check: bool, yes: bool, say=print) -> int:
         return 1
     current = installed_version()
     try:
-        manifest = fetch_manifest()
+        manifest = for_this_computer(fetch_manifest())
     except UpdateError as e:
         say(f"I {e}. Check your internet connection and try again.")
         return 1

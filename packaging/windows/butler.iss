@@ -31,6 +31,10 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 ChangesEnvironment=yes
+; Never close a running Butler (the portal, or the updater that started this installer): what it
+; replaces isn't held open, and a new lock gets a virtualenv of its own (scripts/bootstrap.ps1).
+CloseApplications=no
+RestartApplications=no
 UninstallDisplayName=Butler
 ; Butler's files are its own; the household's are never in this list, so they stay.
 UninstallFilesDir={app}\.uninstall

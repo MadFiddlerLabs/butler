@@ -905,6 +905,7 @@ class UpdateFuzzTest(unittest.TestCase):
                 return SimpleNamespace(returncode=code, stdout=pkgutil_out, stderr="")
             return SimpleNamespace(returncode=0, stdout="", stderr="accepted\nsource=Notarized Developer ID")
         with mock.patch.object(updates, "_run", side_effect=fake), \
+             mock.patch.object(updates.system, "NAME", "mac"), \
              mock.patch.object(updates, "unsigned_allowed", return_value=False), \
              mock.patch.object(updates.shutil, "which", return_value=None):
             updates.verify_signature(Path("/tmp/Butler.pkg"))
