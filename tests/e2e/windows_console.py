@@ -46,7 +46,7 @@ def new_window_environment() -> dict:
     buffer = ctypes.create_unicode_buffer(32767)
     ctypes.windll.kernel32.ExpandEnvironmentStringsW(f"{machine};{user}", buffer, len(buffer))
     env = {k: v for k, v in os.environ.items() if k.upper() != "PATH"}
-    env["Path"] = buffer.value
+    env["PATH"] = buffer.value      # Windows doesn't mind the case; pywinpty looks for this one
     return env
 
 
@@ -101,21 +101,23 @@ def main(butler: Path) -> None:
     env = new_window_environment()
     env.pop("BUTLER_PYTHON", None)
     check("Butler's bin is on the PATH a new window gets",
-          any(os.path.normcase(p.rstrip("\\")) == os.path.normcase(str(butler / "bin")) for p in env["Path"].split(";")),
-          env["Path"])
+          any(os.path.normcase(p.rstrip("\\")) == os.path.normcase(str(butler / "bin")) for p in env["PATH"].split(";")),
+          env["PATH"])
 
     home = str(Path.home())
-    for shell in ("cmd.exe /d /k", "powershell.exe -NoLogo -NoProfile -NoExit"):
+    windows = Path(os.environ["SystemRoot"]) / "System32"
+    cmd = f'"{windows / "cmd.exe"}" /d /k'
+    for shell in (cmd, f'"{windows / "WindowsPowerShell" / "v1.0" / "powershell.exe"}" -NoLogo -NoProfile -NoExit'):
         console = Console(shell, home, env)
         try:
             console.type("butler help")
             console.wait_for("butler doctor")
         finally:
             console.close()
-        check(f"plain `butler` works in a new {shell.split('.')[0]} window", True)
+        check(f"plain `butler` works in a new {'cmd' if shell == cmd else 'PowerShell'} window", True)
 
     # A key typed hidden. Typed one character at a time, as fingers (or a paste) deliver it.
-    console = Console("cmd.exe /d /k", home, env)
+    console = Console(cmd, home, env)
     try:
         console.type("butler secret butler-anthropic")
         console.wait_for("Your Claude API key › ")
@@ -137,7 +139,7 @@ def main(butler: Path) -> None:
     check("the key is in Credential Manager, as typed", stored.returncode == 0)
 
     # The first run's questions, answered at the keyboard: no to the Terms stops it.
-    console = Console("cmd.exe /d /k", home, env)
+    console = Console(cmd, home, env)
     try:
         console.type("butler setup")
         console.wait_for("Hello! I'm Bento, your new butler.")
