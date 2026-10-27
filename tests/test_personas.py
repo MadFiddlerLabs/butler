@@ -30,9 +30,22 @@ class PersonasTest(unittest.TestCase):
         """cli.open_claude prints this with BUTLER_CLAUDE_DRY_RUN; change both together."""
         cli = (HERE.parent / "src" / "butler" / "cli.py").read_text()
         self.assertIn('''say(f"(dry run) would run: {' '.join(argv[:-1])} \\"{prompt}\\" in {ROOT}")''', cli)
-        line = '(dry run) would run: /usr/local/bin/claude --permission-mode default "Hello.\nIt\'s "Module 1"." in /Users/sam/Butler\n'
+        line = ('(dry run) would run: /usr/local/bin/claude --permission-mode default "Hello.\nIt\'s "Module 1"." in '
+                '/Users/sam/Butler\nruner@mac Butler % ')
         m = screens.DRY_CLAUDE.search(line)
         self.assertEqual(m.groups(), ("/usr/local/bin/claude", "default", "Hello.\nIt's \"Module 1\".", "/Users/sam/Butler"))
+
+    def test_the_name_box_works_as_the_homepage_does_and_as_butler_checks(self):
+        from butler.setup_settings import valid_name
+        for typed, want in [("Jeeves", "Jeeves"), ("  Mrs   Hudson ", "Mrs Hudson"), ("O'Brien", "O'Brien"),
+                            ("Type Jeeves in the name box and click Download", "Type Jeeves in the name"), ("🤖 Robo", "Butler"),
+                            ("", "Butler"), ("-dash", "Butler")]:
+            with self.subTest(typed):
+                got, said = screens.site_name(typed)
+                self.assertEqual(got, want)
+                if got != "Butler":
+                    self.assertEqual(valid_name(got), got, "the setup accepts what the site lets through")
+                self.assertEqual(bool(said), got == "Butler" and typed.strip() != "")
 
     def test_screens_read_as_plain_text(self):
         self.assertEqual(plain("\x1b[1mBold\x1b[0m\r\nnext\r"), "Bold\nnext\n")

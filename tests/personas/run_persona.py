@@ -37,7 +37,7 @@ REPO = HERE.parents[1]
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(REPO / "tests"))
 from fakes.account_api import FakeAccountAPI  # noqa: E402
-from screens import DRY_CLAUDE, page_text  # noqa: E402
+from screens import DRY_CLAUDE, page_text, site_name  # noqa: E402
 from terminal import Terminal  # noqa: E402
 
 PERSONA_MODEL = "claude-sonnet-5-5"
@@ -75,7 +75,9 @@ TOOLS = [
          {"action": {"type": "string", "enum": ["check_version", "download_butler", "open_download", "check_inbox",
                                                 "click_email_link", "look_at_browser", "claude_plan",
                                                 "open_folder", "other"]},
-          "what": {"type": "string"}}, ["action", "what"]),
+          "what": {"type": "string"},
+          "text": {"type": "string", "description": "What you type, if anything (the butler's name for download_butler); else empty."}},
+         ["action", "what", "text"]),
     tool("note", "Write down something as it happens: you were confused, something seems broken, a step "
          "didn't match what you saw, or something was good.",
          {"kind": {"type": "string", "enum": ["confused", "broken", "mismatch", "good", "idea"]},
@@ -122,6 +124,8 @@ class Run:
         self.api = FakeAccountAPI().start()
         self.env = {**os.environ, "BUTLER_API": self.api.url + "/api", "BUTLER_CLAUDE_DRY_RUN": "1",
                     "BUTLER_NO_OPEN": "1", "BUTLER_POLL_SECONDS": "2", "BUTLER_COLUMNS": "1000"}
+        if not WINDOWS:   # a Mac's login shell is zsh; the runner's account says bash
+            self.env["SHELL"] = "/bin/zsh"
         self.claude_pending, self.claude_mode, self.claude_prompt = False, "default", ""
 
     # ---------- money ----------
@@ -201,7 +205,7 @@ In this session, you will also:
         if name == "claude_code":
             return await self.claude_say(args["message"], messages)
         if name == "on_screen":
-            return await asyncio.to_thread(self.on_screen, args["action"], args["what"])
+            return await asyncio.to_thread(self.on_screen, args["action"], args["what"], args["text"])
         if name == "note":
             self.notes.append({**args, "at": self.lessons[max(self.at, 0)]["id"]})
             return "Noted."
@@ -271,7 +275,7 @@ In this session, you will also:
         return page_text(path.read_text(encoding="utf-8", errors="replace"))
 
     # ---------- on screen ----------
-    def on_screen(self, action: str, what: str) -> str:
+    def on_screen(self, action: str, what: str, typed: str = "") -> str:
         if action == "check_version":
             if WINDOWS:
                 v = subprocess.run(["cmd", "/c", "ver"], capture_output=True, text=True).stdout.strip()
@@ -279,14 +283,14 @@ In this session, you will also:
             v = subprocess.run(["sw_vers", "-productVersion"], capture_output=True, text=True).stdout.strip()
             return f"About This Mac: macOS {v}."
         if action == "download_butler":
-            name = re.sub(r'[\\/:*?"<>|]', "", what.strip()).strip() or "Butler"
-            m = re.search(r"['\"](.+?)['\"]", what)
-            name = (m[1] if m else name)[:40]
+            name, said = site_name(typed)
             downloads = HOME / "Downloads"
             downloads.mkdir(exist_ok=True)
             self.downloads = downloads / f"{name}{self.installer.suffix}"
             shutil.copyfile(self.installer, self.downloads)
-            return f"The browser downloads {self.downloads.name} into your Downloads folder."
+            shown = f"The box shows: {typed[:24]!r}. " if typed else "The name box is empty. "
+            return (shown + (f"Under it, in red: \"{said}\" " if said else "")
+                    + f"You click Download. The browser downloads {self.downloads.name} into your Downloads folder.")
         if action == "open_download":
             if not self.downloads:
                 return "Your Downloads folder has no Butler file in it."
