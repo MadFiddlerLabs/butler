@@ -484,7 +484,7 @@ if lesson claude 'butler claude' optional; then
 fi
 say
 if [ -n "$app" ]; then
-  say "See you soon. When you're ready, open the Butler app, or open Terminal and type: butler claude"
+  say "See you soon. When you're ready, open the Butler app, or type butler resume in a new Terminal window."
 else
-  say "See you soon. When you're ready, open Terminal and type: butler claude"
+  say "See you soon. When you're ready, type butler resume in a new Terminal window."
 fi
