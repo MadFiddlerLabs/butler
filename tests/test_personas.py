@@ -39,6 +39,15 @@ class PersonasTest(unittest.TestCase):
         self.assertEqual(screens.page_text("<style>x{}</style><h1>Good morning</h1><p>Rain\n at 9</p>"), "Good morning Rain at 9")
 
 
+class WorkflowsParseTest(unittest.TestCase):
+    def test_every_workflow_is_valid_yaml(self):
+        """GitHub refuses a workflow that doesn't parse, without running it: a step name with
+        ': ' in it once did that to personas.yml."""
+        for path in sorted((HERE.parent / ".github" / "workflows").glob("*.yml")):
+            with self.subTest(path.name):
+                self.assertIn("jobs", yaml.safe_load(path.read_text()))
+
+
 class ReportTest(unittest.TestCase):
     def run_(self, name, platform, seed, findings, cost=2.5, **checks):
         base = {"installed": True, "named": "Bento", "signed_in": True, "terms_agreed": True, "settings": True,
