@@ -57,8 +57,8 @@ def module_url(n: int) -> str:
 class Folder:
     """The Butler folder, plus the two things outside it a check may ask about."""
     root: Path
-    has_secret: Callable[[str], bool]       # does Keychain hold this entry? (never its value)
-    scheduled: Callable[[], bool]           # is the five-minute launchd job loaded?
+    has_secret: Callable[[str], bool]       # does the password store hold this entry? (never its value)
+    scheduled: Callable[[], bool]           # is the five-minute job installed (launchd or Task Scheduler)?
 
     def settings(self) -> dict:
         try:
@@ -94,8 +94,12 @@ def _install(f: Folder) -> bool:
 
 
 def _calendar(f: Folder) -> bool:
-    """Module 3: the helper is there and the household picked calendars for the brief."""
-    return (f.root / "bin" / "butler-ek").exists() and bool(f.settings().get("calendar", {}).get("include"))
+    """Module 3: the calendar is connected (Apple's helper is built, or Google is signed in) and
+    the household picked calendars for the brief."""
+    calendar = f.settings().get("calendar", {})
+    connected = (f.has_secret("butler-google") if calendar.get("source") == "google"
+                 else (f.root / "bin" / "butler-ek").exists())
+    return connected and bool(calendar.get("include"))
 
 
 def _brain(f: Folder) -> bool:

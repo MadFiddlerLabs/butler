@@ -179,6 +179,14 @@ class ChecksTest(unittest.TestCase):
         self.s.settings(calendar={"include": ["Johnson Family"]})
         self.assertIn("calendar", self.s.passed())
 
+    def test_calendar_from_google_needs_the_sign_in_and_chosen_calendars(self):
+        self.s.settings(calendar={"source": "google", "include": ["Johnson Family"]})
+        self.assertNotIn("calendar", self.s.passed(), "Google chosen but never signed in")
+        self.s.touch("bin/butler-ek")
+        self.assertNotIn("calendar", self.s.passed(), "Apple's helper doesn't count for Google")
+        self.s.secrets.add("butler-google")
+        self.assertIn("calendar", self.s.passed())
+
     def test_brain_needs_the_key_and_the_household(self):
         self.s.secrets.add("butler-anthropic")
         self.assertNotIn("brain", self.s.passed())

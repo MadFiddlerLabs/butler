@@ -293,7 +293,7 @@ def _checks() -> list[tuple[str, bool, str]]:
         ("Who the emails are for", bool(s["household"].get("adults")), "butler adults Sam Alex"),
         ("Your first brief", ss.first_brief() is not None, "butler brief"),
         ("Claude Code", _claude_path() is not None, "butler claude"),
-        ("Calendar and Reminders", (ROOT / "bin" / "butler-ek").exists() and bool(s["calendar"].get("include")),
+        ("Calendar and Reminders", progress.CHECKS["calendar"](progress.mac_folder()),
          "/butler-setup calendar (in Claude Code)"),
         ("A Claude API key", services["butler-anthropic"], "/butler-setup brain"),
         ("Your butler's email", services["butler-gmail"], "/butler-setup inbox"),
