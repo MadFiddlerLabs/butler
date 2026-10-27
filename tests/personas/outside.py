@@ -438,8 +438,8 @@ class Outside:
                 lists.append(f"{lst['title']}: " + (", ".join(items) or "(empty)"))
             return "Google Tasks:\n" + "\n".join(lists)
         if "remind" in which or "calendar" in which:
-            calls = [json.loads(line) for line in (HERE.parent / "fakes" / "ek-calls.jsonl").read_text().splitlines()] \
-                if (HERE.parent / "fakes" / "ek-calls.jsonl").exists() else []
+            log = FAKES / "ek-calls.jsonl"
+            calls = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
             added = [c for c in calls if c["command"] in ("add-reminder", "add-event")]
             shown = "\n".join(f"- {c['command']}: " + " ".join(c["args"]) for c in added) or "(nothing your butler added)"
             return ("Reminders and Calendar show the sample family's lists and events, plus what your butler added:\n" + shown)

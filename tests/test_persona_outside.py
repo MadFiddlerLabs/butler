@@ -222,8 +222,10 @@ class WindowsOnScreenTest(unittest.TestCase):
         self.assertIn("Calendar", self.asked[0]["title"])
         self.assertIn("Reminders", self.asked[1]["title"])
         self.answer().join()
-        self.assertEqual(self.stub("butler_ek.py", "calendars").returncode, 0, "asked once")
+        self.assertEqual(self.stub("butler_ek.py", "add-reminder", "--list", "Shopping", "--title", "milk").returncode, 0, "asked once")
         self.assertEqual(self.asked, [])
+        self.assertIn("--title milk", self.world.app("Reminders"))
+        self.assertFalse((HERE / "fakes" / "ek-calls.jsonl").exists(), "nothing left in the repo")
 
     def test_a_refused_calendar_fails_like_the_real_helper(self):
         thread = self.answer({"button": "Don't Allow", "text": "", "ticked": []})

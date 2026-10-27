@@ -31,6 +31,7 @@ def main() -> int:
                 print(f"butler-ek: no {what} access. Grant it in System Settings > Privacy & Security > {what}.",
                       file=sys.stderr)
                 return 1
+    ek_stub.HERE = events.FAKES      # its call log, which the persona's Reminders and Calendar show
     return ek_stub.main()
 
 
