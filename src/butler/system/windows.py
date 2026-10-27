@@ -2,7 +2,8 @@
 
 Credential Manager is called through ctypes (advapi32's CredReadW and CredWriteW), so Butler
 needs no extra package for it. Each secret is a generic credential whose target name is the
-service name (`butler-anthropic`), with the user name `butler`, as on the Mac."""
+service name (`butler-anthropic`), with the user name `butler`, as on the Mac. An update's
+installer is checked with WinVerifyTrust (wintrust.dll), Authenticode as Windows itself does it."""
 import contextlib
 import ctypes
 import msvcrt
@@ -15,6 +16,7 @@ from ..schedule import FOLDER
 
 NAME = "windows"
 PASSWORD_STORE = "Credential Manager"
+INSTALLER = "Butler-Setup.exe"
 # The user's own environment in the registry: what a new window's PATH starts from.
 ENVIRONMENT = "Environment"
 TASK_TICK = FOLDER + "tick"
@@ -27,6 +29,15 @@ CRED_MAX_BLOB = 2560
 SCREEN_READERS = ("narrator.exe", "nvda.exe")
 ES_CONTINUOUS = 0x80000000
 ES_SYSTEM_REQUIRED = 0x00000001
+WTD_UI_NONE = 2
+WTD_REVOKE_WHOLECHAIN = 1
+WTD_CHOICE_FILE = 1
+WTD_STATEACTION_VERIFY = 1
+WTD_STATEACTION_CLOSE = 2
+WTD_REVOCATION_CHECK_CHAIN_EXCLUDE_ROOT = 0x80
+CERT_NAME_ATTR_TYPE = 3
+OID_COMMON_NAME = b"2.5.4.3"
+OID_ORGANIZATION = b"2.5.4.10"
 
 
 class _CREDENTIAL(ctypes.Structure):
@@ -44,6 +55,40 @@ class _CREDENTIAL(ctypes.Structure):
         ("TargetAlias", wintypes.LPWSTR),
         ("UserName", wintypes.LPWSTR),
     ]
+
+
+class _GUID(ctypes.Structure):
+    _fields_ = [("Data1", wintypes.DWORD), ("Data2", wintypes.WORD), ("Data3", wintypes.WORD),
+                ("Data4", ctypes.c_ubyte * 8)]
+
+
+class _WINTRUST_FILE_INFO(ctypes.Structure):
+    _fields_ = [("cbStruct", wintypes.DWORD), ("pcwszFilePath", wintypes.LPCWSTR),
+                ("hFile", wintypes.HANDLE), ("pgKnownSubject", ctypes.c_void_p)]
+
+
+class _WINTRUST_DATA(ctypes.Structure):
+    _fields_ = [("cbStruct", wintypes.DWORD), ("pPolicyCallbackData", ctypes.c_void_p),
+                ("pSIPClientData", ctypes.c_void_p), ("dwUIChoice", wintypes.DWORD),
+                ("fdwRevocationChecks", wintypes.DWORD), ("dwUnionChoice", wintypes.DWORD),
+                ("pFile", ctypes.POINTER(_WINTRUST_FILE_INFO)), ("dwStateAction", wintypes.DWORD),
+                ("hWVTStateData", wintypes.HANDLE), ("pwszURLReference", wintypes.LPCWSTR),
+                ("dwProvFlags", wintypes.DWORD), ("dwUIContext", wintypes.DWORD),
+                ("pSignatureSettings", ctypes.c_void_p)]
+
+
+class _CRYPT_PROVIDER_CERT(ctypes.Structure):
+    # Only the start of the structure: the signer's own certificate is all that's read.
+    _fields_ = [("cbStruct", wintypes.DWORD), ("pCert", ctypes.c_void_p)]
+
+
+class _CRYPT_PROVIDER_SGNR(ctypes.Structure):
+    _fields_ = [("cbStruct", wintypes.DWORD), ("sftVerifyAsOf", wintypes.FILETIME),
+                ("csCertChain", wintypes.DWORD), ("pasCertChain", ctypes.POINTER(_CRYPT_PROVIDER_CERT))]
+
+
+# WINTRUST_ACTION_GENERIC_VERIFY_V2: Authenticode, the policy Windows applies to a download.
+_VERIFY_V2 = ((0x00AAC56B, 0xCD44, 0x11D0), (0x8C, 0xC2, 0x00, 0xC0, 0x4F, 0xC2, 0x95, 0xEE))
 
 
 def _advapi32():
@@ -162,6 +207,76 @@ def add_to_path(bin_dir: str) -> bool:
 def butler_app() -> str | None:
     """Windows has no Butler app yet: the way back is `butler` in a new Terminal window."""
     return None
+
+
+def python_command(root) -> list[str]:
+    return [str(root / ".venv" / "Scripts" / "python.exe"), "-X", "utf8"]
+
+
+def _powershell() -> str:
+    # The 64-bit Windows PowerShell, which every Windows 10 and 11 has.
+    return os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "WindowsPowerShell", "v1.0",
+                        "powershell.exe")
+
+
+def bootstrap_command(root) -> list[str]:
+    return [_powershell(), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(root / "scripts" / "bootstrap.ps1")]
+
+
+def install_command(installer: str, log: str) -> list[str]:
+    """Inno Setup, silently, into the same %USERPROFILE%\\Butler: no admin password, no prompt,
+    and butler.installed opens nothing. /LOG keeps the installer's own account of it."""
+    return [installer, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", f"/LOG={log}"]
+
+
+def portal_restart() -> tuple[list[str], list[list[str]]]:
+    task = FOLDER + "portal"
+    return ["schtasks", "/Query", "/TN", task], [["schtasks", "/End", "/TN", task], ["schtasks", "/Run", "/TN", task]]
+
+
+def _name(crypt32, cert, oid: bytes) -> str:
+    buffer = ctypes.create_unicode_buffer(512)
+    crypt32.CertGetNameStringW(cert, CERT_NAME_ATTR_TYPE, 0, oid, buffer, len(buffer))
+    return buffer.value
+
+
+def installer_signer(path: str) -> dict | None:
+    """WinVerifyTrust with the Authenticode policy and no UI: a signature that is intact, made by
+    a certificate whose chain Windows trusts, for code signing, not revoked (every certificate but
+    the root is checked online) and in date or timestamped while it was. Then the signer's
+    certificate's common name and organization."""
+    wintrust = ctypes.WinDLL("wintrust")
+    crypt32 = ctypes.WinDLL("crypt32")
+    wintrust.WinVerifyTrust.argtypes = [wintypes.HWND, ctypes.POINTER(_GUID), ctypes.POINTER(_WINTRUST_DATA)]
+    wintrust.WinVerifyTrust.restype = wintypes.LONG
+    wintrust.WTHelperProvDataFromStateData.argtypes = [wintypes.HANDLE]
+    wintrust.WTHelperProvDataFromStateData.restype = ctypes.c_void_p
+    wintrust.WTHelperGetProvSignerFromChain.argtypes = [ctypes.c_void_p, wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    wintrust.WTHelperGetProvSignerFromChain.restype = ctypes.POINTER(_CRYPT_PROVIDER_SGNR)
+    crypt32.CertGetNameStringW.argtypes = [ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD, ctypes.c_char_p,
+                                           wintypes.LPWSTR, wintypes.DWORD]
+    crypt32.CertGetNameStringW.restype = wintypes.DWORD
+
+    (d1, d2, d3), d4 = _VERIFY_V2
+    action = _GUID(d1, d2, d3, (ctypes.c_ubyte * 8)(*d4))
+    file_info = _WINTRUST_FILE_INFO(ctypes.sizeof(_WINTRUST_FILE_INFO), str(path), None, None)
+    data = _WINTRUST_DATA(cbStruct=ctypes.sizeof(_WINTRUST_DATA), dwUIChoice=WTD_UI_NONE,
+                          fdwRevocationChecks=WTD_REVOKE_WHOLECHAIN, dwUnionChoice=WTD_CHOICE_FILE,
+                          pFile=ctypes.pointer(file_info), dwStateAction=WTD_STATEACTION_VERIFY,
+                          dwProvFlags=WTD_REVOCATION_CHECK_CHAIN_EXCLUDE_ROOT)
+    trusted = wintrust.WinVerifyTrust(None, ctypes.byref(action), ctypes.byref(data)) == 0
+    try:
+        if not trusted:
+            return None
+        provider = wintrust.WTHelperProvDataFromStateData(data.hWVTStateData)
+        signer = wintrust.WTHelperGetProvSignerFromChain(provider, 0, False, 0) if provider else None
+        if not signer or not signer.contents.csCertChain:
+            return None
+        cert = signer.contents.pasCertChain[0].pCert
+        return {"name": _name(crypt32, cert, OID_COMMON_NAME), "organization": _name(crypt32, cert, OID_ORGANIZATION)}
+    finally:
+        data.dwStateAction = WTD_STATEACTION_CLOSE
+        wintrust.WinVerifyTrust(None, ctypes.byref(action), ctypes.byref(data))
 
 
 def lock_exclusive(f) -> None:

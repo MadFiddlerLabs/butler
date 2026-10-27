@@ -10,6 +10,8 @@ from xml.parsers.expat import ExpatError
 NAME = "mac"
 PASSWORD_STORE = "Keychain"
 LABEL = "com.buildyourbutler.butler"
+PORTAL_LABEL = "com.buildyourbutler.portal"
+INSTALLER = "Butler.pkg"
 APP_ID = "com.buildyourbutler.butler-app"
 
 
@@ -101,3 +103,26 @@ def butler_app() -> str | None:
 
 def lock_exclusive(f) -> None:
     fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def python_command(root: Path) -> list[str]:
+    return [str(root / ".venv" / "bin" / "python")]
+
+
+def bootstrap_command(root: Path) -> list[str]:
+    return ["bash", str(root / "scripts" / "bootstrap.sh")]
+
+
+def install_command(installer: str, log: str) -> list[str]:
+    """Installer, into the current user's home: no admin password, no prompts. It logs to the
+    system log; `log` is for Windows."""
+    return ["installer", "-pkg", installer, "-target", "CurrentUserHomeDirectory"]
+
+
+def portal_restart() -> tuple[list[str], list[list[str]]]:
+    target = f"gui/{os.getuid()}/{PORTAL_LABEL}"
+    return ["launchctl", "print", target], [["launchctl", "kickstart", "-k", target]]
+
+
+def installer_signer(path: str) -> dict | None:
+    raise NotImplementedError("a Mac checks its package with pkgutil and Gatekeeper (updates.verify_pkg)")

@@ -20,5 +20,4 @@ test_security.OneListenerTest                 # the same
 
 # macOS only, by design. The Windows installer and updater are their own work in #40.
 test_packaging                                # the macOS .pkg; os.geteuid at import
-test_updates.PostInstallTest                  # restarts the portal through launchctl
 test_portal.DeviceKeyTest.test_the_store_is_owner_only_and_holds_no_key_or_code  # Unix file modes; Windows uses ACLs

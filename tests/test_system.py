@@ -35,7 +35,8 @@ class SameEverywhereTest(unittest.TestCase):
         src = SYSTEM.parent
         for path in src.glob("*.py"):
             text = path.read_text()
-            for tool in ('"security"', '"launchctl", "list"', '"pgrep", "-x", "VoiceOver"', '["open",', "import fcntl"):
+            for tool in ('"security"', '"launchctl", "list"', '"launchctl", "kickstart"', '"installer", "-pkg"',
+                         '"pgrep", "-x", "VoiceOver"', '["open",', "import fcntl"):
                 self.assertNotIn(tool, text, f"{path.name} calls {tool}: use butler.system")
 
     def test_dates_never_ask_strftime_for_a_day_without_its_zero(self):
@@ -52,8 +53,10 @@ class SameEverywhereTest(unittest.TestCase):
     def test_this_computer_gets_its_own(self):
         self.assertEqual(system.NAME, "windows" if sys.platform == "win32" else "mac")
         self.assertEqual(system.PASSWORD_STORE, "Credential Manager" if sys.platform == "win32" else "Keychain")
+        self.assertEqual(system.INSTALLER, "Butler-Setup.exe" if sys.platform == "win32" else "Butler.pkg")
         for platform in ("mac.py", "windows.py"):
-            self.assertIn("\nPASSWORD_STORE = ", (SYSTEM / platform).read_text(), platform)
+            for name in ("PASSWORD_STORE", "INSTALLER"):
+                self.assertIn(f"\n{name} = ", (SYSTEM / platform).read_text(), platform)
 
 
 class LockTest(unittest.TestCase):
@@ -143,6 +146,64 @@ class MacPathAndAppTest(unittest.TestCase):
         (self.home / "Applications" / "Butler.app").mkdir(parents=True)
         self.plist(self.mac.APP_ID)
         self.assertEqual(self.mac.butler_app(), str(self.apps / "Butler.app"))
+
+
+@unittest.skipIf(sys.platform == "win32", "system/mac.py needs fcntl")
+class MacUpdateCommandsTest(unittest.TestCase):
+    """What the updater runs on a Mac (updates.py runs them; tests/e2e/update.sh runs them for real)."""
+
+    def setUp(self):
+        from butler.system import mac
+        self.mac, self.root = mac, Path("/Users/sam/Butler")
+
+    def test_the_commands(self):
+        self.assertEqual(self.mac.python_command(self.root), ["/Users/sam/Butler/.venv/bin/python"])
+        self.assertEqual(self.mac.bootstrap_command(self.root), ["bash", "/Users/sam/Butler/scripts/bootstrap.sh"])
+        self.assertEqual(self.mac.install_command("/x/Butler-v0.2.0.pkg", "/x/log"),
+                         ["installer", "-pkg", "/x/Butler-v0.2.0.pkg", "-target", "CurrentUserHomeDirectory"])
+        check, restart = self.mac.portal_restart()
+        self.assertEqual(check[:2], ["launchctl", "print"])
+        self.assertTrue(check[2].endswith("/com.buildyourbutler.portal"))
+        self.assertEqual(restart, [["launchctl", "kickstart", "-k", check[2]]])
+
+    def test_a_mac_never_reads_an_authenticode_signer(self):
+        with self.assertRaises(NotImplementedError):
+            self.mac.installer_signer("/x/Butler.pkg")
+
+
+@unittest.skipUnless(sys.platform == "win32", "Authenticode and Task Scheduler are Windows only")
+class WindowsUpdateCommandsTest(unittest.TestCase):
+    """What the updater runs on Windows; windows-e2e runs a whole update with them."""
+
+    def setUp(self):
+        from butler.system import windows
+        self.windows, self.root = windows, Path(r"C:\Users\sam\Butler")
+
+    def test_the_commands(self):
+        self.assertEqual(self.windows.python_command(self.root),
+                         [r"C:\Users\sam\Butler\.venv\Scripts\python.exe", "-X", "utf8"])
+        bootstrap = self.windows.bootstrap_command(self.root)
+        self.assertTrue(Path(bootstrap[0]).exists(), bootstrap[0])
+        self.assertEqual(bootstrap[1:], ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                                         r"C:\Users\sam\Butler\scripts\bootstrap.ps1"])
+        self.assertEqual(self.windows.install_command(r"C:\x\Butler-v0.2.0.exe", r"C:\x\log"),
+                         [r"C:\x\Butler-v0.2.0.exe", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", r"/LOG=C:\x\log"])
+        self.assertEqual(self.windows.portal_restart(),
+                         (["schtasks", "/Query", "/TN", "\\Butler\\portal"],
+                          [["schtasks", "/End", "/TN", "\\Butler\\portal"], ["schtasks", "/Run", "/TN", "\\Butler\\portal"]]))
+
+    def test_an_unsigned_file_has_no_signer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "Butler-Setup.exe"
+            path.write_bytes(b"MZ not really a program")
+            self.assertIsNone(self.windows.installer_signer(str(path)))
+            self.assertIsNone(self.windows.installer_signer(str(Path(tmp) / "missing.exe")))
+
+    def test_a_signed_program_names_its_signer(self):
+        """python.org's Python is Authenticode-signed by the Python Software Foundation."""
+        python = Path(getattr(sys, "_base_executable", sys.executable))
+        self.assertEqual(self.windows.installer_signer(str(python)),
+                         {"name": "Python Software Foundation", "organization": "Python Software Foundation"})
 
 
 @unittest.skipUnless(sys.platform == "win32", "the user's PATH is in the Windows registry")

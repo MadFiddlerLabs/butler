@@ -18,6 +18,8 @@ PASSWORD_STORE = _impl.PASSWORD_STORE
 # What the student calls the computer, in a sentence: "this Mac", "this computer". Read it as
 # COMPUTERS[NAME] where it's used, so a test that sets NAME to "windows" reads Windows' words.
 COMPUTERS = {"mac": "Mac", "windows": "computer"}
+# The installer's file name in each GitHub Release: Butler.pkg, or Butler-Setup.exe.
+INSTALLER = _impl.INSTALLER
 
 
 def get_secret(service: str) -> str | None:
@@ -72,3 +74,33 @@ def lock_exclusive(f) -> None:
     """Takes a lock on an open file without waiting. Raises OSError if something else holds it.
     The lock goes when the file is closed or the process ends."""
     _impl.lock_exclusive(f)
+
+
+def python_command(root):
+    """Butler's own Python in `root`, as a command line: Windows adds UTF-8 mode."""
+    return _impl.python_command(root)
+
+
+def bootstrap_command(root):
+    """The command that syncs Butler's Python to the lock (scripts/bootstrap.sh or .ps1). Safe
+    to run again, and while Butler is running."""
+    return _impl.bootstrap_command(root)
+
+
+def install_command(installer: str, log: str):
+    """The command that installs a Butler installer for this user without a prompt or an admin
+    password, as the overnight update runs it. The installer opens nothing over a household."""
+    return _impl.install_command(installer, log)
+
+
+def portal_restart():
+    """(a command that succeeds when the portal is installed, the commands that restart it), so
+    an update's new code serves the portal."""
+    return _impl.portal_restart()
+
+
+def installer_signer(path: str) -> dict | None:
+    """Windows only: who signed the installer, when Windows trusts its signature (Authenticode):
+    {"name", "organization"}. None when it's unsigned or the signature doesn't check out. On a
+    Mac, updates.verify_pkg checks the package with pkgutil and Gatekeeper instead."""
+    return _impl.installer_signer(path)

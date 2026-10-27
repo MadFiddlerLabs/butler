@@ -8,13 +8,14 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
-from butler import account, migrations, update_report, updates
+from butler import account, migrations, system, update_report, updates
 from fakes.account_api import FakeAccountAPI
 
 GOOD_PKGUTIL = """Package "Butler.pkg":
@@ -25,6 +26,14 @@ GOOD_PKGUTIL = """Package "Butler.pkg":
     2. Developer ID Certification Authority
     3. Apple Root CA
 """
+
+
+def setUpModule():
+    """The manifests here are a Mac's, with the package at the top level, so the same tests run on
+    Windows. ManifestPerComputerTest and WindowsSignatureTest set Windows for its own cases."""
+    patch = mock.patch.object(updates.system, "NAME", "mac")
+    patch.start()
+    unittest.addModuleCleanup(patch.stop)
 
 
 def done(cmd, code=0, out="", err=""):
@@ -121,6 +130,7 @@ class SignatureTest(Sandbox):
         def fake(cmd, timeout=600):
             return outputs.get(cmd[0] if cmd[0] != "xcrun" else "stapler", done(cmd))
         with mock.patch.object(updates, "_run", side_effect=fake), \
+                mock.patch.object(updates.system, "NAME", "mac"), \
                 mock.patch.object(updates.shutil, "which", return_value="/usr/bin/x" if xcode else None):
             updates.verify_signature(self.root / "Butler.pkg")
 
@@ -162,6 +172,63 @@ class SignatureTest(Sandbox):
         self.assertFalse(updates.unsigned_allowed())
 
 
+class WindowsSignatureTest(Sandbox):
+    """Windows: WinVerifyTrust (faked here, real in windows-e2e) and then the signer's name."""
+
+    def check(self, signer):
+        with mock.patch.object(updates.system, "NAME", "windows"), \
+                mock.patch.object(updates.system, "installer_signer", return_value=signer) as asked:
+            updates.verify_signature(self.root / "Butler-Setup.exe")
+        asked.assert_called_once_with(str(self.root / "Butler-Setup.exe"))
+
+    def test_butlers_publisher_passes(self):
+        self.check({"name": "Andrew Edmond", "organization": "Andrew Edmond"})
+        self.check({"name": "Andrew Edmond", "organization": ""})
+
+    def test_untrusted_or_anyone_else_is_refused(self):
+        for signer in (None, {"name": "Mallory Ltd", "organization": "Mallory Ltd"},
+                       {"name": "Andrew Edmond", "organization": "Mallory Ltd"},
+                       {"name": "Andrew Edmonds", "organization": "Andrew Edmond"},
+                       {"name": "andrew edmond", "organization": ""}, {"organization": "Andrew Edmond"}, {}):
+            with self.subTest(signer=signer), self.assertRaisesRegex(updates.UpdateError, "isn't signed by Butler's publisher"):
+                self.check(signer)
+
+    def test_a_test_build_with_the_flag_skips_it_as_on_the_mac(self):
+        (self.root / ".butler-unsigned-build").write_text("v0.1.0\n")
+        with mock.patch.dict(os.environ, {"BUTLER_UPDATE_ALLOW_UNSIGNED": "1"}), \
+                mock.patch.object(updates.system, "NAME", "windows"), \
+                mock.patch.object(updates.system, "installer_signer") as asked:
+            updates.verify_signature(self.root / "Butler-Setup.exe")
+        asked.assert_not_called()
+
+
+class ManifestPerComputerTest(unittest.TestCase):
+    """One manifest: the Mac's package at the top level, Windows' installer under `windows`."""
+
+    MANIFEST = {"version": "v0.2.0", "pkg_url": "https://example.test/Butler.pkg", "sha256": "aa", "size": 1,
+                "notes": "Faster briefs.", "min_version": "v0.0.1",
+                "windows": {"url": "https://example.test/Butler-Setup.exe", "sha256": "bb", "size": 2}}
+
+    def test_a_mac_reads_the_top_level(self):
+        with mock.patch.object(updates.system, "NAME", "mac"):
+            self.assertEqual(updates.for_this_computer(self.MANIFEST), self.MANIFEST)
+
+    def test_windows_reads_its_own_installer(self):
+        with mock.patch.object(updates.system, "NAME", "windows"):
+            got = updates.for_this_computer(self.MANIFEST)
+            self.assertEqual(got, {"version": "v0.2.0", "notes": "Faster briefs.", "min_version": "v0.0.1",
+                                   "pkg_url": "https://example.test/Butler-Setup.exe", "sha256": "bb", "size": 2})
+            d = updates.decide({}, self.MANIFEST, "v0.1.0", "id")
+            self.assertEqual((d.action, d.entry["pkg_url"]), ("install", "https://example.test/Butler-Setup.exe"))
+
+    def test_windows_waits_when_theres_nothing_for_it(self):
+        mac_only = {k: v for k, v in self.MANIFEST.items() if k != "windows"}
+        with mock.patch.object(updates.system, "NAME", "windows"):
+            for manifest in (mac_only, {**mac_only, "windows": None}, {**mac_only, "windows": {"sha256": "bb"}}):
+                with self.subTest(manifest=manifest):
+                    self.assertEqual(updates.decide({}, manifest, "v0.1.0", "id").action, "none")
+
+
 class DownloadTest(Sandbox):
     def test_checksum_mismatch_is_deleted(self):
         src, _ = self.pkg("src.pkg")
@@ -193,7 +260,7 @@ class ApplySandbox(Sandbox):
         self.new, self.digest = self.pkg("new.pkg", b"version two")
         releases = self.root / "releases" / "v0.1.0"
         releases.mkdir(parents=True)
-        (releases / "Butler.pkg").write_bytes(b"version one")
+        (releases / system.INSTALLER).write_bytes(b"version one")
         os.environ["BUTLER_RELEASES_URL"] = str(self.root / "releases")
         self.addCleanup(os.environ.pop, "BUTLER_RELEASES_URL", None)
         self.entry = {"version": "v0.2.0", "pkg_url": str(self.new), "sha256": self.digest,
@@ -376,6 +443,7 @@ class ReportTest(ApplySandbox):
         self.assertEqual([o.get("reason") for o in self.api.outcomes], ["checksum", "signature"])
         self.assertEqual({o["outcome"] for o in self.api.outcomes}, {"failed"})
         self.assertEqual(self.installed, [], "nothing was installed")
+        self.assertFalse(updates.kept_package("v0.2.0").exists(), "a refused package isn't kept")
 
     def test_the_macs_own_problems_report_nothing(self):
         with self.assertRaisesRegex(updates.UpdateError, "couldn't download"):
@@ -633,8 +701,8 @@ class PostInstallTest(Sandbox):
         ran = []
 
         def run(cmd, timeout=600):
-            ran.append(cmd[:2])
-            if cmd[0] == "bash":
+            ran.append(cmd)
+            if cmd == system.bootstrap_command(self.root):
                 return done(cmd, bootstrap, err="pip: no matching distribution\n")
             return done(cmd, 0)
 
@@ -646,7 +714,7 @@ class PostInstallTest(Sandbox):
         env = {k: v for k, v in os.environ.items() if k != "BUTLER_UPDATE_SKIP_BOOTSTRAP"}
         with mock.patch.dict(os.environ, env, clear=True), \
              mock.patch.object(updates, "_run", side_effect=run), \
-             mock.patch.object(updates.shutil, "which", return_value="/bin/launchctl"), \
+             mock.patch.object(updates.shutil, "which", return_value="/bin/the-scheduler"), \
              mock.patch.object(migrations, "run_pending", side_effect=migrate), \
              mock.patch.object(updates, "health", return_value=list(problems)), \
              mock.patch.object(updates, "brief_problem", return_value=brief):
@@ -655,20 +723,23 @@ class PostInstallTest(Sandbox):
     def test_all_good_restarts_the_portal(self):
         result, ran = self.post_install()
         self.assertEqual(result, {"ok": True, "migrations": [3]})
-        self.assertEqual(ran, [["bash", str(self.root / "scripts" / "bootstrap.sh")],
-                               ["launchctl", "print"], ["launchctl", "kickstart"]])
+        check, restart = system.portal_restart()
+        self.assertEqual(ran, [system.bootstrap_command(self.root), check, *restart])
+        self.assertTrue(system.bootstrap_command(self.root)[-1].endswith(
+            "bootstrap.ps1" if sys.platform == "win32" else "bootstrap.sh"))
 
     def test_each_failure_stops_it_with_the_reason(self):
         result, ran = self.post_install(bootstrap=1)
         self.assertEqual(result, {"ok": False, "problem": "dependencies didn't install (pip: no matching distribution)"})
         result, _ = self.post_install(migration_error=ValueError("settings.yaml has a tab"))
         self.assertEqual(result, {"ok": False, "problem": "a settings migration failed (settings.yaml has a tab)"})
+        restart = system.portal_restart()[1]
         result, ran = self.post_install(problems=["butler.render doesn't load", "settings lost 'email'"])
         self.assertEqual(result, {"ok": False, "problem": "butler.render doesn't load; settings lost 'email'"})
-        self.assertNotIn(["launchctl", "kickstart"], ran)
+        self.assertFalse([cmd for cmd in restart if cmd in ran], "the portal isn't restarted on a failed check")
         result, ran = self.post_install(brief="the morning brief didn't build: money failed (TypeError: x)")
         self.assertEqual(result, {"ok": False, "problem": "the morning brief didn't build: money failed (TypeError: x)"})
-        self.assertNotIn(["launchctl", "kickstart"], ran)
+        self.assertFalse([cmd for cmd in restart if cmd in ran])
 
     def test_the_post_install_entry_point_prints_json(self):
         with mock.patch.object(updates, "run_post_install", return_value={"ok": True, "migrations": []}), \

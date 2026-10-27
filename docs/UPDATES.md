@@ -21,7 +21,8 @@ and minor versions overnight on its own. A major version waits for a yes: the br
    - With a `rollout_percent`, only that share of installs takes the version. A stable random
      id in `data/updates/install-id` decides.
 3. **The checks on the package**, before anything is installed:
-   - Its SHA-256 and size must match the manifest. A mismatch deletes the download.
+   - Its SHA-256 and size must match the manifest. A mismatch deletes the download, and so does
+     any of the checks below that fails.
    - `pkgutil --check-signature` must show the Developer ID Installer chain for Team ID
      `VB9CHJM4AN`.
    - Gatekeeper (`spctl --assess --type install`) must accept it.
@@ -66,6 +67,36 @@ and minor versions overnight on its own. A major version waits for a yes: the br
     says so once ("couldn't update to … It tries again tomorrow.").
 
 `butler update --check` shows what's available. `butler update` installs it now, after a yes.
+
+## On Windows
+
+The same steps, with Windows' own tools. Nothing is offered to Windows until its installer is
+signed and published (#40).
+
+- **The manifest.** Windows reads its installer from the manifest's `windows` entry
+  (`{url, sha256, size}`); the rest (version, notes, `min_version`, rollout) is shared. A manifest
+  without that entry has no update for Windows (`updates.for_this_computer`).
+- **The checks on the installer.** Its SHA-256 and size must match. Windows must trust its
+  Authenticode signature (WinVerifyTrust, as Windows checks a download: an intact signature, a
+  trusted chain, not revoked, in date or timestamped), and the signer's certificate must name
+  Butler's publisher, Andrew Edmond, who signs as an individual, as its common name, with no other
+  organization (`updates.PUBLISHER`).
+- **The copy to go back to** is that version's `Butler-Setup.exe` from its GitHub Release, kept
+  in `data/updates/` as `Butler-<version>.exe`.
+- **The install.** Inno Setup runs silently into `%USERPROFILE%\Butler`: no admin password, no
+  prompt, and it never closes a running Butler. `butler.installed` sees the household and opens
+  nothing. Its log is `logs/update-install.log`.
+- **Dependencies.** Windows won't replace a file a running program has loaded, and the portal keeps
+  Butler's packages loaded. So `scripts/bootstrap.ps1` gives each lock its own virtualenv in
+  `.venvs\<lock id>-<processor>` and points the `.venv` junction at it. A new lock's virtualenv is
+  built beside the one in use, and a rollback points `.venv` back at the old one, still there. The
+  current one and the one before it are kept.
+- **The restart.** The new code restarts the portal's Task Scheduler task (`\Butler\portal`).
+- **Tests.** `tests/test_updates.py` and `tests/test_system.py` (the commands, and
+  WinVerifyTrust on a signed and an unsigned file); `tests/e2e/update.ps1` in windows-e2e.yml
+  runs update.sh's cases with installers signed by a test certificate, so the real signature check
+  runs: an update, two rollbacks, and refusals of an unsigned installer, one signed by someone
+  else and one changed after signing.
 
 ## Settings
 
