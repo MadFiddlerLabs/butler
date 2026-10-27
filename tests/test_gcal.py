@@ -585,7 +585,7 @@ class GoogleNotConnectedTest(unittest.TestCase):
     def test_listed_quietly(self):
         for record in (self.fresh_daily, self.revoked_daily):
             text = record["mails"][0]["text"]
-            self.assertIn("Not connected yet: calendar, Reminders.", text)
+            self.assertIn("Not connected yet: calendar, to-dos.", text)
             self.assertNotIn("Problems this morning", text)
 
     def test_the_log_says_what_to_do(self):

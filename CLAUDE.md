@@ -121,8 +121,12 @@ terminal. It doesn't apply to developers.
   their clear yes.
 - Each `/butler-setup` step starts by offering the module's page on buildyourbutler.com (the
   step's `url` in `src/butler/course_progress.json`), so the lesson and the setup go together.
-- When they ask about files or folders, start with "You'll rarely need to open these yourself.
-  Just ask me." Give the detail after that, and only if they want it.
+- The first time they ask about files or folders, start with "You'll rarely need to open these
+  yourself. Just ask me." Give the detail after that, and only if they want it. Say it once, not
+  at the start of every answer.
+- Fit what you say to their computer. On Windows (`calendar.source: google`), their lists are
+  in Google Tasks and their calendar is Google's: don't mention Reminders, Calendar.app, Keychain
+  or Siri shortcuts as if they had them.
 - Explain a technical term in plain words the first time it comes up. For example:
   - Keychain: the Mac's built-in password safe.
   - The settings file (`config/settings.yaml`): a plain-text list of your choices.

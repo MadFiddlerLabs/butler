@@ -96,7 +96,7 @@ class TimeoutAndBrokenHelperTest(Case):
         text = self.brief(self.record)["text"]
         problems = self.problems(text)
         self.assertIn("calendar unavailable (butler-ek: no Calendar access.", problems)
-        self.assertIn("Reminders unavailable", problems)
+        self.assertIn("to-dos unavailable", problems)
         self.assertIn("BBC Europe feed unavailable", problems)
         self.assertNotIn("news shown unedited", problems, "with no stories there's nothing to ask Claude")
         self.assertNotIn("Not connected yet", text)
@@ -120,7 +120,7 @@ class NotConnectedYetTest(Case):
 
     def test_listed_quietly(self):
         text = self.brief(self.record)["text"]
-        self.assertIn("Not connected yet: calendar, money, Reminders.", text)
+        self.assertIn("Not connected yet: calendar, money, to-dos.", text)
         self.assertIn("City extends metro night service", text)
 
     def test_a_claude_timeout_reads_as_couldnt_reach_claude(self):

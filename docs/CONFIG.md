@@ -16,7 +16,7 @@ Plus the budget workbook, `budget/budget.xlsx`, and the household notes Claude r
 
 | Setting | Meaning |
 |---|---|
-| `name` | Your butler's name: it signs the emails, titles the portal and answers to it in Siri |
+| `name` | Your butler's name: it signs the emails, titles the portal and, on an iPhone, answers to it in Siri |
 | `timezone` | IANA name, e.g. `Europe/Lisbon`. All schedules follow it |
 | `updates` | `auto` (default): install new versions overnight; a major version still asks. `notify`: always ask. `off`: never check. See [UPDATES.md](UPDATES.md) |
 | `update_hour` | The hour the daily update check runs, in your timezone (default 3). A Mac asleep then checks when it next wakes |
