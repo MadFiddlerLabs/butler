@@ -105,6 +105,15 @@ jobs:
           # The butler command, as the Start menu shortcut and a new terminal run it.
           & "$b\bin\butler.cmd" help
           if ($LASTEXITCODE -ne 0) { throw "butler.cmd help exited $LASTEXITCODE" }
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: In a real console, from a new window, as a household types
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check pywinpty==3.0.5
+          python -X utf8 tests\e2e\windows_console.py "$env:USERPROFILE\Butler"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Upgrading keeps the household's files
         shell: pwsh
         run: |
