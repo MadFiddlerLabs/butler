@@ -18,7 +18,8 @@
 AppId={{6B3F2A5E-8C41-4D7B-9E2A-B5C1D0F3A471}
 AppName=Butler
 AppVersion={#Version}
-AppPublisher=AELaboratories
+; The signer Windows shows as the verified publisher (updates.PUBLISHER), so the two match.
+AppPublisher=Andrew Edmond
 AppPublisherURL=https://buildyourbutler.com
 DefaultDirName={%USERPROFILE}\Butler
 DisableDirPage=yes

@@ -6,7 +6,7 @@
 #
 # CI only: it installs into %USERPROFILE%\Butler and trusts two test certificates machine-wide
 # (it needs the runner's admin rights for that). The installers are signed with a self-signed
-# certificate named for Butler's publisher, so WinVerifyTrust and the publisher check run with
+# certificate in Butler's publisher's name, so WinVerifyTrust and the publisher check run with
 # nothing relaxed; a real install trusts only a real certificate authority. v0.0.2 brings a new
 # lock, so the update and the way back each move .venv to another virtualenv (bootstrap.ps1).
 #
@@ -68,8 +68,8 @@ function Update($log) {
 }
 function Venv { "$((Get-Item (Join-Path $b ".venv")).Target)" }
 
-Step "two test signers: one named for Butler's publisher, one not"
-$butler = New-TestSigner "AELaboratories"
+Step "two test signers: one in Butler's publisher's name, one not"
+$butler = New-TestSigner "Andrew Edmond"
 $mallory = New-TestSigner "Mallory Ltd"
 
 Step "build v0.0.1, v0.0.2 with a new lock, a broken v0.0.3, a v0.0.5 whose brief crashes, and spares"

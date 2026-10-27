@@ -173,13 +173,14 @@ class WindowsSignatureTest(Sandbox):
         asked.assert_called_once_with(str(self.root / "Butler-Setup.exe"))
 
     def test_butlers_publisher_passes(self):
-        self.check({"name": "AELaboratories", "organization": "AELaboratories"})
+        self.check({"name": "Andrew Edmond", "organization": "Andrew Edmond"})
+        self.check({"name": "Andrew Edmond", "organization": ""})
 
     def test_untrusted_or_anyone_else_is_refused(self):
         for signer in (None, {"name": "Mallory Ltd", "organization": "Mallory Ltd"},
-                       {"name": "AELaboratories", "organization": "Mallory Ltd"},
-                       {"name": "AELaboratories Ltd", "organization": "AELaboratories"},
-                       {"name": "AELaboratories"}, {}):
+                       {"name": "Andrew Edmond", "organization": "Mallory Ltd"},
+                       {"name": "Andrew Edmonds", "organization": "Andrew Edmond"},
+                       {"name": "andrew edmond", "organization": ""}, {"organization": "Andrew Edmond"}, {}):
             with self.subTest(signer=signer), self.assertRaisesRegex(updates.UpdateError, "isn't signed by Butler's publisher"):
                 self.check(signer)
 

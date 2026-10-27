@@ -78,7 +78,8 @@ signed and published (#40).
 - **The checks on the installer.** Its SHA-256 and size must match. Windows must trust its
   Authenticode signature (WinVerifyTrust, as Windows checks a download: an intact signature, a
   trusted chain, not revoked, in date or timestamped), and the signer's certificate must name
-  Butler's publisher, AELaboratories, as both common name and organization (`updates.PUBLISHER`).
+  Butler's publisher, Andrew Edmond, who signs as an individual, as its common name, with no other
+  organization (`updates.PUBLISHER`).
 - **The copy to go back to** is that version's `Butler-Setup.exe` from its GitHub Release, kept
   in `data/updates/` as `Butler-<version>.exe`.
 - **The install.** Inno Setup runs silently into `%USERPROFILE%\Butler`: no admin password, no

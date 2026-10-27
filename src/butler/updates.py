@@ -52,9 +52,10 @@ from .config import ROOT, brand, load_settings
 log = logging.getLogger("butler")
 
 TEAM_ID = "VB9CHJM4AN"
-# The Windows installer's signer, as its certificate names it (common name and organization).
-# Confirm the exact legal name once Artifact Signing has validated AELaboratories (#40).
-PUBLISHER = "AELaboratories"
+# The Windows installer's signer, as its certificate names it: Butler's publisher signs as an
+# individual (Azure Artifact Signing's individual validation). Confirm the certificate's exact
+# subject once it exists (#40).
+PUBLISHER = "Andrew Edmond"
 MANIFEST_URL = "https://buildyourbutler.com/updates/stable.json"
 RELEASES_URL = "https://github.com/MadFiddlerLabs/butler/releases/download"
 UPDATES = ROOT / "data" / "updates"
@@ -235,10 +236,11 @@ def verify_signature(pkg: Path) -> None:
 
 def verify_exe(exe: Path) -> None:
     """Windows must trust the Authenticode signature (system.installer_signer), and its signer's
-    certificate must name Butler's publisher, as common name and organization: any trusted
-    certificate passes WinVerifyTrust, so these are what tie the installer to Butler."""
+    certificate must name Butler's publisher as its common name, with no other organization: any
+    trusted certificate passes WinVerifyTrust, so this is what ties the installer to Butler. An
+    individual's certificate may carry the name as its organization too, or no organization."""
     signer = system.installer_signer(str(exe))
-    if not signer or signer.get("name") != PUBLISHER or signer.get("organization") != PUBLISHER:
+    if not signer or signer.get("name") != PUBLISHER or signer.get("organization", "") not in ("", PUBLISHER):
         raise UpdateError("the new version isn't signed by Butler's publisher, so I didn't install it", "signature")
 
 
