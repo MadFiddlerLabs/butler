@@ -23,6 +23,34 @@ jobs:
         run: powershell -ExecutionPolicy Bypass -File scripts\bootstrap.ps1
       - name: Again, which every update does
         run: powershell -ExecutionPolicy Bypass -File scripts\bootstrap.ps1
+      - name: A new lock while Butler is running, and back again
+        # As an update with new packages does, with the portal holding the old ones loaded.
+        shell: pwsh
+        run: |
+          $before = "$((Get-Item .venv).Target)"
+          if (-not $before) { throw ".venv isn't a junction" }
+          # Start-Process joins its arguments with spaces, so the code goes in quotes of its own.
+          $held = Start-Process .venv\Scripts\python.exe -ArgumentList '-c "import numpy, pydantic_core, markupsafe, time; time.sleep(900)"' -PassThru -WindowStyle Hidden
+          Start-Sleep -Seconds 10
+          if ($held.HasExited) { throw "the Python holding the packages didn't start (exit $($held.ExitCode))" }
+          Copy-Item requirements.lock "$env:RUNNER_TEMP\requirements.lock"
+          Add-Content requirements.lock "# a new lock, as a release brings one"
+          powershell -ExecutionPolicy Bypass -File scripts\bootstrap.ps1
+          if ($LASTEXITCODE -ne 0) { throw "bootstrap failed with Butler running" }
+          $after = "$((Get-Item .venv).Target)"
+          Write-Host "before: $before"; Write-Host "after: $after"
+          if ($after -eq $before) { throw ".venv didn't move to the new lock's Python" }
+          if (-not (Test-Path "$before\Scripts\python.exe")) { throw "the Python in use went away" }
+          if ($held.HasExited) { throw "the running Butler stopped" }
+          .venv\Scripts\python.exe -c "import numpy, pydantic_core, markupsafe"
+          if ($LASTEXITCODE -ne 0) { throw "the new Python's packages don't load" }
+          Copy-Item -Force "$env:RUNNER_TEMP\requirements.lock" requirements.lock
+          powershell -ExecutionPolicy Bypass -File scripts\bootstrap.ps1
+          if ($LASTEXITCODE -ne 0) { throw "bootstrap failed going back" }
+          if ("$((Get-Item .venv).Target)" -ne $before) { throw "going back didn't return .venv to the old lock's Python" }
+          if (-not (Test-Path "$after\Scripts\python.exe")) { throw "the one before it should be kept" }
+          Stop-Process -Id $held.Id
+          exit 0
       - name: The first preview
         shell: pwsh
         env:

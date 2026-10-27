@@ -1,6 +1,6 @@
-# Sets up Butler's Python on Windows: bootstrap.sh's twin. A virtualenv in .venv holding exactly
+# Sets up Butler's Python on Windows: bootstrap.sh's twin. A virtualenv at .venv holding exactly
 # the packages in requirements.lock, with hashes required and nothing compiled. uv provides
-# Python itself. Safe to run again: every update will run it.
+# Python itself. Safe to run again: every update runs it, while Butler may be running.
 #
 # uv is the one in scripts/lib/uv.sh, pinned by version and SHA-256. This script reads the pins
 # from that file, so a Mac and a PC never pin different uvs.
@@ -47,13 +47,53 @@ if ($have -ne $version) {
     }
 }
 
-$python = Join-Path $root ".venv\Scripts\python.exe"
-if (-not (Test-Path $python)) {
-    & $uv venv --quiet --python 3.13 .venv
-    if ($LASTEXITCODE -ne 0) { throw "uv couldn't make Butler's Python." }
+# Windows won't replace a file a running program has loaded, and the portal and the tick keep
+# Butler's packages loaded. So each lock gets a virtualenv of its own, in .venvs\<lock id>, and
+# .venv is a junction to the current one: a new lock builds its virtualenv beside the old, then
+# moves .venv over, while what's running keeps the old. Going back to a lock re-points .venv at
+# its virtualenv, still there. Two are kept: the current one and the one before it.
+# A plain .venv folder (a developer's checkout) is synced in place, as before.
+$link = Join-Path $root ".venv"
+$existing = Get-Item -Force $link -ErrorAction SilentlyContinue
+if ($existing -and -not ($existing.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    $python = Join-Path $link "Scripts\python.exe"
+    if (-not (Test-Path $python)) {
+        & $uv venv --quiet --python 3.13 .venv
+        if ($LASTEXITCODE -ne 0) { throw "uv couldn't make Butler's Python." }
+    }
+    & $uv pip sync --quiet --python $python --require-hashes --no-build requirements.lock
+    if ($LASTEXITCODE -ne 0) { throw "Butler's packages didn't install." }
+} else {
+    $stream = [IO.File]::OpenRead((Join-Path $root "requirements.lock"))
+    try { $lockId = ([BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($stream)) -replace "-", "").ToLower().Substring(0, 12) }
+    finally { $stream.Dispose() }
+    $venvs = Join-Path $root ".venvs"
+    $want = Join-Path $venvs "$lockId-$target"
+    $python = Join-Path $want "Scripts\python.exe"
+    if (-not (Test-Path (Join-Path $want ".butler-ready"))) {
+        # Half made by a run that stopped: nothing points at it, so it starts again.
+        if (Test-Path $want) { Remove-Item -Recurse -Force $want }
+        & $uv venv --quiet --python 3.13 $want
+        if ($LASTEXITCODE -ne 0) { throw "uv couldn't make Butler's Python." }
+        & $uv pip sync --quiet --python $python --require-hashes --no-build requirements.lock
+        if ($LASTEXITCODE -ne 0) { throw "Butler's packages didn't install." }
+        Set-Content -Encoding ascii (Join-Path $want ".butler-ready") $lockId
+    }
+    $current = if ($existing) { $existing.Target | Select-Object -First 1 } else { $null }
+    if (-not $current -or ([IO.Path]::GetFullPath($current).TrimEnd("\") -ne [IO.Path]::GetFullPath($want).TrimEnd("\"))) {
+        # rmdir removes the junction only, never what it points at (Remove-Item -Recurse would).
+        if ($existing) { cmd /c rmdir "$link"; if ($LASTEXITCODE -ne 0) { throw "Couldn't move .venv to the new Python." } }
+        New-Item -ItemType Junction -Path $link -Target $want | Out-Null
+        if ($current) { Set-Content -Encoding ascii (Join-Path $venvs "previous") (Split-Path -Leaf $current) }
+    }
+    $previous = "$(Get-Content -ErrorAction SilentlyContinue (Join-Path $venvs "previous"))".Trim()
+    foreach ($old in Get-ChildItem -Directory $venvs) {
+        if ($old.Name -ne (Split-Path -Leaf $want) -and $old.Name -ne $previous) {
+            # One still in use stays, and goes next time.
+            Remove-Item -Recurse -Force $old.FullName -ErrorAction SilentlyContinue
+        }
+    }
 }
-& $uv pip sync --quiet --python $python --require-hashes --no-build requirements.lock
-if ($LASTEXITCODE -ne 0) { throw "Butler's packages didn't install." }
 foreach ($dir in "data", "logs", "out") { New-Item -ItemType Directory -Force (Join-Path $root $dir) | Out-Null }
 # No chmod here: a folder under C:\Users\<name> is already this account's alone (and the
 # computer's administrators'), by the permissions Windows gives a user profile.

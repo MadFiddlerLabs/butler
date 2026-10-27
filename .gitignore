@@ -32,7 +32,7 @@ caddy/domain.env
 /bin/*
 !/bin/butler
 !/bin/butler.cmd
-/.venv/
+/.venv
 __pycache__/
 # Test runs: coverage data, Hypothesis's example database, mutation testing
 .coverage
@@ -44,3 +44,4 @@ coverage.json
 *.pyc
 .env
 .DS_Store
+/.venvs/
