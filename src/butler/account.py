@@ -16,8 +16,8 @@ from .config import ROOT, keychain, store_secret
 
 API = os.environ.get("BUTLER_API", "https://buildyourbutler.com/api").rstrip("/")
 KEYCHAIN_ACCOUNT = "butler-account"
-TERMS_FILE = ROOT / "data" / "terms.json"          # written when the student agrees, in first-run.sh
-HEARD_FILE = ROOT / "data" / "heard.json"          # "Where did you hear about Butler?", asked once in first-run.sh
+TERMS_FILE = ROOT / "data" / "terms.json"          # written when the student agrees, by the first run
+HEARD_FILE = ROOT / "data" / "heard.json"          # "Where did you hear about Butler?", asked once by the first run
 # The sources the website takes as `heard` (docs/ACCOUNTS.md), as scripts/lib/heard.sh lists them.
 HEARD_SOURCES = ("friend", "search", "reddit", "hacker_news", "product_hunt", "youtube", "social",
                  "newsletter", "podcast", "other")
@@ -90,6 +90,16 @@ def session() -> str | None:
 
 def save_session(token: str) -> None:
     store_secret(KEYCHAIN_ACCOUNT, token)
+
+
+def whoami(token: str) -> dict:
+    """GET /me with this session. Raises AccountError; a 401 or 403 means the session ended."""
+    return _call("GET", "/me", token=token)
+
+
+def set_nudges(token: str, nudges: bool) -> None:
+    """The weekly lesson email, on or off. Raises AccountError."""
+    _call("POST", "/prefs", {"nudges": nudges}, token=token)
 
 
 def me() -> dict | None:

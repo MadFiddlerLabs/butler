@@ -15,10 +15,11 @@ someone developing Butler itself. The hard rules apply to both.
   and the reference file are git-ignored. Never commit them, never paste them into issues,
   tests, examples or docs. Examples use invented people (the Johnsons: Sam, Alex, Mia and the
   nanny Pat, in Lisbon) and invented amounts. Label any example as invented.
-- **Secrets live in the macOS Keychain** (`butler-gmail`, `butler-anthropic`, `butler-lunchmoney`).
-  Never put them in files, logs or chat. When a secret is needed, give the user the
-  `security add-generic-password ... -w` command to run themselves (suggest the `!` prefix);
-  never ask them to paste a secret into the conversation.
+- **Secrets live in the macOS Keychain** (`butler-gmail`, `butler-anthropic`, `butler-lunchmoney`),
+  or Credential Manager on Windows. Never put them in files, logs or chat. When a secret is
+  needed, give the user the `security add-generic-password ... -w` command to run themselves
+  (on Windows, `butler secret <name>`; suggest the `!` prefix); never ask them to paste a secret
+  into the conversation.
 - **ID numbers never go into emails or Claude requests.** Passport, residence, tax and health
   numbers live only in `projects/reference.local.yaml`, shown on the portal's Info page with
   `Cache-Control: no-store`. Never put them in `household.about`, notes, project notes or prompts.
@@ -55,8 +56,9 @@ someone developing Butler itself. The hard rules apply to both.
 | `src/butler/system/` | Everything that differs between macOS and Windows: secrets, the schedule check, opening a file, the screen reader, the update lock. `mac.py` and `windows.py` have the same functions; nothing else calls Keychain, launchd or `open` |
 | `run.py`, `src/butler/schedule.py` | Windows: `run.sh`'s twin in Python (UTF-8 mode, keeps the computer awake for the tick), and the Task Scheduler tasks that mirror the launchd jobs, the morning one waking the computer (`python run.py schedule install`) |
 | `config/*.example.yaml`, `budget/budget.example.xlsx`, `examples/` | The invented example household |
-| `bin/butler`, `src/butler/cli.py`, `doctor.py` | The `butler` command: one pasted line per early lesson; `butler resume` goes straight to where the student left off; `butler doctor` reads the log and the last restart |
+| `bin/butler`, `src/butler/cli.py`, `doctor.py` | The `butler` command: one pasted line per early lesson; `butler resume` goes straight to where the student left off; `butler doctor` reads the log and the last restart; `butler secret <name>` stores a key typed hidden |
 | `scripts/first-run.sh` | The guided first run the package opens: sign-in, lessons, then Claude Code. Run again, it skips what's done; `--again` (after a reinstall) offers resume or start fresh |
+| `bin/butler.cmd`, `src/butler/first_run.py` | Windows: the `butler` command (Butler's Python through `run.py cli`) and the guided first run in Python, first-run.sh's twin: same prompts, files and exit codes. `tests/test_first_run_python.py` runs both on the same answers and compares them, so change both together |
 | `helpers/butler-app/` | The Butler app, in `/Applications` on an admin account (else `~/Applications`; `place_app` in `scripts/lib/install.sh`): opens Terminal on `butler resume`, the way back |
 | `.claude/settings.json` | Claude Code starts in ask-first (`default`) mode here; `butler claude` passes the household's `claude_mode` |
 | `src/butler/setup_settings.py`, `account.py` | Settings written one answer at a time; the course account |

@@ -1,5 +1,5 @@
 """Per-module coverage floors for the code where a bug costs the most: money, replies, the DKIM
-check, the portal gate, updates, the course account and the Google calendar. The total floor is `fail_under` in
+check, the portal gate, updates, the course account, the first run and the Google calendar. The total floor is `fail_under` in
 .coveragerc; these are on top of it.
 
     python -m coverage json -q && python scripts/check_coverage.py coverage.json
@@ -29,6 +29,7 @@ FLOORS = {
     "claude_usage.py": 95,
     "gcal.py": 93,
     "calendar_source.py": 99,
+    "first_run.py": 93,
 }
 
 

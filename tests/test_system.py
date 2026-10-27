@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from butler import system
 
@@ -50,6 +51,9 @@ class SameEverywhereTest(unittest.TestCase):
 
     def test_this_computer_gets_its_own(self):
         self.assertEqual(system.NAME, "windows" if sys.platform == "win32" else "mac")
+        self.assertEqual(system.PASSWORD_STORE, "Credential Manager" if sys.platform == "win32" else "Keychain")
+        for platform in ("mac.py", "windows.py"):
+            self.assertIn("\nPASSWORD_STORE = ", (SYSTEM / platform).read_text(), platform)
 
 
 class LockTest(unittest.TestCase):
@@ -94,6 +98,91 @@ class CredentialManagerTest(unittest.TestCase):
 
     def test_the_screen_reader_check_answers(self):
         self.assertIsInstance(system.screen_reader_on(), bool)
+
+
+@unittest.skipIf(sys.platform == "win32", "system/mac.py needs fcntl")
+class MacPathAndAppTest(unittest.TestCase):
+    """The PATH line and the Butler app, as scripts/lib/install.sh finds them (the first run's
+    equivalence test compares the two)."""
+
+    def setUp(self):
+        from butler.system import mac
+        self.mac = mac
+        self.home = Path(tempfile.mkdtemp())
+        self.apps = Path(tempfile.mkdtemp())
+        self.enterContext(mock.patch.object(mac.Path, "home", return_value=self.home))
+        self.enterContext(mock.patch.dict("os.environ", {"BUTLER_SYSTEM_APPS": str(self.apps)}))
+
+    def test_the_profile_line_is_added_once(self):
+        self.assertTrue(self.mac.add_to_path("/Users/sam/Butler/bin"))
+        self.assertFalse(self.mac.add_to_path("/Users/sam/Butler/bin"))
+        self.assertEqual((self.home / ".zprofile").read_text(),
+                         '\n# Added by Butler: lets you type `butler` in Terminal.\nexport PATH="/Users/sam/Butler/bin:$PATH"\n')
+
+    def test_a_profile_that_cant_be_written_is_no_change(self):
+        (self.home / ".zprofile").mkdir()
+        self.assertFalse(self.mac.add_to_path("/Users/sam/Butler/bin"))
+
+    def plist(self, bundle_id: str) -> None:
+        contents = self.apps / "Butler.app" / "Contents"
+        contents.mkdir(parents=True)
+        (contents / "Info.plist").write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>CFBundleIdentifier</key>'
+            f"<string>{bundle_id}</string></dict></plist>\n")
+
+    def test_the_app_in_applications_counts_only_if_its_ours(self):
+        self.assertIsNone(self.mac.butler_app())
+        self.plist("com.example.another-butler")
+        self.assertIsNone(self.mac.butler_app())
+        (self.home / "Applications" / "Butler.app").mkdir(parents=True)
+        self.assertEqual(self.mac.butler_app(), str(self.home / "Applications" / "Butler.app"))
+        (self.apps / "Butler.app" / "Contents" / "Info.plist").write_text(f"<plist>{self.mac.APP_ID}")
+        self.assertEqual(self.mac.butler_app(), str(self.home / "Applications" / "Butler.app"), "a broken plist")
+
+    def test_the_app_in_applications_comes_first(self):
+        (self.home / "Applications" / "Butler.app").mkdir(parents=True)
+        self.plist(self.mac.APP_ID)
+        self.assertEqual(self.mac.butler_app(), str(self.apps / "Butler.app"))
+
+
+@unittest.skipUnless(sys.platform == "win32", "the user's PATH is in the Windows registry")
+class WindowsPathTest(unittest.TestCase):
+    """The user's PATH in the registry, in a throwaway key in place of HKCU\\Environment."""
+
+    def setUp(self):
+        import winreg
+        from butler.system import windows
+        self.winreg, self.windows = winreg, windows
+        self.parent = "Software\\ButlerTest" + "".join(secrets.choice(string.ascii_lowercase) for _ in range(10))
+        self.key = self.parent + "\\Environment"
+        self.enterContext(mock.patch.object(windows, "ENVIRONMENT", self.key))
+        self.addCleanup(self._delete)
+
+    def _delete(self):
+        for key in (self.key, self.parent):
+            try:
+                self.winreg.DeleteKey(self.winreg.HKEY_CURRENT_USER, key)
+            except OSError:
+                pass
+
+    def path(self) -> tuple[str, int]:
+        with self.winreg.OpenKey(self.winreg.HKEY_CURRENT_USER, self.key) as key:
+            return self.winreg.QueryValueEx(key, "Path")
+
+    def test_added_once_after_whats_there(self):
+        with self.winreg.CreateKey(self.winreg.HKEY_CURRENT_USER, self.key) as key:
+            self.winreg.SetValueEx(key, "Path", 0, self.winreg.REG_EXPAND_SZ, "%USERPROFILE%\\tools;C:\\Tools;")
+        self.assertTrue(self.windows.add_to_path("C:\\Users\\sam\\Butler\\bin"))
+        self.assertFalse(self.windows.add_to_path("c:\\users\\sam\\butler\\bin\\"), "the same folder")
+        self.assertEqual(self.path(), ("%USERPROFILE%\\tools;C:\\Tools;C:\\Users\\sam\\Butler\\bin",
+                                       self.winreg.REG_EXPAND_SZ))
+
+    def test_a_first_path(self):
+        self.assertTrue(self.windows.add_to_path("C:\\Users\\sam\\Butler\\bin"))
+        self.assertEqual(self.path(), ("C:\\Users\\sam\\Butler\\bin", self.winreg.REG_EXPAND_SZ))
+
+    def test_there_is_no_butler_app_yet(self):
+        self.assertIsNone(self.windows.butler_app())
 
 
 if __name__ == "__main__":

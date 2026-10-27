@@ -53,6 +53,7 @@ jobs:
         run: |
           python -m unittest discover -v -s tests -p test_packaging.py
           python -m unittest discover -v -s tests -p test_first_run.py
+          python -m unittest discover -v -s tests -p test_first_run_python.py
         env:
           PYTHONPATH: src
       - name: Build the helper, the Butler app and the package

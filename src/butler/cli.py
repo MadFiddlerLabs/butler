@@ -2,9 +2,9 @@
 
     butler town "Lisbon"          butler adults Sam Alex          butler brief
 
-`butler setup` (the guided first run) is plain bash in scripts/first-run.sh, so it starts before
-Python exists. Everything here speaks plain words: the people typing these may never have used
-a terminal before.
+`butler setup` (the guided first run) is plain bash in scripts/first-run.sh on a Mac, so it starts
+before Python exists, and first_run.py on Windows. Everything here speaks plain words: the people
+typing these may never have used a terminal before.
 """
 
 import argparse
@@ -22,10 +22,13 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import doctor, progress, setup_settings as ss, system, updates
+from . import config, doctor, progress, setup_settings as ss, system, updates
 from .config import ROOT, plain_output
 
 CLAUDE_INSTALL = "curl -fsSL https://claude.ai/install.sh | bash"
+# Windows: Anthropic's PowerShell installer (code.claude.com/docs/en/setup), which puts claude.exe
+# in %USERPROFILE%\.local\bin.
+CLAUDE_INSTALL_WINDOWS = "irm https://claude.ai/install.ps1 | iex"
 # The first time, Claude Code opens on Module 1 (Meet Claude Code): a welcome, nothing changed.
 # After that, /butler-setup on its own works out where the student is in the course.
 FIRST_CLAUDE_PROMPT = (
@@ -48,7 +51,7 @@ DONE_CLAUDE_PROMPT = (
     "Don't change any files yet."
 )
 CLAUDE_WELCOMED = ROOT / "data" / "claude-welcomed"
-# Written by scripts/first-run.sh when the first run is over; the installer reads it too.
+# Written by the first run when it's over; the installer reads it too.
 FIRST_RUN_DONE = ROOT / "data" / "first-run-done"
 ASK_DOCTOR = "Open Claude Code (type: butler claude) and type /butler-doctor"
 
@@ -133,6 +136,13 @@ def cmd_adults(args) -> int:
     return 0
 
 
+def _preview() -> list[str]:
+    """`./run.sh preview`, or run.py's on Windows, where there is no bash."""
+    if system.NAME == "windows":
+        return [sys.executable, "-X", "utf8", str(ROOT / "run.py"), "preview"]
+    return [str(ROOT / "run.sh"), "preview"]
+
+
 def cmd_brief(args) -> int:
     s = ss.load()
     missing = []
@@ -147,7 +157,7 @@ def cmd_brief(args) -> int:
         ss.save(s)
     who = _butler(s)
     say(f"{who[0].upper() + who[1:]} is writing your brief. This takes a few seconds.")
-    proc = subprocess.run([str(ROOT / "run.sh"), "preview"], cwd=ROOT, capture_output=True, text=True)
+    proc = subprocess.run(_preview(), cwd=ROOT, capture_output=True, text=True)
     brief = ss.first_brief()
     if proc.returncode != 0 or not brief:
         (ROOT / "logs").mkdir(exist_ok=True)
@@ -167,7 +177,7 @@ def _claude_path() -> str | None:
     found = shutil.which("claude")
     if found:
         return found
-    local = Path.home() / ".local" / "bin" / "claude"
+    local = Path.home() / ".local" / "bin" / ("claude.exe" if system.NAME == "windows" else "claude")
     return str(local) if local.exists() else None
 
 
@@ -200,6 +210,13 @@ def _choose_mode(s: dict) -> str:
     return mode
 
 
+def _installer() -> tuple[str, list[str]]:
+    """Claude Code's install line, and how to run it."""
+    if system.NAME == "windows":
+        return CLAUDE_INSTALL_WINDOWS, ["powershell", "-NoProfile", "-Command", CLAUDE_INSTALL_WINDOWS]
+    return CLAUDE_INSTALL, ["bash", "-c", CLAUDE_INSTALL]
+
+
 def cmd_claude(args) -> int:
     return open_claude(args.yes, args.dry_run)
 
@@ -219,11 +236,12 @@ def open_claude(yes: bool = False, dry_run: bool = False, opening: str | None = 
             if answer in {"n", "no"}:
                 say("No problem. When you're ready, type: butler claude")
                 return 0
+        line, argv = _installer()
         if dry:
-            say(f"(dry run) would run: {CLAUDE_INSTALL}")
+            say(f"(dry run) would run: {line}")
             exe = "claude"
         else:
-            if subprocess.run(["bash", "-c", CLAUDE_INSTALL]).returncode != 0:
+            if subprocess.run(argv).returncode != 0:
                 say("The Claude Code installer didn't finish. Check your internet connection and run: butler claude")
                 return 1
             exe = _claude_path()
@@ -252,6 +270,10 @@ def open_claude(yes: bool = False, dry_run: bool = False, opening: str | None = 
     CLAUDE_WELCOMED.parent.mkdir(exist_ok=True)
     CLAUDE_WELCOMED.touch()
     os.chdir(ROOT)
+    if system.NAME == "windows":
+        # Windows has no exec: os.execv starts a new process and ends this one, and the window's
+        # prompt comes back while Claude Code is still running. So Claude Code runs as a child.
+        return subprocess.run(argv).returncode
     os.execv(exe, argv)
     return 0  # not reached
 
@@ -382,9 +404,57 @@ def cmd_home(args) -> int:
     return 0
 
 
-def _first_run() -> None:
+def _first_run(*args: str) -> None:
+    """The guided first run, in place of this command: first-run.sh on a Mac, first_run.py on
+    Windows."""
+    if system.NAME == "windows":
+        from . import first_run
+        sys.exit(first_run.main(list(args)))
     first_run = ROOT / "scripts" / "first-run.sh"
-    os.execv(str(first_run), [str(first_run)])
+    os.execv(str(first_run), [str(first_run), *args])
+
+
+def cmd_setup(args) -> int:
+    """`butler setup [--again]`. On a Mac, bin/butler runs first-run.sh before Python starts, so
+    this is the way in on Windows."""
+    _first_run(*(["--again"] if args.again else []))
+    return 0  # not reached
+
+
+# What `butler secret` stores, and what to paste for each.
+SECRETS = {
+    "butler-anthropic": "Your Claude API key",
+    "butler-gmail": "Your butler's Gmail app password",
+    "butler-lunchmoney": "Your Lunch Money access token",
+}
+
+
+def cmd_secret(args) -> int:
+    """`butler secret butler-anthropic`: a key or password into the password store, typed hidden.
+    It never goes on a command line, in a file or on screen. scripts/store-secret.sh does the same
+    with a Mac dialog. Spaces are removed: Google shows app passwords in groups of four."""
+    service = args.service or ""
+    if service not in SECRETS:
+        say("Say which one to store, like this: butler secret butler-anthropic")
+        say(f"It can be {', '.join(SECRETS)}.")
+        return 1
+    say(f"{SECRETS[service]}: paste it and press Enter. It stays hidden while you type.")
+    try:
+        secret = "".join(getpass.getpass(f"{SECRETS[service]} \u203a ").split())
+    except (EOFError, KeyboardInterrupt):
+        print(flush=True)
+        say("Cancelled. Nothing was stored.")
+        return 1
+    if not secret:
+        say("That was empty. Nothing was stored.")
+        return 1
+    try:
+        config.store_secret(service, secret)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        say(f"{system.PASSWORD_STORE} didn't take it. Nothing was stored. {ASK_DOCTOR}.")
+        return 1
+    say(f"Stored {service} in {system.PASSWORD_STORE}.")
+    return 0
 
 
 def _note(line: str) -> None:
@@ -519,6 +589,7 @@ COMMANDS = [
         ("butler brief", "write a brief now and open it"),
         ("butler claude", "continue the course in Claude Code"),
         ("butler claude-mode ask", "Claude Code asks before each change (or: auto)"),
+        ("butler secret butler-anthropic", "store a key or password, typed hidden"),
     ]),
     ("Every day", [
         ("butler", "where you are in the course, and what's next"),
@@ -583,6 +654,10 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("status")
     sub.add_parser("resume")
     sub.add_parser("progress")
+    p = sub.add_parser("setup")
+    p.add_argument("--again", action="store_true")
+    p = sub.add_parser("secret")
+    p.add_argument("service", nargs="?")
     p = sub.add_parser("claude")
     p.add_argument("--yes", action="store_true")
     p.add_argument("--dry-run", action="store_true")
@@ -597,7 +672,8 @@ def main(argv: list[str] | None = None) -> int:
     handlers = {"name": cmd_name, "town": cmd_town, "adults": cmd_adults, "brief": cmd_brief,
                 "status": cmd_status, "progress": cmd_progress, "claude": cmd_claude,
                 "claude-mode": cmd_claude_mode, "doctor": cmd_doctor, "update": cmd_update,
-                "portal": cmd_portal, "resume": cmd_resume, None: cmd_home}
+                "portal": cmd_portal, "resume": cmd_resume, "setup": cmd_setup, "secret": cmd_secret,
+                None: cmd_home}
     words = sys.argv[1:] if argv is None else argv
     try:
         args = parser.parse_args(words)
@@ -616,7 +692,7 @@ def main(argv: list[str] | None = None) -> int:
     # Progress that couldn't be sent before (offline, or not signed in yet) goes now, and a step
     # finished since the last tick is noticed. Quietly: it never blocks or fails a command.
     logging.getLogger("butler").addHandler(logging.NullHandler())
-    if args.cmd != "progress":
+    if args.cmd not in ("progress", "setup", "secret"):
         progress.sync(force=True)
     return handlers[args.cmd](args)
 
