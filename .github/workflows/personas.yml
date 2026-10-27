@@ -4,7 +4,8 @@
 # slips, and starts with no memory of any other. One report collects the findings.
 #
 # By hand only, on each major change: it costs about $2-4 a run for Modules 0-2 (docs/TESTING.md).
-# Needs ANTHROPIC_API_KEY, and COURSE_DEPLOY_KEY (read-only, to the private website repo).
+# Needs ANTHROPIC_API_KEY, and COURSE_READ_TOKEN: a fine-grained token that can only read the
+# private website repo's contents (the organization allows no deploy keys).
 name: personas
 
 on:
@@ -59,7 +60,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: MadFiddlerLabs/buildyourbutler.com
-          ssh-key: ${{ secrets.COURSE_DEPLOY_KEY }}
+          token: ${{ secrets.COURSE_READ_TOKEN }}
           path: website
       - uses: actions/setup-node@v4
         with:

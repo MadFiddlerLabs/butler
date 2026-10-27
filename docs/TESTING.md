@@ -128,7 +128,7 @@ The paid checks skip cleanly when `ANTHROPIC_API_KEY` isn't set.
 | `mutation.yml` | Linux | Nothing | Free for a public repository |
 | `skill-evals.yml` | macOS | `ANTHROPIC_API_KEY` secret | Claude API usage: roughly $1–4 per scenario, three scenarios a week. Each run's summary shows the real cost |
 | `live-contract.yml` | Linux | `ANTHROPIC_API_KEY` secret | A few cents a week |
-| `personas.yml` | macOS and Windows | `ANTHROPIC_API_KEY`, and `COURSE_DEPLOY_KEY` (read-only access to the website repo, for the lessons) | Claude API usage, by hand only: about $2–4 a run for Modules 0–2 (the persona on Claude Sonnet 5.5, the student's Claude Code on its default). Each run stops at its budget (default $6), and the plan job refuses a round that could pass $400 |
+| `personas.yml` | macOS and Windows | `ANTHROPIC_API_KEY`, and `COURSE_READ_TOKEN` (a fine-grained token that can only read the website repo's contents, for the lessons) | Claude API usage, by hand only: about $2–4 a run for Modules 0–2 (the persona on Claude Sonnet 5.5, the student's Claude Code on its default). Each run stops at its budget (default $6), and the plan job refuses a round that could pass $400 |
 | `model-check.yml` | Linux | `ANTHROPIC_API_KEY` secret | Claude API usage, on demand only: it stops before passing its budget ($5.00 at most). The report shows the real cost |
 
 Set the secret once (it prompts for the value):
