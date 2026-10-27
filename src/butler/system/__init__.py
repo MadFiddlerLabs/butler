@@ -46,6 +46,12 @@ def open_file(path: str) -> None:
     _impl.open_file(path)
 
 
+def keep_awake():
+    """A context manager that keeps the computer from sleeping while it's open (not the
+    display): a scheduled run that woke the computer finishes before it sleeps again."""
+    return _impl.keep_awake()
+
+
 def lock_exclusive(f) -> None:
     """Takes a lock on an open file without waiting. Raises OSError if something else holds it.
     The lock goes when the file is closed or the process ends."""

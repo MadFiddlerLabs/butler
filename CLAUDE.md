@@ -53,6 +53,7 @@ someone developing Butler itself. The hard rules apply to both.
 | `src/butler/calendar_source.py`, `gcal.py` | The one place helper commands run: Apple's helper, or Google Calendar and Tasks with `calendar.source: google` |
 | `src/butler/config.py`, `fmt.py` | Config loading (with example fallback), currency formatting and dates (`fmt.strftime`: `%-d` works on Windows too) |
 | `src/butler/system/` | Everything that differs between macOS and Windows: secrets, the schedule check, opening a file, the screen reader, the update lock. `mac.py` and `windows.py` have the same functions; nothing else calls Keychain, launchd or `open` |
+| `run.py`, `src/butler/schedule.py` | Windows: `run.sh`'s twin in Python (UTF-8 mode, keeps the computer awake for the tick), and the Task Scheduler tasks that mirror the launchd jobs, the morning one waking the computer (`python run.py schedule install`) |
 | `config/*.example.yaml`, `budget/budget.example.xlsx`, `examples/` | The invented example household |
 | `bin/butler`, `src/butler/cli.py`, `doctor.py` | The `butler` command: one pasted line per early lesson; `butler resume` goes straight to where the student left off; `butler doctor` reads the log and the last restart |
 | `scripts/first-run.sh` | The guided first run the package opens: sign-in, lessons, then Claude Code. Run again, it skips what's done; `--again` (after a reinstall) offers resume or start fresh |

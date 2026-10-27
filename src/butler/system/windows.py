@@ -3,15 +3,17 @@
 Credential Manager is called through ctypes (advapi32's CredReadW and CredWriteW), so Butler
 needs no extra package for it. Each secret is a generic credential whose target name is the
 service name (`butler-anthropic`), with the user name `butler`, as on the Mac."""
+import contextlib
 import ctypes
 import msvcrt
 import os
 import subprocess
 from ctypes import wintypes
 
+from ..schedule import FOLDER
+
 NAME = "windows"
-TASK_FOLDER = "\\Butler\\"
-TASK_TICK = TASK_FOLDER + "tick"
+TASK_TICK = FOLDER + "tick"
 
 CRED_TYPE_GENERIC = 1
 CRED_PERSIST_LOCAL_MACHINE = 2
@@ -19,6 +21,8 @@ ERROR_NOT_FOUND = 1168
 # Windows refuses a credential blob over 5 * 512 bytes.
 CRED_MAX_BLOB = 2560
 SCREEN_READERS = ("narrator.exe", "nvda.exe")
+ES_CONTINUOUS = 0x80000000
+ES_SYSTEM_REQUIRED = 0x00000001
 
 
 class _CREDENTIAL(ctypes.Structure):
@@ -111,6 +115,17 @@ def screen_reader_on() -> bool:
 
 def open_file(path: str) -> None:
     os.startfile(path)
+
+
+@contextlib.contextmanager
+def keep_awake():
+    """SetThreadExecutionState holds off sleep until this thread says otherwise, or ends."""
+    kernel32 = ctypes.WinDLL("kernel32")
+    kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
+    try:
+        yield
+    finally:
+        kernel32.SetThreadExecutionState(ES_CONTINUOUS)
 
 
 def lock_exclusive(f) -> None:
