@@ -213,9 +213,11 @@ If Google stops accepting the sign-in, for example after you remove Butler's acc
 Google Account, the brief lists the calendar as not connected yet and `logs/butler.log` says
 "reconnect Google". Run `./run.sh gcal connect` again.
 
-Butler signs in with this install's Google client ID. The installer writes it to
-`config/google-oauth.json`. In a development copy, set `BUTLER_GOOGLE_CLIENT_ID` and
-`BUTLER_GOOGLE_CLIENT_SECRET` instead.
+Butler signs in with Butler's own Google client, which every installer carries
+(`src/butler/google_client.json`, built in by the release workflow from the
+`BUTLER_GOOGLE_CLIENT_ID` and `BUTLER_GOOGLE_CLIENT_SECRET` secrets). A household that has its
+own Google client can put Google's downloaded file at `config/google-oauth.json`, which comes
+first. In a development copy, set those two environment variables instead.
 
 ## Windows
 
