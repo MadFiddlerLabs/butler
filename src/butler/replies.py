@@ -16,6 +16,7 @@ import yaml
 
 from . import calendar_source, inbox, llm, mailer, projects
 from .config import ROOT, load_settings, name_for_email, people, tz
+from .fmt import strftime
 
 log = logging.getLogger("butler")
 PROCESSED = ROOT / "data" / "processed_replies.txt"
@@ -185,11 +186,11 @@ def perform(settings: dict, action: dict, who: str, today: date, said: str = "")
             start = datetime.combine(day, time.fromisoformat(action["start_time"]), zone)
             end = (datetime.combine(day, time.fromisoformat(action["end_time"]), zone)
                    if action["end_time"] else start + timedelta(hours=1))
-            all_day, when = "0", f"{day:%a %-d %b} {start:%H:%M}–{end:%H:%M}"
+            all_day, when = "0", f"{strftime(day, '%a %-d %b')} {start:%H:%M}–{end:%H:%M}"
         else:
             start = datetime.combine(day, time.min, zone)
             end = start + timedelta(days=1)
-            all_day, when = "1", f"{day:%a %-d %b}, all day"
+            all_day, when = "1", f"{strftime(day, '%a %-d %b')}, all day"
         _ek("add-event", "--calendar", _calendar(settings), "--title", text,
             "--start", start.isoformat(), "--end", end.isoformat(), "--all-day", all_day,
             "--location", action["location"] or "", "--notes", f"Added by reply from {who}")
@@ -211,7 +212,7 @@ def perform(settings: dict, action: dict, who: str, today: date, said: str = "")
                                        chase_after=chase if action["status"] == "waiting" else None)
         projects.log_update(step_id, who, text, today)
         extra = f", waiting on {action['waiting_on']}" if action.get("waiting_on") else ""
-        extra += f", back on {chase:%-d %B}" if chase and action["status"] == "waiting" else ""
+        extra += f", back on {strftime(chase, '%-d %B')}" if chase and action["status"] == "waiting" else ""
         return f"Set to {action['status']}{extra} ({project}): {text}"
     if kind == "step_note":
         step = action["step_id"] or ""

@@ -5,3 +5,5 @@ matplotlib>=3.9
 openpyxl>=3.1
 pyyaml>=6.0
 waitress>=3.0
+# Windows has no time zone database of its own; zoneinfo reads this one there.
+tzdata>=2025.2; sys_platform == "win32"

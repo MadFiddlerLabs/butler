@@ -21,6 +21,7 @@ fails, it opens a GitHub issue.
 | Contracts | `tests/test_contracts.py` | Every push | Claude schemas that aren't strict, a reply answer not told to leave sums to Python, an idea's amount from Claude not labelled as Claude's, a reply action that could delete, the test stub drifting from the Swift helper, renamed course steps or scripts |
 | Course progress | `tests/test_progress.py` | Every push | A setup step counting before its check passes (each check, step by step); the step-to-lesson map drifting from the skill's steps and modules; lessons queued twice, `started` beating `done`, or something sent twice; the queue losing anything offline, signed out, on a revoked session or a server error; a refused lesson blocking the rest; anything but lesson ids, statuses and times leaving the Mac; `sync()` raising; the tick skipping it. An integration run of the Johnsons' whole household against the fake account API. The website's contract check holds the other end of the map |
 | Dates | `tests/test_dates.py`, and `tests.yml`'s `dates` job | Every push | An email sent twice or never through a DST change, a letter or look-back the Mac slept through not caught up (or caught up too late, twice, or for a household that wasn't set up yet), at a year end where ISO weeks wrap, or in a leap February; the update check skipped on the night its hour doesn't exist. The job reruns the whole suite at such moments with libfaketime |
+| Windows | `tests.yml`'s `windows` job: `tests/windows.py`, `tests/test_system.py` | Every push | Butler on Windows (#40): `butler.system` against the real Credential Manager, a Mac-only call outside `butler.system`, a date format Windows refuses, and the rest of the suite less `tests/windows_skip.txt`, which says why each line is there and may only shrink: a line that matches no test fails the job |
 | Coverage | `tests.yml`, `test` job | Every push | Coverage falling below its floor, in total or in a high-risk module (see [Coverage](#coverage)) |
 | Mutation | `.github/workflows/mutation.yml` | Weekly (Sunday) and on demand | A money rule no test would notice breaking (see [Mutation testing](#mutation-testing)) |
 | Screenshots | `tests/test_screenshots.py` | Every push (Linux) | The README images failing to build, coming out blank or the wrong size, or changing between two identical runs; event titles drifting away from their times in the portal |
@@ -120,7 +121,7 @@ The paid checks skip cleanly when `ANTHROPIC_API_KEY` isn't set.
 
 | Workflow | Runner | Needs | Cost |
 |---|---|---|---|
-| `tests.yml` | Linux | Nothing | Free for a public repository |
+| `tests.yml` | Linux and Windows | Nothing | Free for a public repository |
 | `macos-e2e.yml` | macOS | Nothing | Free for a public repository |
 | `screenshots.yml` | Linux | Nothing | Free for a public repository |
 | `mutation.yml` | Linux | Nothing | Free for a public repository |

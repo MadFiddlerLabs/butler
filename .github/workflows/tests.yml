@@ -1,5 +1,6 @@
 # Every push and pull request: pyflakes, shellcheck, the dependency lock, and the unit, integration, privacy and
-# contract tests (tests/), on Linux with every outside service faked. No secrets needed.
+# contract tests (tests/), on Linux with every outside service faked, and on Windows as far as
+# Butler runs there yet. No secrets needed.
 # A second job reruns the suite at awkward dates (month and year ends, DST changes). A third makes
 # the README screenshots twice and checks they match (tests/test_screenshots.py).
 name: tests
@@ -47,6 +48,26 @@ jobs:
           python -m coverage report > report.txt || status=1
           { echo; echo '```'; cat report.txt; echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"
           exit $status
+
+  windows:
+    # Butler on Windows (#40): the platform layer against the real Credential Manager, and the
+    # rest of the suite as far as it runs there yet. tests/windows_skip.txt lists what doesn't.
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install --require-hashes -r requirements.lock && pip install -r requirements-dev.txt
+      - run: python tests/windows.py
+        env:
+          PYTHONPATH: src
+          HYPOTHESIS_PROFILE: ci
+          # Butler reads and writes UTF-8 everywhere. Windows' default is the ANSI code page, so
+          # Butler runs in Python's UTF-8 mode there, as its Windows launcher will (#40).
+          PYTHONUTF8: "1"
 
   screenshots:
     runs-on: ubuntu-latest

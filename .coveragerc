@@ -13,6 +13,8 @@ butler =
 [report]
 show_missing = false
 skip_empty = true
+# Windows-only code, tested for real on Windows by tests.yml's windows job.
+omit = */butler/system/windows.py
 precision = 1
 # The total floor; per-module floors are in scripts/check_coverage.py (docs/TESTING.md).
 fail_under = 87

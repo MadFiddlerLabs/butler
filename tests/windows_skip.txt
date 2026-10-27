@@ -1,0 +1,43 @@
+# Tests that don't run on Windows yet (#40), for tests/windows.py. One test module, class or
+# test per line, then a comment saying why. Take a line out when its part is ported.
+
+# The flows run in tests/fakes/harness.py, whose fake Keychain (fakebin/security) and fake
+# Calendar helper (bin/butler-ek) are scripts with a #! line, which Windows can't run.
+test_flows.BudgetByReplyTest                  # fake Keychain and Calendar helper are #! scripts
+test_flows.FullHouseholdTest                  # the same
+test_flows.NetWorthOffTest                    # the same
+test_flows.WeeklyOnFridayTest                 # the same
+test_failures.GmailSendDownTest               # the same
+test_failures.NotConnectedYetTest             # the same
+test_failures.ReplyWhenClaudeKeepsFailingTest # the same
+test_failures.ReplyWhenGmailRefusesTest       # the same
+test_failures.ServicesDownTest                # the same
+test_failures.TickWithImapDownTest            # the same
+test_failures.TimeoutAndBrokenHelperTest      # the same
+test_privacy.PrivacyTest                      # the same
+test_progress.JohnsonsIntegrationTest         # the same
+test_model_check.EndToEndTest                 # the same
+test_gcal.GoogleHouseholdTest                 # the same
+test_gcal.GoogleNotConnectedTest              # the same
+
+# bash: bin/butler, scripts/first-run.sh, bootstrap.sh and scripts/lib/*.sh, until the entry
+# points move to Python. On a runner, `bash` can also be WSL's, which has no Linux installed.
+test_cli.CliTest                              # runs bin/butler and a bash-made .venv
+test_cli.ResumeTest                           # the same
+test_cli.PortalCommandTest                    # the same
+test_first_run.FirstRunTest                   # scripts/first-run.sh
+test_first_run.WelcomeBackTest                # the same
+test_first_run.HeardTokenTest                 # the same
+test_first_run.PlainTest                      # scripts/lib/plain.sh
+test_wrap.WrapTest                            # bootstraps a fake home with bash
+test_security.SecretsOffTheCommandLineTest    # scripts/lib/keychain.sh and the Mac's `security -i`
+
+# Subprocesses started with a pared-down environment. Windows needs SYSTEMROOT for sockets
+# (WinError 10106), so these need their environment widened on Windows.
+test_inbox.StandaloneTest                     # a fresh Python without SYSTEMROOT
+test_security.OneListenerTest                 # the same
+
+# macOS only, by design. The Windows installer and updater are their own work in #40.
+test_packaging                                # the macOS .pkg; os.geteuid at import
+test_updates.PostInstallTest                  # restarts the portal through launchctl
+test_portal.DeviceKeyTest.test_the_store_is_owner_only_and_holds_no_key_or_code  # Unix file modes; Windows uses ACLs

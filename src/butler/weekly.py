@@ -20,7 +20,7 @@ from . import charts, finance, llm, mailer, networth, projects
 from .agenda import OUTSIDE_LABEL, OUTSIDE_MARK, Agenda, is_outside, load_agenda
 from .config import ROOT, brand, load_settings, people, portal_url, tz
 from .finance import SPEND, Summary, Tx
-from .fmt import money, primary_code, scale
+from .fmt import money, primary_code, scale, strftime
 
 log = logging.getLogger("butler")
 IDEAS = ROOT / "data" / "ideas.jsonl"
@@ -162,11 +162,11 @@ def _questions(m: Summary, rules: dict, last_day: date) -> list[tuple[str, str, 
     asks = []
     for t in sorted((t for t in m.txs if week <= t.day <= last_day), key=lambda t: -t.amount):
         if t.kind == SPEND and t.unmapped and t.amount >= 20 * scale():
-            asks.append((f"{t.payee} {money(t.amount)} on {t.day:%a %-d %b} has no category I know. "
+            asks.append((f"{t.payee} {money(t.amount)} on {strftime(t.day, '%a %-d %b')} has no category I know. "
                          "What was it?", t.payee))
         elif t.kind == "transfer" and t.amount >= 20 * scale() and not any(o in t.payee.lower() for o in own) \
                 and not t.payee.lower().startswith(("to ", "from ", "cashback")):
-            asks.append((f"{money(t.amount)} to {t.payee} on {t.day:%a %-d %b} counted as a transfer. "
+            asks.append((f"{money(t.amount)} to {t.payee} on {strftime(t.day, '%a %-d %b')} counted as a transfer. "
                          "Was it spending? If so, on what?", t.payee))
     return [(f"Q-{year}-{wk}-{i + 1}", q, payee) for i, (q, payee) in enumerate(asks[:3])]
 
@@ -225,7 +225,7 @@ def build_week(settings: dict, last_day: date) -> Week:
             now, ch = networth.change_since(last_day, 7)
             reasons = networth.reasons_from(m.txs, ch.since, last_day) if ch else {}
             reasons.update(cfg.get("reasons") or {})
-            nw_line = networth.line(now, ch, f"since {ch.since:%-d %B}" if ch else "", cfg.get(
+            nw_line = networth.line(now, ch, f"since {strftime(ch.since, '%-d %B')}" if ch else "", cfg.get(
                 "notable_weekly", 5000), cfg.get("labels"), reasons)
         except Exception:
             log.exception("weekly: net worth failed")
@@ -311,7 +311,7 @@ def write(settings: dict, w: Week, ps: list[projects.Project]) -> dict:
         "drift": [{"payee": d.payee, "last_4_weeks": round(d.last4),
                    "previous_4_week_average": round(d.before), "note": d.note} for d in w.drift],
     }
-    week_ahead = [{"when": f"{e.start:%a %-d} {e.time_label()}", "who": e.people or ["Family"],
+    week_ahead = [{"when": f"{strftime(e.start, '%a %-d')} {e.time_label()}", "who": e.people or ["Family"],
                    "what": e.title, **llm.event_label(e)}
                   for e in (w.ahead.today + w.ahead.upcoming if w.ahead else []) if not e.recurring]
     project_state = [{"project": p.name, "summary": p.summary,
@@ -452,7 +452,7 @@ def sections(w: Week, words: dict) -> list[tuple[str, list[str]]]:
         for e in w.ahead.today + w.ahead.upcoming:
             if not e.recurring:
                 who = e.people[0] if len(e.people) == 1 else "Family"
-                ahead.append(f"{e.start:%a %-d} {e.time_label()}, {who}: {e.short_title}"
+                ahead.append(f"{strftime(e.start, '%a %-d')} {e.time_label()}, {who}: {e.short_title}"
                              + (OUTSIDE_MARK if is_outside(e) else ""))
         if w.routines:
             ahead.append("Routines: " + "; ".join(w.routines) + ".")
@@ -538,8 +538,8 @@ def preview_to_portal(settings: dict, last_day: date) -> str:
         imgs["categories"] = cats
     for name, png in imgs.items():
         (ROOT / "out" / f"{stem}-{name}.png").write_bytes(png)
-    banner = (f"Preview, built {datetime.now(tz(settings)):%a %-d %b %H:%M} from today's data. "
-              f"The real letter goes out {last_day:%A %-d %B} at {settings['email'].get('weekly_hour', 17)}:00 "
+    banner = (f"Preview, built {strftime(datetime.now(tz(settings)), '%a %-d %b %H:%M')} from today's data. "
+              f"The real letter goes out {strftime(last_day, '%A %-d %B')} at {settings['email'].get('weekly_hour', 17)}:00 "
               "and replaces this page.")
     (ROOT / "out" / f"{stem}.html").write_text(to_html(w, secs, lambda n: f"{stem}-{n}.png", banner))
     (ROOT / "out" / f"{stem}.txt").write_text(to_text(w, secs))
@@ -569,7 +569,7 @@ def run(settings: dict, last_day: date, dry_run: bool, late: str = "") -> None:
     if dry_run:
         log.info("weekly dry run: wrote out/preview/%s.html", stem)
         return
-    mailer.send_or_queue(settings, stem, f"{brand(settings)} · your week ahead, {last_day + timedelta(days=1):%-d %B}",
+    mailer.send_or_queue(settings, stem, f"{brand(settings)} · your week ahead, {strftime(last_day + timedelta(days=1), '%-d %B')}",
                          text, to_html(w, secs, banner=late), images=imgs)
     asked = json.loads(QUESTIONS.read_text()) if QUESTIONS.exists() else {}
     asked.update({qid: {"payee": payee, "text": q, "asked": last_day.isoformat()}

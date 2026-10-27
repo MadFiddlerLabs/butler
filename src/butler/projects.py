@@ -9,6 +9,7 @@ from datetime import date, timedelta
 import yaml
 
 from .config import ROOT, on_example
+from .fmt import strftime
 
 PROJECTS_DIR = ROOT / "projects"
 EXAMPLES_DIR = ROOT / "examples" / "projects"
@@ -128,20 +129,20 @@ def state(s: Step, steps: dict[str, Step], today: date) -> tuple[str, str]:
     if s.until and steps[s.until].status == "done":
         return "done", f"retired: {steps[s.until].label}"
     if s.status == "done":
-        return "done", "done" + (f" {s.last_done:%-d %b}" if s.last_done else "")
+        return "done", "done" + (f" {strftime(s.last_done, '%-d %b')}" if s.last_done else "")
     if s.status == "paused":
-        return "paused", f"paused until {s.not_before:%-d %b %Y}" if s.not_before else "paused"
+        return "paused", f"paused until {strftime(s.not_before, '%-d %b %Y')}" if s.not_before else "paused"
     if s.status == "waiting":
         due = s.chase_after and s.chase_after <= today
         return ("now" if due else "waiting",
-                "chase now" if due else "waiting" + (f" · back {s.chase_after:%-d %b}" if s.chase_after else ""))
+                "chase now" if due else "waiting" + (f" · back {strftime(s.chase_after, '%-d %b')}" if s.chase_after else ""))
     needs = [steps[a].label for a in s.after if steps[a].status != "done"]
     if needs:
         return "later", "needs: " + ", ".join(needs)
     if s.not_before and s.not_before > today:
-        return "later", f"from {s.not_before:%-d %b %Y}"
+        return "later", f"from {strftime(s.not_before, '%-d %b %Y')}"
     if s.every and s.last_done and s.last_done + timedelta(days=s.every) > today:
-        return "later", f"next check {s.last_done + timedelta(days=s.every):%-d %b}"
+        return "later", f"next check {strftime(s.last_done + timedelta(days=s.every), '%-d %b')}"
     return "now", "now"
 
 

@@ -30,7 +30,7 @@ from urllib.parse import quote, urlparse
 from . import calendar_source, charts, claude_usage, devices, finance, networth, projects, replies
 from .config import ROOT, brand, load_settings, people, tz
 from .render import money_lines, one_off_note, readable
-from .fmt import SYMBOLS, money, primary_code, second_code
+from .fmt import SYMBOLS, money, primary_code, second_code, strftime
 
 OUT = ROOT / "out"
 app = Flask(__name__)
@@ -379,7 +379,7 @@ def _subscriptions_html(m) -> str:
         return ""
     rows = "".join(f"<tr><td>{escape(x['payee'])}</td><td>{escape(x['kind'])}</td>"
                    f"<td class=num>{money(x['monthly'])}</td><td class=num>{money(x['monthly'] * 12)}</td>"
-                   f"<td>{x['last']:%-d %b}</td></tr>" for x in subs)
+                   f"<td>{strftime(x['last'], '%-d %b')}</td></tr>" for x in subs)
     total = sum(x["monthly"] for x in subs)
     return (f"<h2>Subscriptions and monthly charges</h2><p class=sub>Detected from charges about a month "
             f"apart: {money(total)} a month, {money(total * 12)} a year.</p><table><tr><th>Payee</th><th>Counts as</th><th class=num>Monthly</th>"
@@ -412,7 +412,7 @@ def money_page():
     if snaps:
         cfg = load_settings().get("networth", {})
         ch = networth.compare(snaps[-1], snaps[-2]) if len(snaps) > 1 else None
-        nw = networth.line(snaps[-1], ch, f"since {ch.since:%-d %B}" if ch else "",
+        nw = networth.line(snaps[-1], ch, f"since {strftime(ch.since, '%-d %B')}" if ch else "",
                            cfg.get("notable_daily", 2500), cfg.get("labels"))
         lines = f"<p><strong>{escape(nw)}</strong></p>" + lines
     note = one_off_note(m)
@@ -426,7 +426,7 @@ def money_page():
     txs = sorted((t for t in m.txs if t.book_day >= month_start and t.kind in (finance.SPEND, finance.LEDGER)),
                  key=lambda t: (t.day, t.amount), reverse=True)
     tx_rows = "".join(
-        f"<tr><td>{t.day:%-d %b}</td><td>{escape(t.payee)}"
+        f"<tr><td>{strftime(t.day, '%-d %b')}</td><td>{escape(t.payee)}"
         + ("".join(f' <span class=chip>{c}</span>' for c in
                    (["one-off"] if t.one_off else []) + ([escape(t.ledger)] if t.kind == finance.LEDGER else [])
                    + ([f"for {t.book_day:%B}"] if t.book_day != t.day else [])
@@ -572,12 +572,12 @@ def _step_html(s: projects.Step, steps: dict, today: date) -> str:
         parts.append(f'<div class=lbl>Unlocks</div><ul>{chain}</ul>')
     if s.status == "waiting" and s.waiting_on:
         parts.append(f'<div class=gate>Waiting on {escape(s.waiting_on)}'
-                     + (f'; back in the brief on {s.chase_after:%-d %B}' if s.chase_after else "") + "</div>")
+                     + (f'; back in the brief on {strftime(s.chase_after, "%-d %B")}' if s.chase_after else "") + "</div>")
     if s.every:
         parts.append(f'<div class=gate>Repeats every {s.every} days'
-                     + (f'; last done {s.last_done:%-d %b}' if s.last_done else "") + "</div>")
+                     + (f'; last done {strftime(s.last_done, "%-d %b")}' if s.last_done else "") + "</div>")
     if s.not_before:
-        parts.append(f'<div class=gate>Not before {s.not_before:%-d %B %Y}</div>')
+        parts.append(f'<div class=gate>Not before {strftime(s.not_before, "%-d %B %Y")}</div>')
     if s.notes:
         parts.append(f'<div class=gate>{escape(s.notes)}</div>')
     log = projects.updates(s.id)
@@ -717,7 +717,7 @@ def info_page():
             flag = (' <span class="chip c-now">expired</span>' if days < 0 else
                     f' <span class="chip c-now">in {days} days</span>' if days <= 90 else
                     f' <span class=chip>in {days // 365} yr</span>' if days > 365 else "")
-            exp_html = f"{exp_d:%-d %b %Y}{flag}"
+            exp_html = f"{strftime(exp_d, '%-d %b %Y')}{flag}"
         else:
             exp_html = '<span class=sub>add date</span>'
         body.append(f"<tr><td>{escape(d['holder'])}</td><td>{escape(d['document'])}</td>"

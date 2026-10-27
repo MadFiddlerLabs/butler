@@ -708,8 +708,9 @@ class SecretsOffTheCommandLineTest(unittest.TestCase):
 
     def test_store_secret_sends_the_secret_on_stdin(self):
         from butler import config
+        from butler.system import mac
         secret = 'inv"ent\\ed $x  0000000000000000000000000000000 é'    # invented
-        with mock.patch.object(config.subprocess, "run") as run:
+        with mock.patch.object(mac.subprocess, "run") as run:
             config.store_secret("butler-account", secret)
         argv, stdin = run.call_args.args[0], run.call_args.kwargs["input"]
         self.assertEqual(argv, ["security", "-i"])

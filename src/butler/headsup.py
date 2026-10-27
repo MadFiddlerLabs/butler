@@ -8,6 +8,7 @@ import yaml
 
 from . import reference
 from .config import config_path
+from .fmt import strftime
 
 DEADLINES = config_path("deadlines")
 
@@ -40,7 +41,7 @@ def documents(today: date) -> list[Item]:
     out = []
     for e in reference.expiring(today, within=reference.WARN_DAYS[0]):
         verb = "expired" if e.days < 0 else "expires"
-        out.append(Item(e.expires, e.days, f"{e.holder}'s {e.document} {verb} on {e.expires:%-d %B %Y}. "
+        out.append(Item(e.expires, e.days, f"{e.holder}'s {e.document} {verb} on {strftime(e.expires, '%-d %B %Y')}. "
                                            "Start the renewal.", e.holder))
     return out
 
@@ -51,5 +52,5 @@ def items(today: date, within: int) -> list[Item]:
 
 def line(i: Item) -> str:
     when = "today" if i.days == 0 else "tomorrow" if i.days == 1 else (
-        f"{-i.days} days ago" if i.days < 0 else f"in {i.days} days ({i.when:%a %-d %b})")
+        f"{-i.days} days ago" if i.days < 0 else f"in {i.days} days ({strftime(i.when, '%a %-d %b')})")
     return f"{i.text} ({when})" if i.days < 0 else f"{when[0].upper()}{when[1:]}: {i.text}"

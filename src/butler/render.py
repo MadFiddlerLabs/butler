@@ -7,7 +7,7 @@ from html import escape
 
 from .agenda import OUTSIDE_MARK, Agenda, Event, is_outside
 from .config import brand, people as adults
-from .fmt import money, primary_code, scale, second_code
+from .fmt import money, primary_code, scale, second_code, strftime
 from .finance import Summary
 from .projects import Today as ProjectsToday
 
@@ -325,11 +325,11 @@ def drawer_lines(m: Summary) -> list[str]:
             # More went out than the count plus the withdrawals Butler saw: a withdrawal it
             # didn't recognise, or a stale count. A negative "at most" would read as a bug.
             paid = rec["label"] if rec else "cash payments"
-            line = (f"Cash drawer: needs a count. More went to {paid} since {m.drawer_counted:%-d %b} than "
+            line = (f"Cash drawer: needs a count. More went to {paid} since {strftime(m.drawer_counted, '%-d %b')} than "
                     f"that count plus the withdrawals I saw, so one may be missing. Count the drawer and "
                     f"update cash_drawer in category_map.yaml, or ask Claude Code to.")
         else:
-            line = (f"Cash drawer: about {money(m.drawer)} at most (counted {m.drawer_counted:%-d %b}, "
+            line = (f"Cash drawer: about {money(m.drawer)} at most (counted {strftime(m.drawer_counted, '%-d %b')}, "
                     f"plus top-ups{less}).")
         if rec:
             payday = WEEKDAYS[rec.get("weekday", "friday").lower()]
@@ -369,7 +369,7 @@ def next_up_groups(view: ProjectsToday) -> list[tuple[str, list[str], int]]:
 
 
 def countdown_lines(view: ProjectsToday) -> list[str]:
-    return [f"{s.do} ({s.project}): opens in {d} days, on {s.not_before:%-d %B %Y}"
+    return [f"{s.do} ({s.project}): opens in {d} days, on {strftime(s.not_before, '%-d %B %Y')}"
             for s, d in view.countdowns if d <= COUNTDOWN_DAYS]
 
 

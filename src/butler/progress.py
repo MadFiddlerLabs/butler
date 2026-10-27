@@ -13,7 +13,6 @@ website and the weekly lesson email know where they are.
 
 import json
 import logging
-import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -21,8 +20,9 @@ from typing import Callable
 
 import yaml
 
-from . import account
+from . import account, system
 from .config import ROOT, plain_output
+from .fmt import strftime
 
 MAP_FILE = Path(__file__).with_name("course_progress.json")
 STATE_FILE = Path("data") / "progress.json"
@@ -76,24 +76,9 @@ class Folder:
         return any(self.root.glob(pattern))
 
 
-def _has_secret(service: str) -> bool:
-    try:
-        return subprocess.run(["security", "find-generic-password", "-s", service],
-                              capture_output=True, timeout=10).returncode == 0
-    except (OSError, subprocess.SubprocessError):
-        return False
-
-
-def _scheduled() -> bool:
-    try:
-        out = subprocess.run(["launchctl", "list"], capture_output=True, text=True, timeout=10).stdout
-    except (OSError, subprocess.SubprocessError):
-        return False
-    return any(line.split("\t")[-1] == "com.buildyourbutler.butler" for line in out.splitlines())
-
-
 def mac_folder(root: Path | None = None) -> Folder:
-    return Folder(root or ROOT, _has_secret, _scheduled)
+    """This computer's Butler folder, with its password store and schedule (system/)."""
+    return Folder(root or ROOT, system.has_secret, system.scheduled)
 
 
 # ---------- the checks: each is its module's win ----------
@@ -288,7 +273,7 @@ def report(lesson: str, status: str = "done", root: Path | None = None) -> None:
 # ---------- `butler progress` ----------
 
 def _day(iso: str) -> str:
-    return datetime.fromisoformat(iso.replace("Z", "+00:00")).strftime("%-d %B")
+    return strftime(datetime.fromisoformat(iso.replace("Z", "+00:00")), "%-d %B")
 
 
 def lines(state: dict, problem: str | None) -> list[str]:
