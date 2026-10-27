@@ -123,5 +123,23 @@ class OneTableTest(unittest.TestCase):
             self.assertNotIn("Claude this month", text, module)
 
 
+class OnlyTheStoredKeyTest(unittest.TestCase):
+    """Butler's Claude calls use the key Module 4 stores, never an ANTHROPIC_API_KEY that happens
+    to be in the Terminal's environment (found by the persona tests)."""
+
+    SETTINGS = {"llm": {}}
+
+    def test_no_stored_key_is_not_set_up_even_with_one_in_the_environment(self):
+        with mock.patch.object(llm, "keychain", return_value=None), \
+                mock.patch.dict("os.environ", {"ANTHROPIC_API_KEY": "sk-ant-invented-env-key"}):
+            with self.assertRaisesRegex(llm.NotSetUp, "Claude isn't connected yet"):
+                llm._client(self.SETTINGS)
+
+    def test_the_stored_key_is_the_one_used(self):
+        with mock.patch.object(llm, "keychain", return_value="sk-ant-invented-stored-key"), \
+                mock.patch.dict("os.environ", {"ANTHROPIC_API_KEY": "sk-ant-invented-env-key"}):
+            self.assertEqual(llm._client(self.SETTINGS).api_key, "sk-ant-invented-stored-key")
+
+
 if __name__ == "__main__":
     unittest.main()

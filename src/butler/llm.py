@@ -13,7 +13,7 @@ import anthropic
 
 from . import claude_usage, privacy
 from .agenda import OUTSIDE_LABEL, Agenda, Event, is_outside
-from .config import KEYCHAIN_ANTHROPIC, ROOT, keychain
+from .config import KEYCHAIN_ANTHROPIC, ROOT, NotSetUp, keychain
 from .news import Story
 
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
@@ -104,13 +104,17 @@ def event_label(e: Event) -> dict:
 
 
 def _client(settings: dict) -> anthropic.Anthropic:
+    """Claude, with the household's own key from the password store (Module 4), and only that.
+    Without it, the SDK would quietly use an ANTHROPIC_API_KEY from the Terminal's environment:
+    a brief would then work when typed and fail at 07:00, whose scheduled run has no such variable,
+    and a student on a Claude plan would be billed through a key they never gave their butler."""
     key = keychain(KEYCHAIN_ANTHROPIC)
+    if not key:
+        raise NotSetUp("Claude isn't connected yet (Module 4 stores your butler's key)")
     # Only needed for API keys that aren't scoped to a workspace.
     workspace = settings["llm"].get("workspace_id")
     headers = {"anthropic-workspace-id": workspace} if workspace else None
-    if key:
-        return anthropic.Anthropic(api_key=key, default_headers=headers)
-    return anthropic.Anthropic(default_headers=headers)
+    return anthropic.Anthropic(api_key=key, default_headers=headers)
 
 
 def _ask_json(settings: dict, system: str, prompt: str, schema: dict) -> dict:
