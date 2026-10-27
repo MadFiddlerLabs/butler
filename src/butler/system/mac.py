@@ -2,10 +2,15 @@
 import contextlib
 import fcntl
 import os
+import plistlib
 import subprocess
+from pathlib import Path
+from xml.parsers.expat import ExpatError
 
 NAME = "mac"
+PASSWORD_STORE = "Keychain"
 LABEL = "com.buildyourbutler.butler"
+APP_ID = "com.buildyourbutler.butler-app"
 
 
 def get_secret(service: str) -> str | None:
@@ -64,6 +69,34 @@ def keep_awake():
     finally:
         if proc:
             proc.terminate()
+
+
+def add_to_path(bin_dir: str) -> bool:
+    """One line in ~/.zprofile, as add_to_path in scripts/lib/install.sh writes it."""
+    profile = Path.home() / ".zprofile"
+    line = f'export PATH="{bin_dir}:$PATH"'
+    try:
+        if profile.exists() and line in profile.read_text(errors="replace"):
+            return False
+        with open(profile, "a") as f:
+            f.write(f"\n# Added by Butler: lets you type `butler` in Terminal.\n{line}\n")
+    except OSError:
+        return False
+    return True
+
+
+def butler_app() -> str | None:
+    """/Applications first, if the app there is ours, then ~/Applications: app_location in
+    scripts/lib/install.sh. BUTLER_SYSTEM_APPS stands in for /Applications in tests."""
+    system_app = Path(os.environ.get("BUTLER_SYSTEM_APPS", "/Applications")) / "Butler.app"
+    try:
+        with open(system_app / "Contents" / "Info.plist", "rb") as f:
+            if plistlib.load(f).get("CFBundleIdentifier") == APP_ID:
+                return str(system_app)
+    except (OSError, ValueError, ExpatError, AttributeError):
+        pass
+    home_app = Path.home() / "Applications" / "Butler.app"
+    return str(home_app) if home_app.is_dir() else None
 
 
 def lock_exclusive(f) -> None:

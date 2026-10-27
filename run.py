@@ -3,6 +3,8 @@ Windows has no bash. On a Mac, run.sh stays the entry point.
   .venv\\Scripts\\python.exe run.py preview      build this morning's brief and open it; sends nothing
   .venv\\Scripts\\python.exe run.py daily [--dry-run] [--no-llm] [--date YYYY-MM-DD]
   .venv\\Scripts\\python.exe run.py tick | portal | weekly | monthly | replies
+  .venv\\Scripts\\python.exe run.py setup [--again]  the guided first run (butler.first_run)
+  .venv\\Scripts\\python.exe run.py cli <args>       the `butler` command: bin\\butler.cmd calls this
 
 Butler reads and writes UTF-8 everywhere, and Windows' default is its ANSI code page, so this
 runs Butler in Python's UTF-8 mode (-X utf8), starting itself again in it if it has to."""
@@ -34,6 +36,8 @@ def main(argv: list[str]) -> int:
         if code == 0 and briefs and not os.environ.get("BUTLER_NO_OPEN"):
             system.open_file(str(briefs[-1]))
         return code
+    if cmd == "setup":
+        return _module("butler.first_run", args)
     if cmd == "tick":
         # The scheduled run keeps the computer from sleeping until it's done, as caffeinate does
         # in run.sh: a wake for the brief can otherwise drop back to sleep mid-send.

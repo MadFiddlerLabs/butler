@@ -71,6 +71,15 @@ scripts/store-secret.sh butler-anthropic "Your Claude API key"
 scripts/store-secret.sh butler-lunchmoney "Lunch Money > Settings > Developers > access token"
 ```
 
+On Windows, the secrets go in Credential Manager. Each command asks for the value in the
+window, hidden while you type or paste it:
+
+```
+butler secret butler-gmail
+butler secret butler-anthropic
+butler secret butler-lunchmoney
+```
+
 Running one again replaces the stored value.
 
 ## 4. Write your settings
@@ -207,6 +216,32 @@ Google Account, the brief lists the calendar as not connected yet and `logs/butl
 Butler signs in with this install's Google client ID. The installer writes it to
 `config/google-oauth.json`. In a development copy, set `BUTLER_GOOGLE_CLIENT_ID` and
 `BUTLER_GOOGLE_CLIENT_SECRET` instead.
+
+## Windows
+
+Windows has no bash, so Butler's commands there run in Python. The Windows installer isn't
+ready yet (#40). Until then, set Butler up from a clone, in PowerShell:
+
+```
+git clone https://github.com/MadFiddlerLabs/butler.git
+cd butler
+powershell -ExecutionPolicy Bypass -File scripts\bootstrap.ps1
+bin\butler.cmd setup
+```
+
+`bootstrap.ps1` is `bootstrap.sh`'s twin: the pinned uv, its Python and the locked packages.
+
+`bin\butler.cmd` is the `butler` command. It runs Butler's Python in UTF-8 mode through
+`run.py`, the twin of `run.sh`. `butler setup` is the guided first run. It asks what the Mac's
+asks, in the same order, and writes the same files. It also adds Butler's `bin` folder to your
+PATH, so `butler` works in any new Terminal window. At the end it hands over to Claude Code and
+installs it first if it's missing, with Anthropic's PowerShell installer.
+
+The rest differs from the Mac in three places:
+
+- Secrets go in Credential Manager, with `butler secret <name>` (step 3).
+- Calendar and Tasks come from Google, the only choice on Windows (above).
+- Task Scheduler runs the schedule: `.venv\Scripts\python.exe run.py schedule install`.
 
 ## Uninstall
 

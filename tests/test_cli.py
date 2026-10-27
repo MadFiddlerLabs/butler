@@ -7,6 +7,8 @@ import json
 import os
 import re
 import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 import urllib.request
@@ -14,7 +16,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
-from butler import cli, devices
+from butler import cli, devices, system
 from fakes.account_api import FakeAccountAPI
 from fakes.setup_home import REPO, SetupHome
 
@@ -289,8 +291,8 @@ class HelpTest(unittest.TestCase):
     COMMANDS = [c for _, group in cli.COMMANDS for c, _ in group]
 
     def check(self, lines: list[str], width: int) -> None:
-        commands = re.compile(r"butler(?: (?:setup|name|town|adults|brief|claude-mode|claude|status|progress|"
-                              r"resume|portal|update|doctor|help)\b)?")
+        commands = re.compile(r"butler(?!-)(?: (?:setup|name|town|adults|brief|claude-mode|claude|status|progress|"
+                              r"resume|portal|update|doctor|secret|help)\b)?")
         for line in lines:
             self.assertLessEqual(len(line), width, line)
         # Which command each line starts with: the longest one it begins with, then a space or nothing.
@@ -501,6 +503,146 @@ class PortalCommandTest(unittest.TestCase):
         self.assertNotIn(code, out.getvalue())
         self.assertTrue(devices.pair(code, "Mac, Safari"))
         self.assertIsNone(devices.pair(code, "Mac, Safari"))
+
+
+class SecretTest(unittest.TestCase):
+    """`butler secret <name>`: a key or password into the password store, typed hidden, never on a
+    command line, in a file or on screen. Windows' way, where store-secret.sh's Mac dialog isn't."""
+
+    def secret(self, *args: str, typed=("sk-invented 0000 0000",), refused=None):
+        out = io.StringIO()
+        with mock.patch.object(cli.getpass, "getpass", side_effect=typed) as asked, \
+             mock.patch.object(cli.config, "store_secret", side_effect=refused) as store, \
+             mock.patch.object(cli.progress, "sync") as sync, redirect_stdout(out):
+            code = cli.main(["secret", *args])
+        sync.assert_not_called()
+        return code, out.getvalue(), asked, store
+
+    def test_the_key_goes_to_the_password_store_without_its_spaces(self):
+        code, out, asked, store = self.secret("butler-anthropic")
+        self.assertEqual(code, 0, out)
+        store.assert_called_once_with("butler-anthropic", "sk-invented00000000")
+        self.assertEqual(asked.call_args.args[0], "Your Claude API key \u203a ")
+        self.assertIn(f"Stored butler-anthropic in {system.PASSWORD_STORE}.", out)
+        self.assertNotIn("invented", out)
+
+    def test_only_butlers_own_secrets_and_never_from_the_command_line(self):
+        for args in ((), ("butler-account",), ("sk-invented-0000",)):
+            code, out, asked, store = self.secret(*args)
+            self.assertEqual(code, 1, args)
+            self.assertIn("butler secret butler-anthropic", out)
+            asked.assert_not_called()
+            store.assert_not_called()
+        with redirect_stdout(io.StringIO()), mock.patch.object(cli.progress, "sync"):
+            self.assertEqual(cli.main(["secret", "butler-gmail", "sk-invented-0000"]), 1, "no value as an argument")
+
+    def test_empty_cancelled_or_refused_stores_nothing(self):
+        code, out, _, store = self.secret("butler-gmail", typed=("   ",))
+        self.assertEqual((code, "That was empty. Nothing was stored." in out), (1, True))
+        store.assert_not_called()
+        for interrupted in (EOFError, KeyboardInterrupt):
+            code, out, _, store = self.secret("butler-gmail", typed=interrupted)
+            self.assertEqual((code, "Cancelled. Nothing was stored." in out), (1, True))
+            store.assert_not_called()
+        code, out, _, _ = self.secret("butler-lunchmoney", refused=OSError("Credential Manager is locked"))
+        self.assertEqual(code, 1)
+        self.assertIn(f"{system.PASSWORD_STORE} didn't take it. Nothing was stored.", out)
+
+
+class WindowsCommandTest(unittest.TestCase):
+    """What the `butler` command does differently on Windows, checked on any computer."""
+
+    def windows(self):
+        return mock.patch.object(cli.system, "NAME", "windows")
+
+    def mac(self):
+        return mock.patch.object(cli.system, "NAME", "mac")
+
+    def test_setup_runs_the_python_first_run_on_windows(self):
+        with self.windows(), mock.patch("butler.first_run.main", return_value=0) as first_run, \
+             self.assertRaises(SystemExit) as done:
+            cli.main(["setup", "--again"])
+        first_run.assert_called_once_with(["--again"])
+        self.assertEqual(done.exception.code, 0)
+
+    def test_setup_on_a_mac_is_first_run_sh(self):
+        with self.mac(), mock.patch.object(cli.os, "execv") as execv, mock.patch.object(cli.progress, "sync") as sync:
+            cli.main(["setup"])
+        sync.assert_not_called()
+        script = str(cli.ROOT / "scripts" / "first-run.sh")
+        execv.assert_called_once_with(script, [script])
+
+    def test_the_brief_and_the_claude_code_installer(self):
+        with self.windows():
+            self.assertEqual(cli._preview(), [sys.executable, "-X", "utf8", str(cli.ROOT / "run.py"), "preview"])
+            self.assertEqual(cli._installer(), ("irm https://claude.ai/install.ps1 | iex",
+                                                ["powershell", "-NoProfile", "-Command",
+                                                 "irm https://claude.ai/install.ps1 | iex"]))
+        with self.mac():
+            self.assertEqual(cli._preview(), [str(cli.ROOT / "run.sh"), "preview"])
+            self.assertEqual(cli._installer(), (cli.CLAUDE_INSTALL, ["bash", "-c", cli.CLAUDE_INSTALL]))
+
+    def test_claude_code_is_found_where_its_installer_puts_it(self):
+        home = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, home, True)
+        (home / ".local" / "bin").mkdir(parents=True)
+        (home / ".local" / "bin" / "claude.exe").touch()
+        with self.windows(), mock.patch.object(cli.shutil, "which", return_value=None), \
+             mock.patch.object(cli.Path, "home", return_value=home):
+            self.assertEqual(cli._claude_path(), str(home / ".local" / "bin" / "claude.exe"))
+
+    def test_claude_code_runs_as_a_child_on_windows_and_its_exit_code_comes_back(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        env = {k: v for k, v in os.environ.items() if k != "BUTLER_CLAUDE_DRY_RUN"}
+        with self.windows(), mock.patch.dict(os.environ, env, clear=True), \
+             mock.patch.object(cli, "_claude_path", return_value="C:\\claude.exe"), \
+             mock.patch.object(cli, "CLAUDE_WELCOMED", tmp / "claude-welcomed"), \
+             mock.patch.object(cli.ss, "load", return_value={"claude_mode": "ask"}), \
+             mock.patch.object(cli.progress, "report"), mock.patch.object(cli.os, "chdir"), \
+             mock.patch.object(cli.os, "execv") as execv, mock.patch.object(cli.subprocess, "run") as run, \
+             redirect_stdout(io.StringIO()):
+            run.return_value.returncode = 3
+            self.assertEqual(cli.open_claude(), 3)
+        execv.assert_not_called()
+        self.assertEqual(run.call_args.args[0][:3], ["C:\\claude.exe", "--permission-mode", "default"])
+
+
+class ButlerCmdTest(unittest.TestCase):
+    """bin/butler.cmd, the `butler` command on Windows."""
+
+    CMD = REPO / "bin" / "butler.cmd"
+
+    def test_it_runs_butlers_python_in_utf8_mode_through_run_py(self):
+        text = self.CMD.read_bytes()
+        self.assertNotRegex(text, rb"[^\r]\n", "a .cmd needs CRLF line ends (.gitattributes)")
+        self.assertIn(rb'set "BUTLER_PYTHON=%~dp0..\.venv\Scripts\python.exe"', text)
+        self.assertIn(rb'"%BUTLER_PYTHON%" -X utf8 "%~dp0..\run.py" cli %*', text)
+
+    @unittest.skipUnless(os.name == "nt", "cmd.exe runs it")
+    def test_the_lessons_through_butler_cmd(self):
+        api = FakeAccountAPI().start()
+        self.addCleanup(api.stop)
+        h = SetupHome(api)
+        self.addCleanup(h.close)
+        butler = str(h.root / "bin" / "butler.cmd")
+
+        def run(*args):
+            return subprocess.run([butler, *args], cwd=h.home, env=h.env, capture_output=True, text=True,
+                                  encoding="utf-8", timeout=300)
+
+        before = run("help")
+        self.assertEqual(before.returncode, 1)
+        self.assertIn("Butler isn't installed completely yet.", before.stdout)
+        h.bootstrap()
+        proc = run("help")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("The butler command.", proc.stdout)
+        proc = run("town", "Lisbon, Portugal")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("Got it: Lisbon, Lisbon, Portugal.", proc.stdout)
+        self.assertEqual(h.settings()["timezone"], "Europe/Lisbon")
+        self.assertEqual(run("fly").returncode, 1)
 
 
 if __name__ == "__main__":

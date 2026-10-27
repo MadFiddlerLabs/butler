@@ -234,6 +234,9 @@ class CourseContractTest(unittest.TestCase):
         self.assertIn('"${1:-}" = "setup"', (REPO / "bin" / "butler").read_text())
         # `butler resume` works before Python exists too: it's what the Butler app runs.
         self.assertIn('"${1:-}" = "resume"', (REPO / "bin" / "butler").read_text())
+        # On Windows, bin/butler.cmd hands every subcommand to cli.py, `butler setup` included.
+        self.assertIn('run.py" cli %*', (REPO / "bin" / "butler.cmd").read_text())
+        self.assertLessEqual({"setup", "secret"}, parsed)
 
     def test_claude_code_starts_ask_first_in_the_butler_folder(self):
         """The course and the site promise "Claude asks before it acts" (council #204). Claude Code

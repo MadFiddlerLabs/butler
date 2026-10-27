@@ -8,11 +8,15 @@ import ctypes
 import msvcrt
 import os
 import subprocess
+import winreg
 from ctypes import wintypes
 
 from ..schedule import FOLDER
 
 NAME = "windows"
+PASSWORD_STORE = "Credential Manager"
+# The user's own environment in the registry: what a new window's PATH starts from.
+ENVIRONMENT = "Environment"
 TASK_TICK = FOLDER + "tick"
 
 CRED_TYPE_GENERIC = 1
@@ -126,6 +130,38 @@ def keep_awake():
         yield
     finally:
         kernel32.SetThreadExecutionState(ES_CONTINUOUS)
+
+
+def add_to_path(bin_dir: str) -> bool:
+    """Adds the folder to the user's PATH in the registry (no admin rights needed), then tells
+    open programs, so a window opened from now on finds `butler`. The window it runs in keeps
+    its old PATH."""
+    wanted = os.path.normcase(os.path.normpath(bin_dir))
+    try:
+        with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, ENVIRONMENT, 0,
+                                winreg.KEY_READ | winreg.KEY_WRITE) as key:
+            try:
+                value, kind = winreg.QueryValueEx(key, "Path")
+            except FileNotFoundError:
+                value, kind = "", winreg.REG_EXPAND_SZ
+            parts = [p for p in str(value).split(";") if p]
+            if any(os.path.normcase(os.path.normpath(os.path.expandvars(p))) == wanted for p in parts):
+                return False
+            if kind not in (winreg.REG_SZ, winreg.REG_EXPAND_SZ):
+                kind = winreg.REG_EXPAND_SZ
+            winreg.SetValueEx(key, "Path", 0, kind, ";".join([*parts, bin_dir]))
+    except OSError:
+        return False
+    # WM_SETTINGCHANGE with "Environment", as System Properties sends it, to every top window.
+    result = wintypes.DWORD()
+    ctypes.WinDLL("user32").SendMessageTimeoutW(0xFFFF, 0x001A, 0, "Environment", 0x0002, 5000,
+                                                ctypes.byref(result))
+    return True
+
+
+def butler_app() -> str | None:
+    """Windows has no Butler app yet: the way back is `butler` in a new Terminal window."""
+    return None
 
 
 def lock_exclusive(f) -> None:

@@ -2,11 +2,13 @@
 setup: the repo's tracked files in a temp folder, a .venv whose python is this test's Python, a
 temp HOME, stubs for `security` (a JSON file), `open` and `launchctl`, and a `curl` that logs its
 command line before running the real one. Nothing touches the real Keychain, browser or home
-folder.
+folder. On Windows, where those stubs can't run, windows_site/sitecustomize.py stands in for the
+password store and the PATH change, and the bootstrap is make_venv.py.
 
     home = SetupHome(api)           # api: a started FakeAccountAPI, or None for offline
     proc = home.butler("town", "Lisbon")
-    proc = home.first_run(["sam@example.com", "butler town Lisbon", ...])
+    proc = home.first_run(["sam@example.com", "butler town Lisbon", ...])      # scripts/first-run.sh
+    proc = home.py_first_run(["sam@example.com", "butler town Lisbon", ...])   # src/butler/first_run.py
     home.close()
 """
 
@@ -22,6 +24,7 @@ from pathlib import Path
 from . import timeout
 
 REPO = Path(__file__).resolve().parents[2]
+WINDOWS = os.name == "nt"
 
 SECURITY = """import json, os, shlex, sys
 path = os.environ["BUTLER_FAKE_KEYCHAIN"]
@@ -132,6 +135,15 @@ class SetupHome:
         }
         for inherited in ("PYTHONPATH", "BUTLER_PLAIN", "CLAUDE_AX_SCREEN_READER"):
             self.env.pop(inherited, None)
+        if WINDOWS:
+            system_root = os.environ.get("SYSTEMROOT", r"C:\Windows")
+            self.env.update({
+                "USERPROFILE": str(self.home),
+                "PATH": os.pathsep.join([str(fakebin), os.path.join(system_root, "System32"), system_root]),
+                "BUTLER_BOOTSTRAP": f'"{sys.executable}" "{REPO / "tests" / "fakes" / "make_venv.py"}"',
+                "BUTLER_FAKE_PATH": str(self.tmp / "user-path.txt"),
+                "PYTHONPATH": os.pathsep.join([str(Path(__file__).parent / "windows_site"), str(self.root / "src")]),
+            })
         if api is not None:
             self.env["BUTLER_API"] = api.url + "/api"
             self.env["BUTLER_GEOCODE_URL"] = api.url + "/geocode"
@@ -140,7 +152,10 @@ class SetupHome:
             self.env["BUTLER_GEOCODE_URL"] = "http://127.0.0.1:9/geocode"
 
     def bootstrap(self) -> None:
-        subprocess.run(["bash", "-c", self.env["BUTLER_BOOTSTRAP"]], cwd=self.root, check=True)
+        if WINDOWS:
+            subprocess.run(self.env["BUTLER_BOOTSTRAP"], shell=True, cwd=self.root, env=self.env, check=True)
+        else:
+            subprocess.run(["bash", "-c", self.env["BUTLER_BOOTSTRAP"]], cwd=self.root, check=True)
 
     def butler(self, *args: str, stdin: str = "") -> subprocess.CompletedProcess:
         return subprocess.run([str(self.root / "bin" / "butler"), *args], cwd=self.home, env=self.env,
@@ -149,6 +164,12 @@ class SetupHome:
     def first_run(self, lines: list[str], *args: str) -> subprocess.CompletedProcess:
         return subprocess.run([str(self.root / "scripts" / "first-run.sh"), *args], cwd=self.home, env=self.env,
                               input="\n".join(lines) + "\n", capture_output=True, text=True, timeout=timeout(600))
+
+    def py_first_run(self, lines: list[str], *args: str) -> subprocess.CompletedProcess:
+        """The Python first run, the way bin/butler.cmd starts it: run.py, in UTF-8 mode."""
+        return subprocess.run([sys.executable, "-X", "utf8", str(self.root / "run.py"), "setup", *args],
+                              cwd=self.home, env=self.env, input="\n".join(lines) + "\n", capture_output=True,
+                              text=True, encoding="utf-8", timeout=timeout(600))
 
     def stub_claude(self) -> Path:
         """A `claude` on the PATH that records how it was started (its folder, then each argument
@@ -172,6 +193,19 @@ class SetupHome:
     def settings(self) -> dict:
         import yaml
         return yaml.safe_load((self.root / "config" / "settings.yaml").read_text())
+
+    def lessons_done(self) -> None:
+        """The town, the adults and a first brief, as if done by hand, so a first run skips its
+        three lessons (and their few seconds each)."""
+        import yaml
+        from butler import setup_settings as ss
+        s = ss.fresh()
+        ss.set_adults(s, ["Sam", "Alex"])
+        ss.set_town(s, ss.Place("Lisbon", "Portugal", "PT", 38.71667, -9.13333, "Europe/Lisbon", "Lisbon"))
+        (self.root / "config" / "settings.yaml").write_text(ss.HEADER + yaml.safe_dump(s, sort_keys=False))
+        brief = self.root / "out" / "preview" / "brief-2026-10-12.html"
+        brief.parent.mkdir(parents=True, exist_ok=True)
+        brief.write_text("<!doctype html><title>An invented brief</title>\n")
 
     def close(self) -> None:
         shutil.rmtree(self.tmp, ignore_errors=True)

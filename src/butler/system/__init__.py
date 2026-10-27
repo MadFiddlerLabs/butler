@@ -13,6 +13,8 @@ else:
     from . import mac as _impl
 
 NAME = _impl.NAME
+# The password store's name, for what the student reads: "Your passwords stay in Keychain."
+PASSWORD_STORE = _impl.PASSWORD_STORE
 
 
 def get_secret(service: str) -> str | None:
@@ -50,6 +52,17 @@ def keep_awake():
     """A context manager that keeps the computer from sleeping while it's open (not the
     display): a scheduled run that woke the computer finishes before it sleeps again."""
     return _impl.keep_awake()
+
+
+def add_to_path(bin_dir: str) -> bool:
+    """Lets the student type `butler` in any new Terminal window, by putting Butler's bin folder
+    on their PATH. False when it was there already, or couldn't be added."""
+    return _impl.add_to_path(bin_dir)
+
+
+def butler_app() -> str | None:
+    """Where the Butler app is, the way back into the course, or None when there isn't one."""
+    return _impl.butler_app()
 
 
 def lock_exclusive(f) -> None:

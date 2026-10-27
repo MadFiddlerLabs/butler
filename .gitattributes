@@ -5,3 +5,6 @@ docs/images export-ignore
 docs/images/** export-ignore
 scripts/fonts export-ignore
 scripts/fonts/** export-ignore
+
+# Windows runs a .cmd line by line, and some of its parsing (labels, goto) needs CRLF line ends.
+*.cmd text eol=crlf
