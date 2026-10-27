@@ -75,6 +75,12 @@ class WorkflowsParseTest(unittest.TestCase):
             with self.subTest(path.name):
                 self.assertIn("jobs", yaml.safe_load(path.read_text()))
 
+    def test_the_harness_python_has_the_time_zones_its_fixtures_need(self):
+        """Windows' Python has no time-zone database: the harness's fixtures (Europe/Lisbon) need
+        tzdata, or every Windows run stops before it starts, as round 2 did on 27 Oct."""
+        workflow = (HERE.parent / ".github" / "workflows" / "personas.yml").read_text()
+        self.assertRegex(workflow, r"pip install [^\n]*tzdata")
+
 
 class ReportTest(unittest.TestCase):
     def run_(self, name, platform, seed, findings, cost=2.5, **checks):
