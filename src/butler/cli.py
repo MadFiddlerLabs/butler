@@ -156,7 +156,7 @@ def cmd_brief(args) -> int:
     if not ss.SETTINGS.exists():
         ss.save(s)
     who = _butler(s)
-    say(f"{who[0].upper() + who[1:]} is writing your brief. This takes a few seconds.")
+    say(f"{who[0].upper() + who[1:]} is writing your brief. This takes about half a minute: nothing shows until it's ready.")
     proc = subprocess.run(_preview(), cwd=ROOT, capture_output=True, text=True)
     brief = ss.first_brief()
     if proc.returncode != 0 or not brief:
