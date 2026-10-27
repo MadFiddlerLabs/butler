@@ -85,8 +85,8 @@ jobs:
         run: |
           Copy-Item dist\Butler-Setup.exe "$env:RUNNER_TEMP\Bento.exe"
           $p = Start-Process "$env:RUNNER_TEMP\Bento.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/LOG=$env:RUNNER_TEMP\install-1.txt" -Wait -PassThru
-          if ($p.ExitCode -ne 0) { Get-Content "$env:RUNNER_TEMP\install-1.txt" -Tail 40; throw "the installer exited $($p.ExitCode)" }
           $b = "$env:USERPROFILE\Butler"
+          if ($p.ExitCode -ne 0) { Get-Content "$env:RUNNER_TEMP\install-1.txt" -Tail 40; Get-Content -ErrorAction SilentlyContinue "$b\logs\bootstrap.log"; throw "the installer exited $($p.ExitCode)" }
           if (-not (Test-Path "$b\.venv\Scripts\python.exe")) { throw "no Python in $b\.venv" }
           if ((Get-Content -Raw "$b\.butler-name").Trim() -ne "Bento") { throw "not named from the installer's filename" }
           Get-Content "$b\logs\install.log"
