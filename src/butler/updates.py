@@ -601,8 +601,10 @@ def health() -> list[str]:
 
 
 def _restart_jobs() -> None:
+    if not shutil.which("launchctl"):
+        return
     uid = os.getuid()
-    if shutil.which("launchctl") and _run(["launchctl", "print", f"gui/{uid}/{PORTAL_LABEL}"]).returncode == 0:
+    if _run(["launchctl", "print", f"gui/{uid}/{PORTAL_LABEL}"]).returncode == 0:
         _run(["launchctl", "kickstart", "-k", f"gui/{uid}/{PORTAL_LABEL}"])
 
 

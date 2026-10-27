@@ -159,7 +159,8 @@ class ApplyTest(WorkbookCase):
         before = self.book.read_bytes()
         said = budget_changes.apply(SETTINGS, _action("Transport"), "apply the Transport suggestion", TODAY)
         self.assertEqual(said, "Budget changed: Transit and taxis (Transport) from €120 to €175 a month. "
-                               "The workbook as it was is saved as budget/history/budget_2026-10-02_reply.xlsx.")
+                               "The workbook as it was is saved as "
+                               f"{Path('budget', 'history', 'budget_2026-10-02_reply.xlsx')}.")
         self.assertEqual(self.amount("Transit and taxis"), 175)
         self.assertEqual((self.root / "budget" / "history" / "budget_2026-10-02_reply.xlsx").read_bytes(), before)
         old = openpyxl.load_workbook(self.root / "budget" / "history" / "budget_2026-10-02_reply.xlsx")
