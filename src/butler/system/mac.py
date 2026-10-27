@@ -1,5 +1,7 @@
 """macOS: secrets in the login Keychain, the schedule in launchd, VoiceOver."""
+import contextlib
 import fcntl
+import os
 import subprocess
 
 NAME = "mac"
@@ -48,6 +50,20 @@ def screen_reader_on() -> bool:
 
 def open_file(path: str) -> None:
     subprocess.run(["open", path], check=False)
+
+
+@contextlib.contextmanager
+def keep_awake():
+    """caffeinate -i holds off idle sleep, and -w lets go if this process dies first."""
+    try:
+        proc = subprocess.Popen(["caffeinate", "-i", "-w", str(os.getpid())])
+    except OSError:
+        proc = None
+    try:
+        yield
+    finally:
+        if proc:
+            proc.terminate()
 
 
 def lock_exclusive(f) -> None:
