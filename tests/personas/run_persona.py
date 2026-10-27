@@ -71,12 +71,12 @@ TOOLS = [
     tool("on_screen", "Do something on the computer outside a terminal, the way a person would with the mouse: "
          "check the computer's version, download Butler from the website (put the name you type in 'text'), open "
          "the downloaded file, check your email inbox, click the link or button in an email, click a button on a "
-         "web page (its label in 'text'), look at what the browser shows, buy or sign in to a Claude plan, open the "
+         "web page (its label in 'text'), open a buildyourbutler.com page (its address in 'text'), look at what the browser shows, buy or sign in to a Claude plan, open the "
          "Butler app (Mac) or Butler in the Start menu (Windows), open a folder. Describe it in 'what' and pick the "
          "closest 'action'.",
          {"action": {"type": "string", "enum": ["check_version", "download_butler", "open_download", "check_inbox",
-                                                "click_email_link", "click_on_page", "look_at_browser", "claude_plan",
-                                                "open_butler_app", "open_folder", "other"]},
+                                                "click_email_link", "click_on_page", "open_web_page", "look_at_browser",
+                                                "claude_plan", "open_butler_app", "open_folder", "other"]},
           "what": {"type": "string"},
           "text": {"type": "string", "description": "What you type, if anything (the butler's name for download_butler); else empty."}},
          ["action", "what", "text"]),
@@ -89,6 +89,9 @@ TOOLS = [
          {"outcome": {"type": "string", "enum": ["finished", "stuck", "gave_up"]},
           "why": {"type": "string"}}, ["outcome", "why"]),
 ]
+CHOICE_TOOL = tool("choose", "Answer Claude Code's question: for each question, the label of the option you pick, or "
+                   "your own words if none fits.",
+                   {"answers": {"type": "array", "items": {"type": "string"}}}, ["answers"])
 PERMISSION_TOOL = tool("answer", "Answer Claude Code's question.",
                        {"choice": {"type": "string", "enum": ["yes", "no"]},
                         "say": {"type": "string", "description": "If no: what you tell Claude instead, or empty."}},
@@ -134,6 +137,10 @@ class Run:
         self.trusted = False
         self.page = None          # the web page open in the browser, when it has a button to click
         self._shown: list[str] = []
+
+    def current(self) -> dict:
+        """The lesson the persona is on (the last one, once it has read past the end)."""
+        return self.lessons[min(max(self.at, 0), len(self.lessons) - 1)]
 
     # ---------- money ----------
     def spent(self) -> float:
@@ -183,6 +190,7 @@ In this session, you will also:
 
     async def persona_loop(self) -> None:
         messages = [{"role": "user", "content": "Your computer is on and the course website is open. Start with the first lesson."}]
+        self.messages = messages    # kept for the report, however the session ends
         while self.spent() < self.budget - 0.1:
             response = await self.ask(messages, TOOLS)
             messages.append({"role": "assistant", "content": response.content})
@@ -209,8 +217,9 @@ In this session, you will also:
             if args["which"] == "next":
                 self.at += 1
             if self.at >= len(self.lessons):
+                self.at = len(self.lessons)
                 return "That was the last lesson in this part of the course."
-            return self.lessons[max(self.at, 0)]["text"]
+            return self.current()["text"]
         if name == "terminal":
             return await asyncio.to_thread(self.terminal, args["action"], args["text"], args["window"])
         if name == "claude_code":
@@ -218,7 +227,7 @@ In this session, you will also:
         if name == "on_screen":
             return await asyncio.to_thread(self.on_screen, args["action"], args["what"], args["text"])
         if name == "note":
-            self.notes.append({**args, "at": self.lessons[max(self.at, 0)]["id"]})
+            self.notes.append({**args, "at": self.current()["id"]})
             return "Noted."
         if name == "finish":
             self.outcome = args
@@ -276,8 +285,16 @@ In this session, you will also:
         m = DRY_CLAUDE.search(screen)
         if m:
             self.claude_mode, self.claude_prompt = m[2], m[3]
-            screen = screen[: m.start()] + "\n[Claude Code opens in this window. Type to it with the claude_code tool.]\n"
             self.claude_pending = True
+            if self.trusted is True:   # this folder was trusted already
+                opened = "\n[Claude Code opens in this window. Type to it with the claude_code tool.]\n"
+            else:
+                self.trusted = None    # Claude Code asks before anything else
+                opened = (f"\n[Claude Code opens in this window.]\n\n Do you trust the files in this folder?\n\n {BUTLER}\n\n"
+                          " Claude Code may read, write, or execute files contained in this directory. This can pose "
+                          "security risks, so only use files from trusted sources.\n\n ❯ 1. Yes, proceed\n   2. No, exit\n\n"
+                          "(Answer with the claude_code tool: 1 or 2.)\n")
+            screen = screen[: m.start()] + opened
         for brief in sorted((BUTLER / "out" / "preview").glob("brief-*.html")) if (BUTLER / "out" / "preview").exists() else []:
             if brief.name not in self.briefs_seen:
                 self.briefs_seen.add(brief.name)
@@ -349,6 +366,17 @@ In this session, you will also:
                 argv = ["/bin/zsh", "-l", "-c", f'"{BUTLER}/bin/butler" resume; exec /bin/zsh -l']
             window = self.open_window(argv)
             return f"A new window opens (window {window}):\n" + self.windows[window].read(quiet=4.0, limit=300.0)
+        if action == "open_web_page":
+            address = (typed or what).strip()
+            if not re.match(r"^(https://)?(www\.)?buildyourbutler\.com(/[\w/#.-]*)?$", address):
+                return "This test opens only buildyourbutler.com pages: describe what you'd look for, then carry on."
+            url = address if address.startswith("https://") else "https://" + address
+            try:
+                import urllib.request
+                with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "persona-test"}), timeout=20) as r:
+                    return page_text(r.read().decode("utf-8", errors="replace"))[:6000]
+            except OSError as e:
+                return f"The page doesn't load ({e})."
         if action == "claude_plan":
             return "You're signed in to claude.ai. Your plan: Claude Pro."
         if action == "open_folder":
@@ -357,7 +385,7 @@ In this session, you will also:
                 return f"There's no folder there ({what})."
             names = sorted(p.name + ("/" if p.is_dir() else "") for p in folder.iterdir())
             return f"{folder}: " + ", ".join(names[:60])
-        self.notes.append({"kind": "unsupported", "lesson": self.lessons[max(self.at, 0)]["id"], "text": what})
+        self.notes.append({"kind": "unsupported", "lesson": self.current()["id"], "text": what})
         return "Nothing you can see happens. (This test can't do that on screen: describe what you'd expect, then carry on.)"
 
     def install(self) -> str:
@@ -384,13 +412,10 @@ In this session, you will also:
 
     # ---------- Claude Code ----------
     async def claude_say(self, message: str, messages: list) -> str:
-        if self.claude_pending and not self.claude and not self.trusted:
-            if self.trusted is False:
-                self.trusted = None   # asked
-                return (f"Claude Code starts in {BUTLER} and asks:\n\n Do you trust the files in this folder?\n\n"
-                        f" {BUTLER}\n\n Claude Code may read, write, or execute files contained in this directory. "
-                        "This can pose security risks, so only use files from trusted sources.\n\n ❯ 1. Yes, proceed\n"
-                        "   2. No, exit\n\n(Answer with claude_code: 1 or 2.)")
+        if self.claude_pending and not self.claude and self.trusted is None:
+            if message.strip().lower() not in ("1", "yes", "yes, proceed", "2", "no", "no, exit", "esc"):
+                return ("Claude Code is still asking: Do you trust the files in this folder?  ❯ 1. Yes, proceed   2. No, "
+                        "exit\n(Nothing else can be typed until you answer.)")
             if message.strip().lower() in ("2", "no", "no, exit", "esc"):
                 self.claude_pending, self.trusted = False, False
                 return "(Claude Code exits. The Terminal prompt is back.)"
@@ -437,6 +462,8 @@ In this session, you will also:
 
     def permission(self, messages: list):
         async def can_use_tool(tool_name, tool_input, context):
+            if tool_name == "AskUserQuestion":
+                return await self.choose(tool_input, messages)
             what = json.dumps(tool_input, ensure_ascii=False)[:800]
             question = (f"Claude Code stops and asks you, in the Terminal window:\n\n  {tool_name}: {what}\n\n"
                         "  Do you want to proceed?\n  ❯ 1. Yes\n    2. No, and tell Claude what to do differently (esc)\n\n"
@@ -457,6 +484,29 @@ In this session, you will also:
                 return PermissionResultAllow()
             return PermissionResultDeny(message=answer.get("say") or "The user said no.")
         return can_use_tool
+
+    async def choose(self, tool_input: dict, messages: list):
+        """Claude Code's multiple-choice question (AskUserQuestion): the persona picks, and the
+        answers go back to Claude as the Agent SDK expects, keyed by each question's text."""
+        questions = tool_input.get("questions", [])
+        shown = []
+        for i, q in enumerate(questions, 1):
+            options = "\n".join(f"    {j}. {o.get('label')}: {o.get('description', '')}" for j, o in enumerate(q.get("options", []), 1))
+            shown.append(f"  {i}. {q.get('question')}\n{options}\n    (or type something else)")
+        question = ("Claude Code asks you, with choices to pick from:\n\n" + "\n".join(shown)
+                    + "\n\nThis is your decision, as you. Answer with the choose tool, one answer per question.")
+        snapshot = messages + [{"role": "user", "content": question}] if messages[-1]["role"] == "assistant" else \
+            messages[:-1] + [{"role": "user", "content": question}]
+        try:
+            response = await self.ask(snapshot, [CHOICE_TOOL], max_tokens=1500)
+            picked = next((b.input["answers"] for b in response.content if b.type == "tool_use"), [])
+        except Exception:  # noqa: BLE001 - a broken question shouldn't stop the run
+            picked = []
+        answers = {q.get("question", ""): (picked[i] if i < len(picked) else "") for i, q in enumerate(questions)}
+        self.say(f"{self.persona['name']} chooses", json.dumps(answers, ensure_ascii=False))
+        self._shown.append("Claude Code asked you:\n" + "\n".join(shown) + "\n  You answered: "
+                           + "; ".join(a or "(nothing)" for a in answers.values()))
+        return PermissionResultAllow(updated_input={**tool_input, "answers": answers})
 
     # ---------- the end ----------
     async def report(self) -> dict:
@@ -493,15 +543,21 @@ In this session, you will also:
         started = time.monotonic()
         try:
             await self.persona_loop()
+        except Exception as e:  # noqa: BLE001 - the run so far is still worth its report
+            self.outcome = {"outcome": "harness_error", "why": f"{type(e).__name__}: {e}"}
+            self.say("harness", f"stopped: {type(e).__name__}: {e}")
         finally:
             if self.claude:
                 try:
                     await self.claude.disconnect()
                 except Exception:  # noqa: BLE001
                     pass
-        report = await self.report()
+        try:
+            report = await self.report()
+        except Exception as e:  # noqa: BLE001 - the run is saved whatever happens here
+            report = {"findings": [], "how_it_felt": f"(report failed: {e})"}
         result = {"persona": self.key, "name": self.persona["name"], "platform": self.platform, "seed": self.seed,
-                  "cards": self.cards, "outcome": self.outcome, "reached": self.lessons[max(self.at, 0)]["id"],
+                  "cards": self.cards, "outcome": self.outcome, "reached": self.current()["id"],
                   "lessons_total": len(self.lessons), "lessons_read": self.at + 1, "notes": self.notes,
                   "report": report, "checks": self.checks(),
                   "cost_usd": {k: round(v, 3) for k, v in {**self.cost, "total": self.spent()}.items()},
