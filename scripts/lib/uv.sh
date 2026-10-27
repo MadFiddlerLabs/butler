@@ -3,8 +3,9 @@
 # Sourced by scripts/bootstrap.sh and scripts/lock.sh. uv also checks the Python it downloads
 # against checksums built into it, so pinning uv pins Butler's Python too.
 #
-# To move to a newer uv: change BUTLER_UV_VERSION and the three checksums below, from
+# To move to a newer uv: change BUTLER_UV_VERSION and the checksums below, from
 # https://github.com/astral-sh/uv/releases/download/<version>/uv-<target>.tar.gz.sha256
+# (.zip.sha256 for Windows).
 BUTLER_UV_VERSION="0.13.0"
 
 butler_uv_sha256() {  # butler_uv_sha256 <target>
@@ -12,6 +13,9 @@ butler_uv_sha256() {  # butler_uv_sha256 <target>
     aarch64-apple-darwin) echo "a9c1b29002cf3c83f07fa9cd8a887a3be0107d90e23189721221e7257db8e3d6" ;;
     x86_64-apple-darwin) echo "5f44dcbde809b632f47c36fadb241cb4d6f9af71d0c8f172b5d2026d3dde742c" ;;
     x86_64-unknown-linux-gnu) echo "1468ebd5a5541121837c5a2817b9972ba6090fa6caa3d142620850a47fb75154" ;;  # CI's lock check
+    # Windows (scripts/bootstrap.ps1 reads these lines): the .zip builds.
+    x86_64-pc-windows-msvc) echo "088962f9e7b7bd9ea740c04c650b2a21c8928c345bd99ac24350dc924dba656c" ;;
+    aarch64-pc-windows-msvc) echo "cb54028b59aa87f11cf6dec293ce000420043a49a8aea522e822a671321f8932" ;;
     *) return 1 ;;
   esac
 }
