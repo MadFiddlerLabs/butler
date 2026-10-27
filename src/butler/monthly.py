@@ -13,13 +13,12 @@ import calendar
 import copy
 import json
 import logging
-import subprocess
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 
-from . import charts, finance, llm, mailer, networth, projects
+from . import calendar_source, charts, finance, llm, mailer, networth, projects
 from .agenda import COPY_NOTE, OUTSIDE_LABEL, OUTSIDE_MARK, _assign, from_outside, household_addresses
-from .config import BUTLER_EK, ROOT, brand, load_settings, people, portal_url, tz
+from .config import ROOT, brand, load_settings, people, portal_url, tz
 from .finance import SPEND, Summary
 from .fmt import money, primary_code, scale
 
@@ -56,10 +55,7 @@ class Month:
 
 
 def _ek(*args: str):
-    out = subprocess.run([str(BUTLER_EK), *args], capture_output=True, text=True, timeout=120)
-    if out.returncode != 0:
-        raise RuntimeError(out.stderr.strip())
-    return json.loads(out.stdout)
+    return calendar_source.ask(list(args), timeout=120)
 
 
 def _time(settings: dict, start: date, end: date) -> dict[str, list[tuple[str, float, int]]]:

@@ -5,6 +5,8 @@
 # Your configuration (the examples stay tracked)
 /config/*.yaml
 !/config/*.example.yaml
+# The Google client the installer writes (gcal.py)
+/config/google-oauth.json
 
 # Your projects, reference file (IDs, phones) and household data
 /projects/

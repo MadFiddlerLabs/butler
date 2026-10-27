@@ -1,13 +1,13 @@
-"""Reads events from macOS Calendar through the butler-ek helper."""
+"""Reads events from the household's calendar: Apple's through the butler-ek helper, or Google's
+(calendar_source.py)."""
 
 import json
 import re
-import subprocess
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from .config import butler_ek
+from . import calendar_source
 
 # Events the Apps Script copied from another calendar (apps-script/butler-calendar.gs).
 COPY_NOTE = re.compile(r"^Copied from \S+@\S+")
@@ -91,14 +91,9 @@ def from_outside(raw: dict, addresses: set[str]) -> bool:
     return (org.get("email") or "").strip().lower() not in addresses
 
 
-def _fetch(start: datetime, end: datetime) -> list[dict]:
-    out = subprocess.run(
-        [butler_ek(), "events", "--start", start.isoformat(), "--end", end.isoformat()],
-        capture_output=True, text=True, timeout=60,
-    )
-    if out.returncode != 0:
-        raise RuntimeError(out.stderr.strip() or "butler-ek failed")
-    return json.loads(out.stdout)
+def _fetch(start: datetime, end: datetime, settings: dict | None = None) -> list[dict]:
+    return json.loads(calendar_source.run(["events", "--start", start.isoformat(), "--end", end.isoformat()],
+                                          timeout=60, settings=settings))
 
 
 def load_agenda(settings: dict, day: date, zone: ZoneInfo) -> Agenda:
@@ -113,7 +108,7 @@ def load_agenda(settings: dict, day: date, zone: ZoneInfo) -> Agenda:
     events: list[Event] = []
     holidays: dict[date, list[str]] = {}
 
-    for raw in _fetch(day_start, window_end):
+    for raw in _fetch(day_start, window_end, settings):
         start = datetime.fromisoformat(raw["start"]).astimezone(zone)
         end = datetime.fromisoformat(raw["end"]).astimezone(zone)
         title = raw["title"].strip()

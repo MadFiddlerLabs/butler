@@ -10,13 +10,12 @@ Nothing here can delete anything. Mail from untrusted senders is marked read and
 import argparse
 import json
 import logging
-import subprocess
 from datetime import date, datetime, time, timedelta
 
 import yaml
 
-from . import inbox, llm, mailer, projects
-from .config import BUTLER_EK, ROOT, load_settings, name_for_email, people, tz
+from . import calendar_source, inbox, llm, mailer, projects
+from .config import ROOT, load_settings, name_for_email, people, tz
 
 log = logging.getLogger("butler")
 PROCESSED = ROOT / "data" / "processed_replies.txt"
@@ -159,10 +158,7 @@ def _questions() -> dict:
 
 
 def _ek(*args: str) -> dict:
-    out = subprocess.run([str(BUTLER_EK), *args], capture_output=True, text=True, timeout=60)
-    if out.returncode != 0:
-        raise RuntimeError(out.stderr.strip() or "butler-ek failed")
-    return json.loads(out.stdout)
+    return calendar_source.ask(list(args), timeout=60)
 
 
 def _append(path, line: str) -> None:

@@ -160,6 +160,54 @@ See [PORTAL.md](PORTAL.md).
   `examples/reference.local.example.yaml` to `projects/reference.local.yaml` and fill it in.
   Expiry dates feed "Heads up" in the emails; the numbers never leave the Info page.
 
+## Google Calendar and Tasks instead of Apple's
+
+Butler reads Apple's Calendar and Reminders unless you choose Google. On Windows, Google is the
+only choice. With Google, Butler reads Google Calendar and keeps the to-do and shopping lists in
+Google Tasks. It adds events and tasks and marks tasks done. It never edits or deletes anything.
+
+1. Choose Google in `config/settings.yaml`:
+
+   ```yaml
+   calendar:
+     source: google
+   ```
+
+2. Connect your Google account:
+
+   ```
+   ./run.sh gcal connect
+   ```
+
+   Your browser opens Google's sign-in page. Allow Calendar and Tasks. Butler keeps the
+   sign-in in Keychain as `butler-google`. Without `run.sh`, run
+   `PYTHONPATH=src .venv/bin/python -m butler.gcal connect`.
+
+3. List your calendars and use their titles in `calendar.include`, `calendar.holidays`,
+   `calendar.write_to` and `people`:
+
+   ```
+   ./run.sh gcal calendars
+   ```
+
+4. Name your Google Tasks lists in `reminders.todo_list` and `reminders.shopping_list`.
+   `./run.sh gcal reminder-lists` lists them, and
+   `./run.sh gcal ensure-list --list "Shopping"` makes one that's missing.
+
+5. Check the connection:
+
+   ```
+   ./run.sh gcal status
+   ```
+
+If Google stops accepting the sign-in, for example after you remove Butler's access in your
+Google Account, the brief lists the calendar as not connected yet and `logs/butler.log` says
+"reconnect Google". Run `./run.sh gcal connect` again.
+
+Butler signs in with this install's Google client ID. The installer writes it to
+`config/google-oauth.json`. In a development copy, set `BUTLER_GOOGLE_CLIENT_ID` and
+`BUTLER_GOOGLE_CLIENT_SECRET` instead.
+
 ## Uninstall
 
 ```
@@ -168,6 +216,7 @@ sudo pmset repeat cancel
 security delete-generic-password -s butler-gmail
 security delete-generic-password -s butler-anthropic
 security delete-generic-password -s butler-lunchmoney
+security delete-generic-password -s butler-google      # if you connected Google
 ```
 
 If you installed with the package, also move the Butler app to the Bin. It's in

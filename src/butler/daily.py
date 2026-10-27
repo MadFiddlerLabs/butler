@@ -19,9 +19,9 @@ from datetime import date, datetime, time, timedelta
 
 import anthropic
 
-from . import charts, finance, headsup, llm, mailer, networth, practice, projects, updates, weather
+from . import calendar_source, charts, finance, headsup, llm, mailer, networth, practice, projects, updates, weather
 from .agenda import load_agenda
-from .config import ROOT, NotSetUp, brand, butler_ek, load_settings, tz
+from .config import ROOT, NotSetUp, brand, load_settings, tz
 from .fmt import primary_code
 from .news import fetch_stories
 from .render import Brief, to_html, to_text
@@ -129,15 +129,13 @@ def build(settings: dict, day: date, use_llm: bool, preview_projects: bool = Fal
 
     todos: list[dict] = []
     try:
-        import json
-        import subprocess
-        out = subprocess.run([butler_ek(), "reminders", "--list", settings["reminders"]["todo_list"]],
-                             capture_output=True, text=True, timeout=60)
-        if out.returncode == 0:
-            # Overdue and dated items first, then the rest in list order.
-            todos = sorted(json.loads(out.stdout), key=lambda t: (t.get("due") is None, t.get("due") or ""))
-        else:
-            problems.append("Reminders unavailable")
+        found = calendar_source.ask(["reminders", "--list", settings["reminders"]["todo_list"]],
+                                    timeout=60, settings=settings)
+        # Overdue and dated items first, then the rest in list order.
+        todos = sorted(found, key=lambda t: (t.get("due") is None, t.get("due") or ""))
+    except calendar_source.Failed as e:
+        log.warning("reminders: %s", e)
+        problems.append("Reminders unavailable")
     except NotSetUp as e:
         log.info("reminders: %s", e)
         not_set_up.append("Reminders")

@@ -50,6 +50,7 @@ someone developing Butler itself. The hard rules apply to both.
 | `src/butler/portal.py` | Flask app served by Waitress on 127.0.0.1 |
 | `src/butler/devices.py` | The portal's paired browsers: one-time codes for device keys, since anything on the Mac can reach 127.0.0.1 |
 | `src/butler/agenda.py` + `helpers/butler-ek/` | Calendar and Reminders through a Swift EventKit helper |
+| `src/butler/calendar_source.py`, `gcal.py` | The one place helper commands run: Apple's helper, or Google Calendar and Tasks with `calendar.source: google` |
 | `src/butler/config.py`, `fmt.py` | Config loading (with example fallback) and currency formatting |
 | `config/*.example.yaml`, `budget/budget.example.xlsx`, `examples/` | The invented example household |
 | `bin/butler`, `src/butler/cli.py`, `doctor.py` | The `butler` command: one pasted line per early lesson; `butler resume` goes straight to where the student left off; `butler doctor` reads the log and the last restart |

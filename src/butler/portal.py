@@ -27,8 +27,8 @@ from flask import Flask, Response, abort, g, redirect, request, send_from_direct
 
 from urllib.parse import quote, urlparse
 
-from . import charts, claude_usage, devices, finance, networth, projects, replies
-from .config import BUTLER_EK, ROOT, brand, load_settings, people, tz
+from . import calendar_source, charts, claude_usage, devices, finance, networth, projects, replies
+from .config import ROOT, brand, load_settings, people, tz
 from .render import money_lines, one_off_note, readable
 from .fmt import SYMBOLS, money, primary_code, second_code
 
@@ -823,10 +823,7 @@ def devices_forget(device_id: str):
 # ---------- lists (Apple Reminders) ----------
 
 def _ek(*args: str):
-    out = subprocess.run([str(BUTLER_EK), *args], capture_output=True, text=True, timeout=60)
-    if out.returncode != 0:
-        raise RuntimeError(out.stderr.strip())
-    return json.loads(out.stdout)
+    return calendar_source.ask(list(args), timeout=60)
 
 
 @app.get("/lists")

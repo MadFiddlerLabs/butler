@@ -43,6 +43,7 @@ SECRETS = {
     "butler-gmail": "fake-gmail-app-password-k3j9",
     "butler-anthropic": "sk-ant-fake-test-key-9q2w",
     "butler-lunchmoney": "fake-lunchmoney-token-7h1x",
+    "butler-google": "fake-google-refresh-token-8m4p",
 }
 
 # Markers the privacy tests look for in prompts.
