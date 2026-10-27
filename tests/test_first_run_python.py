@@ -372,7 +372,8 @@ class EquivalenceTest(unittest.TestCase):
                                                                        "logs", "backups", "~"):
                 continue
             key = self.normal(rel, h)
-            if top == "out" or (top == "logs" and p.name != "setup.log"):
+            parts = rel.split("/")       # out/ and logs/ moved to backups/ by a fresh start too
+            if "out" in parts or ("logs" in parts and p.name != "setup.log"):
                 found[key] = "(kept)"
                 continue
             text = self.normal(p.read_text(errors="replace"), h)
