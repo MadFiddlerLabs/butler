@@ -53,7 +53,7 @@ def new_window_environment() -> dict:
 class Console:
     """One program in a pseudo-console, its screen read as plain text."""
 
-    def __init__(self, argv: str, cwd: str, env: dict):
+    def __init__(self, argv: list[str], cwd: str, env: dict):
         self.process = PtyProcess.spawn(argv, cwd=cwd, env=env, dimensions=(50, 220))
         self.screen = ""
         self._lock = threading.Lock()
@@ -106,8 +106,9 @@ def main(butler: Path) -> None:
 
     home = str(Path.home())
     windows = Path(os.environ["SystemRoot"]) / "System32"
-    cmd = f'"{windows / "cmd.exe"}" /d /k'
-    for shell in (cmd, f'"{windows / "WindowsPowerShell" / "v1.0" / "powershell.exe"}" -NoLogo -NoProfile -NoExit'):
+    cmd = [str(windows / "cmd.exe"), "/d", "/k"]
+    powershell = [str(windows / "WindowsPowerShell" / "v1.0" / "powershell.exe"), "-NoLogo", "-NoProfile", "-NoExit"]
+    for shell in (cmd, powershell):
         console = Console(shell, home, env)
         try:
             console.type("butler help")
