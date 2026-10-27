@@ -46,6 +46,9 @@ Name: "{userprograms}\Butler"; Filename: "{cmd}"; Parameters: "/k ""{app}\bin\bu
 Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}\bin"; Check: NeedsAddPath(ExpandConstant('{app}\bin'))
 
 [Run]
+; Butler's Python first. cmd carries every line of its output, errors too, into the log, and the
+; 64-bit PowerShell ({sysnative}) sees the computer's real processor (the installer is 32-bit).
+Filename: "{cmd}"; Parameters: "/c """"{sysnative}\WindowsPowerShell\v1.0\powershell.exe"" -NoProfile -ExecutionPolicy Bypass -File ""{app}\scripts\bootstrap.ps1"" > ""{app}\logs\bootstrap.log"" 2>&1"""; WorkingDir: "{app}"; StatusMsg: "Getting Butler's own Python. This takes a minute or two."; Flags: runhidden waituntilterminated; BeforeInstall: MakeLogs
 Filename: "{app}\.venv\Scripts\python.exe"; Parameters: "-X utf8 ""{app}\run.py"" installed --installer ""{srcexe}"" --silent"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; Check: WizardSilent and HasPython
 Filename: "{app}\.venv\Scripts\python.exe"; Parameters: "-X utf8 ""{app}\run.py"" installed --installer ""{srcexe}"""; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; Check: (not WizardSilent) and HasPython
 
@@ -53,33 +56,29 @@ Filename: "{app}\.venv\Scripts\python.exe"; Parameters: "-X utf8 ""{app}\run.py"
 var
   NoPython: Boolean;
 
-// Butler's Python, before the [Run] steps that need it. Its output goes to logs\bootstrap.log,
-// and an install without Python says so and fails (exit code 9), instead of finishing quietly.
-procedure CurStepChanged(CurStep: TSetupStep);
-var
-  App, Command: string;
-  Code: Integer;
+procedure MakeLogs;
 begin
-  if CurStep <> ssPostInstall then exit;
-  App := ExpandConstant('{app}');
-  ForceDirectories(App + '\logs');
-  WizardForm.StatusLabel.Caption := 'Getting Butler''s own Python. This takes a minute or two.';
-  Command := '-NoProfile -ExecutionPolicy Bypass -Command "& ''' + App + '\scripts\bootstrap.ps1'' *> ''' + App + '\logs\bootstrap.log''"';
-  Exec('powershell.exe', Command, App, SW_HIDE, ewWaitUntilTerminated, Code);
-  NoPython := not FileExists(App + '\.venv\Scripts\python.exe');
-  if NoPython then
+  ForceDirectories(ExpandConstant('{app}\logs'));
+end;
+
+// Called as each [Run] step comes up, so after the bootstrap has run.
+function HasPython: Boolean;
+begin
+  Result := FileExists(ExpandConstant('{app}\.venv\Scripts\python.exe'));
+  NoPython := not Result;
+end;
+
+// An install without Python says so and fails (exit code 9), instead of finishing quietly.
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if (CurStep = ssDone) and not HasPython then
     SuppressibleMsgBox('Butler couldn''t get its Python, so it isn''t ready yet. Check the internet connection and run this installer again. ' +
-      'What went wrong is in ' + App + '\logs\bootstrap.log.', mbError, MB_OK, IDOK);
+      'What went wrong is in ' + ExpandConstant('{app}\logs\bootstrap.log') + '.', mbError, MB_OK, IDOK);
 end;
 
 function GetCustomSetupExitCode: Integer;
 begin
   if NoPython then Result := 9 else Result := 0;
-end;
-
-function HasPython: Boolean;
-begin
-  Result := not NoPython;
 end;
 
 function NeedsAddPath(Dir: string): Boolean;
