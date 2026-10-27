@@ -27,7 +27,7 @@ from flask import Flask, Response, abort, g, redirect, request, send_from_direct
 
 from urllib.parse import quote, urlparse
 
-from . import calendar_source, charts, claude_usage, devices, finance, networth, projects, replies
+from . import calendar_source, charts, claude_usage, devices, finance, networth, projects, replies, system
 from .config import ROOT, brand, load_settings, people, tz
 from .render import money_lines, one_off_note, readable
 from .fmt import SYMBOLS, money, primary_code, second_code, strftime
@@ -689,7 +689,7 @@ def info_page():
 
     body = ["<h1>Useful information</h1><div class=sub>Only on this page: never emailed, never "
             "sent to Claude, not cached by your browser. Edit <code>projects/reference.local.yaml</code> "
-            "on the Mac, or ask Claude.</div>"]
+            f"on the {system.COMPUTERS[system.NAME]}, or ask Claude.</div>"]
     body.append("<h2>People</h2><table><tr><th>Who</th><th>Phone</th><th>Email</th><th>IDs</th></tr>")
     for p in data.get("people", []):
         ids = "<br>".join(f"{escape(k)}: <code>{escape(str(v))}</code>" for k, v in (p.get("ids") or {}).items())
@@ -757,12 +757,12 @@ PAIR_FORM = ('<form method=post action="/pair"><p><label for=code>Pairing code</
 
 
 def _pair_page(message: str = "") -> str:
-    name = escape(brand())
+    name, computer = escape(brand()), system.COMPUTERS[system.NAME]
     return page("Pair", f"<h1>Pair this browser with {name}</h1>{message}"
-                f"<p>{name} opens only on browsers you've paired, so nobody else on the Mac or the network "
+                f"<p>{name} opens only on browsers you've paired, so nobody else on the {computer} or the network "
                 "can read it. Type the code from a paired device's <strong>Devices</strong> page.</p>"
-                "<p><strong>Nothing paired yet?</strong> On the Mac, open Terminal and type "
-                "<code>butler portal</code>. That pairs the Mac's browser. Then choose <strong>Devices</strong> "
+                f"<p><strong>Nothing paired yet?</strong> On the {computer}, open Terminal and type "
+                f"<code>butler portal</code>. That pairs the {computer}'s browser. Then choose <strong>Devices</strong> "
                 f"&gt; <strong>Add a phone or browser</strong> to get a code for this one.</p>{PAIR_FORM}", None)
 
 

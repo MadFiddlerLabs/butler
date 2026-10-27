@@ -7,6 +7,8 @@ import re
 import subprocess
 from datetime import datetime
 
+from . import system
+
 DKIM = "DKIM signature missing or failed"
 # Gmail refusing the app password: SMTP says the first, IMAP the second.
 GMAIL_LOGIN = ("Username and Password not accepted", "AUTHENTICATIONFAILED")
@@ -24,9 +26,16 @@ def log_problems(lines: list[str]) -> list[tuple[str, str]]:
     if any(marker in line for line in lines for marker in GMAIL_LOGIN):
         problems.append(("Gmail refused your butler's app password.",
                          "Changing the Gmail password signs out every app password. Make a new app password "
-                         "and store it again: scripts/store-secret.sh butler-gmail \"Your butler's Gmail app "
-                         "password\""))
+                         f"and store it again: {_store_gmail()}"))
     return problems
+
+
+def _store_gmail() -> str:
+    """How the student stores the Gmail app password again on this computer: the Mac's dialog, or
+    `butler secret` typed hidden in a Terminal window on Windows."""
+    if system.NAME == "windows":
+        return "type butler secret butler-gmail in a new Terminal window"
+    return 'scripts/store-secret.sh butler-gmail "Your butler\'s Gmail app password"'
 
 
 def boot_time(sysctl: str) -> datetime | None:

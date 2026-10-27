@@ -398,10 +398,16 @@ def cmd_home(args) -> int:
     if not first_run_done() and sys.stdin.isatty():
         if _ask("Pick up where you left off now? Press Enter for yes, or type no: ") not in {"n", "no"}:
             _first_run()
-    say("To go straight there in one step, open the Butler app, or type: butler resume")
+    say(f"To go straight there in one step, {way_back()}, or type: butler resume")
     say()
     print_help()
     return 0
+
+
+def way_back() -> str:
+    """What opens Butler where the student left off, without typing: the Butler app on a Mac, the
+    Start menu's Butler on Windows (packaging/windows/butler.iss), which both run `butler resume`."""
+    return "open Butler from the Start menu" if system.NAME == "windows" else "open the Butler app"
 
 
 def _first_run(*args: str) -> None:
@@ -550,9 +556,9 @@ def _listening(port: int) -> bool:
 
 
 def cmd_portal(args) -> int:
-    """Opens the portal in this Mac's browser and pairs that browser on the way. The one-time
-    code travels in a file only this Mac account can read, never on a command line, where other
-    accounts on the Mac could see it."""
+    """Opens the portal in this computer's browser and pairs that browser on the way. The one-time
+    code travels in a file only this account can read, never on a command line, where other
+    accounts on the computer could see it."""
     from . import devices
     from .config import load_settings
     port = load_settings()["portal"]["port"]
@@ -579,31 +585,34 @@ def cmd_portal(args) -> int:
     return 0
 
 
-# Every command, grouped the way students meet them, each with a short plain description.
-COMMANDS = [
-    ("Getting started", [
-        ("butler setup", "the first run, or pick up where you left off"),
-        ('butler name "Bento"', "change your butler's name"),
-        ('butler town "Lisbon"', "where you live, for the weather and the time"),
-        ("butler adults Sam Alex", "who the emails are for"),
-        ("butler brief", "write a brief now and open it"),
-        ("butler claude", "continue the course in Claude Code"),
-        ("butler claude-mode ask", "Claude Code asks before each change (or: auto)"),
-        ("butler secret butler-anthropic", "store a key or password, typed hidden"),
-    ]),
-    ("Every day", [
-        ("butler", "where you are in the course, and what's next"),
-        ("butler resume", "go straight to where you left off (the Butler app does this)"),
-        ("butler status", "what's set up, and what's next"),
-        ("butler progress", "what your butler has told the course"),
-        ("butler portal", "open the portal in this Mac's browser"),
-        ("butler update", "install a new version, if there is one"),
-    ]),
-    ("When something's wrong", [
-        ("butler doctor", "check for problems"),
-        ("butler help", "show this list"),
-    ]),
-]
+def commands() -> list[tuple[str, list[tuple[str, str]]]]:
+    """Every command, grouped the way students meet them, each with a short plain description in
+    this computer's words."""
+    resume_by = "Butler in the Start menu" if system.NAME == "windows" else "the Butler app"
+    return [
+        ("Getting started", [
+            ("butler setup", "the first run, or pick up where you left off"),
+            ('butler name "Bento"', "change your butler's name"),
+            ('butler town "Lisbon"', "where you live, for the weather and the time"),
+            ("butler adults Sam Alex", "who the emails are for"),
+            ("butler brief", "write a brief now and open it"),
+            ("butler claude", "continue the course in Claude Code"),
+            ("butler claude-mode ask", "Claude Code asks before each change (or: auto)"),
+            ("butler secret butler-anthropic", "store a key or password, typed hidden"),
+        ]),
+        ("Every day", [
+            ("butler", "where you are in the course, and what's next"),
+            ("butler resume", f"go straight to where you left off ({resume_by} does this)"),
+            ("butler status", "what's set up, and what's next"),
+            ("butler progress", "what your butler has told the course"),
+            ("butler portal", f"open the portal in this {system.COMPUTERS[system.NAME]}'s browser"),
+            ("butler update", "install a new version, if there is one"),
+        ]),
+        ("When something's wrong", [
+            ("butler doctor", "check for problems"),
+            ("butler help", "show this list"),
+        ]),
+    ]
 
 
 def help_lines(width: int | None = None) -> list[str]:
@@ -611,9 +620,9 @@ def help_lines(width: int | None = None) -> list[str]:
     description beside it when the window is wide enough, else on the line below. A description
     that doesn't fit wraps under itself."""
     width = width or _width()
-    col = max(len(command) for _, group in COMMANDS for command, _ in group) + 2
+    col = max(len(command) for _, group in commands() for command, _ in group) + 2
     out = textwrap.wrap("The butler command. Each course lesson gives you one line to paste.", width)
-    for title, group in COMMANDS:
+    for title, group in commands():
         out += ["", f"{title}:"]
         for command, what in group:
             room = width - 2 - col

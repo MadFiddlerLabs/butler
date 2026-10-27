@@ -8,7 +8,7 @@ import sys
 
 from datetime import date, datetime, timedelta
 
-from . import daily, mailer, monthly, progress, replies, updates, weekly
+from . import daily, mailer, monthly, progress, replies, system, updates, weekly
 from .config import ROOT, brand, load_settings, tz
 from .fmt import strftime
 
@@ -108,7 +108,7 @@ def _late_note(what: str, days: int, due: date, hour: int) -> str:
         return ""
     when = "yesterday" if days == 1 else f"{days} days ago"
     return (f"This {what} is late. It was due {when}, {due:%A} at {hour}:00, "
-            "but the Mac was asleep or offline then.")
+            f"but the {system.COMPUTERS[system.NAME]} was asleep or offline then.")
 
 
 if __name__ == "__main__":

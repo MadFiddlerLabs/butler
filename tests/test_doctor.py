@@ -26,13 +26,21 @@ wtmp begins Tue Sep 15 17:08
 
 class LogTest(unittest.TestCase):
     def test_dkim_failures_and_a_refused_gmail_password(self):
-        (dkim, dkim_fix), (gmail, gmail_fix) = doctor.log_problems(LOG)
+        with mock.patch.object(doctor.system, "NAME", "mac"):
+            (dkim, dkim_fix), (gmail, gmail_fix) = doctor.log_problems(LOG)
         self.assertIn("ignored 2 recent replies", dkim)
         self.assertIn("personal address", dkim_fix)
         self.assertNotIn("example.com", dkim + dkim_fix, "no sender is named")
         self.assertIn("Gmail refused", gmail)
         self.assertIn("Changing the Gmail password", gmail_fix)
         self.assertIn("store-secret.sh butler-gmail", gmail_fix)
+
+    def test_on_windows_the_gmail_fix_is_butler_secret(self):
+        """store-secret.sh is a Mac dialog. Windows stores the password with `butler secret`."""
+        with mock.patch.object(doctor.system, "NAME", "windows"):
+            (_, gmail_fix), = [p for p in doctor.log_problems(LOG) if "Gmail" in p[0]]
+        self.assertIn("type butler secret butler-gmail in a new Terminal window", gmail_fix)
+        self.assertNotIn("store-secret.sh", gmail_fix)
 
     def test_imap_says_it_differently(self):
         problems = doctor.log_problems(["ERROR replies failed", "imaplib.IMAP4.error: b'[AUTHENTICATIONFAILED] Invalid"])

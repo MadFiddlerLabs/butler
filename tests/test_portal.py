@@ -120,6 +120,14 @@ class DeviceKeyTest(unittest.TestCase):
              mock.patch.object(portal, "_whois", return_value="sam@example.com"):
             self.assertEqual(self.get("/info", Host=TAILNET, **{"X-Butler-Peer": "100.64.0.9"}).status_code, 303)
 
+    def test_the_pair_page_names_the_computer_butler_runs_on(self):
+        for name, computer in (("mac", "Mac"), ("windows", "computer")):
+            with mock.patch.object(portal.system, "NAME", name):
+                text = self.get("/pair", **self.LOCAL).get_data(as_text=True)
+            self.assertIn(f"On the {computer}, open Terminal and type <code>butler portal</code>. "
+                          f"That pairs the {computer}'s browser.", text)
+            self.assertIn(f"nobody else on the {computer} or the network", text)
+
     def test_a_code_pairs_one_browser_once(self):
         unpaired = self.get("/pair", **self.LOCAL)
         self.assertEqual(unpaired.status_code, 200)

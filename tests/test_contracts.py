@@ -20,6 +20,45 @@ REPO = Path(__file__).resolve().parents[1]
 SWIFT = (REPO / "helpers" / "butler-ek" / "main.swift").read_text()
 SRC = {p.name: p.read_text() for p in (REPO / "src" / "butler").glob("*.py")}
 COURSE_STEPS = ["install", "calendar", "brain", "inbox", "replies", "money", "projects", "letters", "phone"]
+SKILLS = {p.parent.name: p.read_text() for p in (REPO / ".claude" / "skills").glob("*/SKILL.md")}
+# (a Mac-only command, what Windows does instead, where the Windows way must be: the same block, or
+# the same `## ` section of the skill).
+MAC_ONLY = [
+    (r"store-secret\.sh", "butler secret", "block"),
+    (r"security add-generic-password", "butler secret", "block"),
+    (r"security find-generic-password", "system.has_secret", "block"),
+    (r"launchd/install\.sh", "run.py schedule install", "block"),
+    (r"launchctl", "Task Scheduler", "block"),
+    (r"pmset", "\\Butler\\morning", "block"),
+    (r"/Applications/Tailscale\.app", "tailscale.exe", "block"),
+    (r"TextEdit", "Notepad", "block"),
+    (r"Butler app", "Start menu", "block"),
+    (r"bootstrap\.sh", "bootstrap.ps1", "block"),
+    (r"bin/butler-ek", "gcal", "section"),
+]
+# (the Mac's spelling, Windows' spelling) of a command that works the same way on both.
+TRANSLATED = [
+    (r"\./run\.sh", ".venv/Scripts/python.exe run.py"),
+    (r"bin/butler\b(?![-.])", "bin/butler.cmd"),
+    (r"\.venv/bin/python", ".venv/Scripts/python.exe"),
+    (r"`open <url>`", "-m webbrowser"),
+]
+
+
+def _blocks(text: str) -> list[str]:
+    """A skill's blocks: a numbered or bulleted item with its indented lines, a table row, a heading
+    or a paragraph. A blank line or an unindented item, row or heading starts the next."""
+    blocks, current = [], []
+    for line in text.splitlines():
+        if not line.strip() or re.match(r"(\d+\.\s|- |\||#)", line):
+            if current:
+                blocks.append("\n".join(current))
+            current = [line] if line.strip() else []
+        else:
+            current.append(line)
+    if current:
+        blocks.append("\n".join(current))
+    return blocks
 
 
 class SchemaTest(unittest.TestCase):
@@ -248,6 +287,30 @@ class CourseContractTest(unittest.TestCase):
         self.assertEqual(settings["permissions"]["defaultMode"], "default")
         self.assertNotIn("allow", settings["permissions"], "no blanket pre-approvals")
         self.assertNotIn("settings.json", (REPO / ".gitignore").read_text())
+
+    def test_the_skills_give_windows_students_the_windows_way(self):
+        """Butler runs on Windows too (#40), and the skills are written for a Mac. A Mac-only
+        command must sit in the same step, row or paragraph as Windows' own way, so Claude never
+        hands a Windows student a command that doesn't exist there."""
+        for name, skill in SKILLS.items():
+            # Each skill says how to tell the platform, the same way.
+            self.assertIn("`darwin` for a Mac and `win32` for Windows", " ".join(skill.split()), name)
+            blocks, sections = _blocks(skill), skill.split("\n## ")
+            for mac, windows, scope in MAC_ONLY:
+                if not re.search(mac, skill):
+                    continue
+                where = {"block": blocks, "section": sections}[scope]
+                for part in where:
+                    if re.search(mac, part):
+                        flat = " ".join(part.split())
+                        self.assertIn(windows, flat, f"{name}: {mac} without {windows}: {flat[:120]}")
+                        self.assertIn("Windows", flat, f"{name}: {mac} isn't marked Mac-only: {flat[:120]}")
+            # A command that's only spelled differently is translated once, in the skill's own table
+            # or sentence: one block that names both spellings.
+            for mac, windows in TRANSLATED:
+                if re.search(mac, skill):
+                    self.assertTrue(any(re.search(mac, b) and windows in b for b in blocks),
+                                    f"{name}: no Windows spelling for {mac}")
 
     def test_keychain_names_agree(self):
         store = (REPO / "scripts" / "store-secret.sh").read_text()

@@ -28,7 +28,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from zoneinfo import ZoneInfo
 
-from . import config
+from . import config, system
 from .calendar_source import Failed
 from .config import NotSetUp
 
@@ -37,7 +37,9 @@ CLIENT_FILE = config.ROOT / "config" / "google-oauth.json"   # git-ignored; the 
 SCOPES = ("https://www.googleapis.com/auth/calendar.readonly",
           "https://www.googleapis.com/auth/calendar.events",
           "https://www.googleapis.com/auth/tasks")
-CONNECT = "PYTHONPATH=src .venv/bin/python -m butler.gcal connect"
+# How to sign in, as the brief and the log say it: Windows has no .venv/bin, and run.py sets the path.
+CONNECT = (r".venv\Scripts\python.exe run.py gcal connect" if system.NAME == "windows"
+           else "PYTHONPATH=src .venv/bin/python -m butler.gcal connect")
 NO_CLIENT = "this install has no Google client ID yet (docs/SETUP.md, \"Google Calendar and Tasks\")"
 NOT_CONNECTED = f"Google Calendar isn't connected yet (connect it with: {CONNECT})"
 RECONNECT = f"reconnect Google: it no longer accepts Butler's sign-in (run: {CONNECT})"

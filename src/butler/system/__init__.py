@@ -15,6 +15,9 @@ else:
 NAME = _impl.NAME
 # The password store's name, for what the student reads: "Your passwords stay in Keychain."
 PASSWORD_STORE = _impl.PASSWORD_STORE
+# What the student calls the computer, in a sentence: "this Mac", "this computer". Read it as
+# COMPUTERS[NAME] where it's used, so a test that sets NAME to "windows" reads Windows' words.
+COMPUTERS = {"mac": "Mac", "windows": "computer"}
 
 
 def get_secret(service: str) -> str | None:

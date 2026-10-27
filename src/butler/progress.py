@@ -305,7 +305,8 @@ def lines(state: dict, problem: str | None) -> list[str]:
         out += ["  Also waiting: " + ", ".join(waiting)]
     if state["queued"]:
         out.append("")
-        out.append("You're not signed in, so these wait on this Mac. To sign in, type: butler setup"
+        here = f"this {system.COMPUTERS[system.NAME]}"
+        out.append(f"You're not signed in, so these wait on {here}. To sign in, type: butler setup"
                    if problem == "signed out" else
-                   "I couldn't reach buildyourbutler.com, so these wait on this Mac. I'll try again in a few minutes.")
+                   f"I couldn't reach buildyourbutler.com, so these wait on {here}. I'll try again in a few minutes.")
     return out
