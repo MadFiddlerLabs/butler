@@ -36,7 +36,7 @@ from .config import ROOT, plain_output, store_secret
 HEARD_LABELS = ("A friend or family member", "A web search", "Reddit", "Hacker News", "Product Hunt",
                 "YouTube", "Social media", "A newsletter", "A podcast", "Somewhere else")
 EMAIL = re.compile(r'[^@"\\]+@[^@"\\]+\.[^@"\\]+')
-COMPUTER = {"mac": "Mac", "windows": "computer"}
+COMPUTER = system.COMPUTERS
 PATH_NOTE = {
     "mac": 'I added one line to ~/.zprofile so you can type "butler" in any new Terminal window.',
     "windows": 'I added Butler to your PATH so you can type "butler" in any new Terminal window.',
@@ -123,7 +123,7 @@ class FirstRun:
         self.version = self._read(root / ".butler-version") or "dev"
         self.poll_seconds = float(os.environ.get("BUTLER_POLL_SECONDS") or 3)
         self.poll_limit = int(os.environ.get("BUTLER_POLL_LIMIT") or 300)   # 15 minutes, the link's life
-        self.computer = COMPUTER.get(system.NAME, "computer")
+        self.computer = system.COMPUTERS[system.NAME]
         self.plain = plain_output()
         colour = sys.stdout.isatty() and not self.plain and system.NAME != "windows"
         self.bold, self.dim, self.green, self.reset = (

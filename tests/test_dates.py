@@ -18,7 +18,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from props import PROFILE
 
-from butler import daily, tick, updates, weekly
+from butler import daily, system, tick, updates, weekly
 
 assert PROFILE
 UTC = timezone.utc
@@ -151,7 +151,7 @@ class CatchUpTest(Tick):
         self.assertEqual([w.strftime("%a %d %H:%M") for w in self.weekly], ["Mon 19 06:59", "Sun 25 17:04"])
         self.assertEqual(self.days, [date(2026, 10, 18), date(2026, 10, 25)], "each letter is for its own week")
         self.assertEqual(self.notes[0], "This letter is late. It was due yesterday, Sunday at 17:00, "
-                                        "but the Mac was asleep or offline then.")
+                                        f"but the {system.COMPUTERS[system.NAME]} was asleep or offline then.")
         self.assertEqual(self.notes[1], "", "the next one is on time and says nothing")
         markers = sorted(p.name for p in (self.root / "out").glob("weekly-sent-*"))
         self.assertEqual(markers, ["weekly-sent-2026-42", "weekly-sent-2026-43"])
@@ -161,7 +161,7 @@ class CatchUpTest(Tick):
         self.run_ticks(settings("Europe/Lisbon"), datetime(2026, 10, 20, 5, 59, tzinfo=UTC),
                        datetime(2026, 10, 20, 7, 0, tzinfo=UTC))
         self.assertEqual(self.notes, ["This letter is late. It was due 2 days ago, Sunday at 17:00, "
-                                      "but the Mac was asleep or offline then."])
+                                      f"but the {system.COMPUTERS[system.NAME]} was asleep or offline then."])
         self.weekly.clear()
         (self.root / "out" / "weekly-sent-2026-42").unlink()
         self.run_ticks(settings("Europe/Lisbon"), datetime(2026, 10, 21, 5, 59, tzinfo=UTC),
@@ -179,7 +179,7 @@ class CatchUpTest(Tick):
                        datetime(2026, 11, 5, 0, 0, tzinfo=UTC))
         self.assertEqual(self.monthly, [date(2026, 10, 1)])
         self.assertIn("This look-back is late. It was due yesterday, Sunday at 8:00, "
-                      "but the Mac was asleep or offline then.", self.notes)
+                      f"but the {system.COMPUTERS[system.NAME]} was asleep or offline then.", self.notes)
         self.assertEqual(len(self.weekly), 1, "1 November is a Sunday: that letter catches up too")
 
     def test_a_month_missed_by_three_days_is_left(self):

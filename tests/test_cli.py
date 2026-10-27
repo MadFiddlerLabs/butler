@@ -13,6 +13,7 @@ import tempfile
 import unittest
 import urllib.request
 from contextlib import redirect_stdout
+from datetime import date
 from pathlib import Path
 from unittest import mock
 
@@ -288,7 +289,7 @@ class CliTest(unittest.TestCase):
 class HelpTest(unittest.TestCase):
     """`butler help` and a mistyped command: one command per line, aligned, grouped (council P8)."""
 
-    COMMANDS = [c for _, group in cli.COMMANDS for c, _ in group]
+    COMMANDS = [c for _, group in cli.commands() for c, _ in group]
 
     def check(self, lines: list[str], width: int) -> None:
         commands = re.compile(r"butler(?!-)(?: (?:setup|name|town|adults|brief|claude-mode|claude|status|progress|"
@@ -310,7 +311,7 @@ class HelpTest(unittest.TestCase):
         lines = cli.help_lines(76)
         self.check(lines, 76)
         # Wide enough: the descriptions line up beside the commands.
-        columns = {line.index(what) for line in lines for _, group in cli.COMMANDS for c, what in group
+        columns = {line.index(what) for line in lines for _, group in cli.commands() for c, what in group
                    if line.startswith(f"  {c} ") and what in line}
         self.assertEqual(len(columns), 1, "descriptions aren't aligned")
 
@@ -557,6 +558,31 @@ class WindowsCommandTest(unittest.TestCase):
 
     def mac(self):
         return mock.patch.object(cli.system, "NAME", "mac")
+
+    def test_the_help_and_the_way_back_speak_windows(self):
+        """No Butler app on Windows: the Start menu's Butler runs `butler resume` (butler.iss)."""
+        with self.windows():
+            text = "\n".join(cli.help_lines(200))
+            self.assertIn("go straight to where you left off (Butler in the Start menu does this)", text)
+            self.assertIn("open the portal in this computer's browser", text)
+            self.assertNotIn("Mac", text)
+            self.assertNotIn("Butler app", text)
+            self.assertEqual(cli.way_back(), "open Butler from the Start menu")
+        with self.mac():
+            text = "\n".join(cli.help_lines(200))
+            self.assertIn("go straight to where you left off (the Butler app does this)", text)
+            self.assertIn("open the portal in this Mac's browser", text)
+            self.assertEqual(cli.way_back(), "open the Butler app")
+
+    def test_progress_and_a_late_letter_say_computer_on_windows(self):
+        from butler import tick
+        state = {"steps": {}, "reported": {}, "queued": {"setup.town": {"status": "done", "at": "x"}}}
+        with self.windows():
+            self.assertIn("so these wait on this computer.", "\n".join(cli.progress.lines(state, "signed out")))
+            self.assertIn("but the computer was asleep or offline then.",
+                          tick._late_note("letter", 1, date(2026, 10, 18), 17))
+        with self.mac():
+            self.assertIn("so these wait on this Mac.", "\n".join(cli.progress.lines(state, "offline")))
 
     def test_setup_runs_the_python_first_run_on_windows(self):
         with self.windows(), mock.patch("butler.first_run.main", return_value=0) as first_run, \

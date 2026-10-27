@@ -55,17 +55,41 @@ one sentence, and offer the next step by its module, title and command.
   line ("Module 3 is ticked off on buildyourbutler.com."). If it still says "not done yet",
   something the check needs is missing: compare with the "Where am I?" table and fix it.
 
+### Mac or Windows
+
+Butler runs on a Mac or on a Windows PC. Check which once, at the start: Claude Code's
+environment names the platform, `darwin` for a Mac and `win32` for Windows. Then say only what's
+true for their computer. Never show a student the other computer's way.
+
+The steps are written for a Mac. On Windows, change the commands like this:
+
+| On a Mac | On Windows |
+|---|---|
+| `bin/butler <command>` | `bin/butler.cmd <command>` |
+| `./run.sh <command>` | `.venv/Scripts/python.exe run.py <command>` |
+| `.venv/bin/python` | `.venv/Scripts/python.exe` |
+| `open <url>` | `.venv/Scripts/python.exe -m webbrowser <url>` |
+
+Where a step says "the Mac", say "the computer" to a Windows student. Where a step works
+differently on Windows, it says so with "On Windows". Explain Windows' own terms the first time:
+Credential Manager is Windows' built-in password safe (Keychain on a Mac), and Task Scheduler is
+Windows' scheduler (launchd on a Mac). On Windows, the Butler folder is `%USERPROFILE%\Butler`.
+
 ### Three rules that never bend
 
-1. **Secrets never pass through the chat.** To store one, run
+1. **Secrets never pass through the chat.** To store one on a Mac, run
    `scripts/store-secret.sh <service> "<what to paste>"`. A Mac dialog asks for it, and it
    goes straight into Keychain. If the dialog is cancelled or doesn't open, still never ask for
    the secret in the chat: offer to open the dialog again, or give them
    `security add-generic-password -U -s <service> -a butler -w` to run themselves with the `!`
    prefix. With `-w` last and no value after it, it asks for the value twice without showing
    it. Never put the value on that line: a command line shows in the Mac's process list, where
-   other accounts can read it. If they paste a secret into the chat
-   anyway, don't repeat it. Tell them to store it with the dialog and to make a new one,
+   other accounts can read it.
+   On Windows there's no dialog, and neither command exists. Ask them to open a new Terminal
+   window and type `butler secret <service>`. It asks for the value, hides it while they paste,
+   and puts it straight into Credential Manager. They tell you when it says "Stored". It needs a
+   window of its own, because it reads the keyboard. If they paste a secret into the chat
+   anyway, don't repeat it. Tell them to store it the usual way and to make a new one,
    because chats are kept.
 2. **No ID numbers** (passport, residence, tax, health) in settings, notes or prompts. They
    belong only in `projects/reference.local.yaml`, which the user fills in themselves.
@@ -93,7 +117,8 @@ If they never ran the first run, do the whole step below.
 
 1. Check you're in the Butler folder: `scripts/install.sh` exists. If `.venv/bin/python` is
    missing, run `scripts/bootstrap.sh`. It downloads Python with uv, takes a minute or two,
-   and needs no Xcode tools.
+   and needs no Xcode tools. On Windows, if `.venv/Scripts/python.exe` is missing, run
+   `powershell -ExecutionPolicy Bypass -File scripts/bootstrap.ps1` instead.
 2. If `config/settings.yaml` exists, ask whether to update it or start over.
 3. Interview, in small friendly groups. The name, the adults and the town are what the Setup
    Module set up, so when you check or ask about them, open with "Setup Module ·". The rest is
@@ -131,6 +156,11 @@ Next: Module 3, Show your butler your calendar (`/butler-setup calendar`).
 
 The win: the preview shows their real day, and their to-dos.
 
+On a Mac, Butler reads Apple's Calendar and Reminders through the Calendar helper, in steps 1
+to 4 and 6. On Windows there's no Apple Calendar: Butler reads Google Calendar and keeps the
+to-do and shopping lists in Google Tasks. So on Windows, do "Google Calendar and Tasks" below in
+place of steps 1 to 4 and 6.
+
 1. **Xcode command line tools**, only if `bin/butler-ek` is missing. The downloaded package
    includes the helper, prebuilt and signed, so skip to step 3. Otherwise: `xcode-select -p`
    succeeds if the tools are installed. If not, run `xcode-select --install`. A Mac dialog
@@ -142,13 +172,36 @@ The win: the preview shows their real day, and their to-dos.
    clicked Don't Allow: System Settings > Privacy & Security > Calendars (and Reminders),
    switch it on, and run the command again.
 4. If their calendars live in Google or Microsoft and don't show up, they add the account in
-   System Settings > Internet Accounts, with Calendars and Reminders switched on.
+   System Settings > Internet Accounts, with Calendars and Reminders switched on. A Mac
+   household that keeps everything in Google can use Google directly instead, as on Windows.
 5. Interview: which calendars go in the brief; whose each one is; nicknames that appear in
    event titles (aliases); holiday calendars; which calendar new events from replies go to.
 6. Create the Reminders lists: `bin/butler-ek ensure-list --list "<todo_list>"` and the same
    for the shopping list.
 7. Update `calendar.include`, `holidays`, `write_to` and `people[].calendars` / `aliases`.
 8. Check: the config test passes, then `./run.sh preview`. Today's events appear per person.
+
+### Google Calendar and Tasks (Windows, or a Mac's choice)
+
+Butler can add events and tasks, and mark tasks done. It never edits or deletes anything.
+
+1. Set `calendar.source: google` in `config/settings.yaml`.
+2. **Sign in.** Explain in one sentence: they sign in to Google in their browser, and the
+   sign-in goes straight into the computer's password safe, so you never see it. Run
+   `./run.sh gcal connect`. Their browser opens Google's sign-in page. They choose their own
+   Google account and allow Calendar and Tasks. It waits five minutes for them.
+   - "Google didn't allow: …" means a box was left unticked. Run it again and tick every box.
+   - "no Google client ID yet" means this install can't sign in to Google yet. It isn't
+     something they did. Tell them plainly, offer to skip this step for now, and suggest "This
+     step didn't work for me" on the course page.
+3. `./run.sh gcal calendars` lists their calendars. Use those titles in the interview (step 5
+   above) and in step 7.
+4. Their to-do and shopping lists are Google Tasks lists, named in `reminders.todo_list` and
+   `reminders.shopping_list`. `./run.sh gcal reminder-lists` shows the lists they have, and
+   `./run.sh gcal ensure-list --list "<todo_list>"` makes one that's missing. Do the same for the
+   shopping list.
+5. Then steps 5, 7 and 8 above. Before the preview, `./run.sh gcal status` says "Google is
+   connected".
 
 Next: Module 4, Give your butler a brain (`/butler-setup brain`).
 
@@ -169,9 +222,12 @@ The win: Claude writes the news summaries and notes on what to prepare for.
    limit they set and write it to `llm.monthly_limit` (dollars, a number), so the portal's Money
    page shows "Claude this month: about $X of your $Y limit". It's an estimate; the Console
    has the bill.
-5. Store it: `scripts/store-secret.sh butler-anthropic "Your Claude API key"`.
+5. Store it: `scripts/store-secret.sh butler-anthropic "Your Claude API key"`. On Windows,
+   they type `butler secret butler-anthropic` in a new Terminal window.
 6. Check it's there without printing it:
-   `security find-generic-password -s butler-anthropic >/dev/null && echo ok`
+   `security find-generic-password -s butler-anthropic >/dev/null && echo ok`. On Windows:
+   `PYTHONPATH=src .venv/Scripts/python.exe -c "from butler import system; print(system.has_secret('butler-anthropic'))"`
+   prints `True`.
 7. Ask for two or three sentences about the household for `household.about`: who lives
    there, work, what's going on. Remind them it goes to Claude, so no ID numbers. They choose
    how much to say. One plain sentence ("Two adults and a daughter in Lisbon.") is enough for
@@ -197,7 +253,8 @@ The win: the first real morning email, and a daily schedule.
      Advanced Protection. A plain new Gmail account avoids both.
    - The Gmail password was changed. That revokes every app password, so make a new one and
      store it again. Tell them this now, so a later password change doesn't surprise them.
-2. Store it: `scripts/store-secret.sh butler-gmail "Your butler's Gmail app password"`.
+2. Store it: `scripts/store-secret.sh butler-gmail "Your butler's Gmail app password"`. On
+   Windows, they type `butler secret butler-gmail` in a new Terminal window.
 3. Ask each adult's email address: the one they'll read and reply from. Fill
    `household.adults[].emails`, `email.recipients` and `email.trusted_senders`, and put the
    butler's address in `email.sender`. Recommend personal addresses (Gmail, iCloud, Outlook)
@@ -206,16 +263,26 @@ The win: the first real morning email, and a daily schedule.
 4. **First send.** Ask first. Suggest sending only to the person you're working with: set
    `email.recipients` to them, run `./run.sh daily`, then restore the full list. If it lands
    in spam, they mark it "Not spam" and add the butler to their contacts.
-5. **The schedule.** Ask the send hour (`email.send_hour`). Run `launchd/install.sh`. Then
-   set a daily wake a minute before. This needs an administrator's password: a Mac dialog
-   asks for it, and it never reaches you. If their own account isn't an administrator, someone
-   whose account is types theirs:
-   `osascript -e 'do shell script "pmset repeat wakeorpoweron MTWRFSU 06:59:00" with administrator privileges'`
-   (adjust the time). Tell them: keep the Mac plugged in. A laptop with its lid closed may
-   not wake. After a restart (an update, a power cut), log back in: the Mac waits at the
-   login screen, and Butler runs only while someone is logged in.
-6. Check: `launchctl list | grep com.buildyourbutler` shows the jobs, and
-   `tail -n 5 logs/butler.log` shows a tick within five minutes.
+5. **The schedule.** Ask the send hour (`email.send_hour`).
+   - On a Mac: run `launchd/install.sh`. Then set a daily wake a minute before. This needs an
+     administrator's password: a Mac dialog asks for it, and it never reaches you. If their own
+     account isn't an administrator, someone whose account is types theirs:
+     `osascript -e 'do shell script "pmset repeat wakeorpoweron MTWRFSU 06:59:00" with administrator privileges'`
+     (adjust the time).
+   - On Windows: run `.venv/Scripts/python.exe run.py schedule install`. It adds Butler's
+     tasks to Task Scheduler, with no administrator password: `\Butler\tick` every five
+     minutes, `\Butler\portal` at sign-in, and `\Butler\morning`, which wakes the computer a
+     minute after the send hour. Windows wakes it only if the power plan allows wake timers:
+     Control Panel > Power Options > Change plan settings > Change advanced power settings >
+     Sleep > Allow wake timers > Enable. The tasks keep the hours they were made with, so run
+     it again whenever `send_hour` or `weekly_hour` changes.
+
+   Tell them: keep the Mac plugged in. A laptop with its lid closed may not wake. After a
+   restart (an update, a power cut), log back in: the Mac waits at the login screen, and
+   Butler runs only while someone is logged in.
+6. Check: `launchctl list | grep com.buildyourbutler` shows the jobs (on Windows,
+   `.venv/Scripts/python.exe run.py schedule show` says each of Task Scheduler's three tasks is
+   installed), and `tail -n 5 logs/butler.log` shows a tick within five minutes.
 
 Next: Module 6, Talk to your butler (`/butler-setup replies`).
 
@@ -227,7 +294,8 @@ The win: "add milk to shopping" works by email and by Siri.
    addresses with a valid signature, and only through a fixed list of actions. Nothing can
    be deleted.
 2. They reply to the brief: "add milk to shopping". Within five minutes the schedule picks it
-   up, and a confirmation goes to everyone. Check Reminders together.
+   up, and a confirmation goes to everyone. Check the shopping list together: in Reminders, or
+   in Google Tasks if they use Google.
 3. **Siri.** On their iPhone: Shortcuts > + > add "Dictate Text", then "Send Email" to the
    butler's address with the subject set to the butler's name and the message set to the
    Dictated Text; turn "Show Compose Sheet" off. Name it "Tell <butler's name>".
@@ -243,13 +311,15 @@ The win: money in the brief, in three kinds of spending.
    them. Mention that the course links to Lunch Money with an affiliate link, and that it's
    their choice.
 2. In Lunch Money: Settings > Developers > request an access token. Store it:
-   `scripts/store-secret.sh butler-lunchmoney "Your Lunch Money access token"`.
+   `scripts/store-secret.sh butler-lunchmoney "Your Lunch Money access token"`. On Windows,
+   they type `butler secret butler-lunchmoney` in a new Terminal window.
 3. Set `currency.primary` (Lunch Money's primary currency) and `currency.second` if some
    budget lines are in another currency.
 4. Before reading any money data, tell them in one sentence: whatever Claude Code reads in
    this chat goes to Anthropic, so you'll work out totals in Python and read only the
    categories, accounts and totals you need.
-5. Read their categories and accounts through the code, so the token stays in Keychain:
+5. Read their categories and accounts through the code, so the token stays in the password
+   safe:
    ```
    PYTHONPATH=src .venv/bin/python -c "
    from butler import lunchmoney
@@ -290,8 +360,9 @@ The win: one real household project with steps, and document dates tracked.
    you. They type any ID numbers themselves, in a text editor. Never ask for them, and don't
    open the file once they have.
    - The editor must save plain text with straight quotes. In TextEdit: Format > Make Plain
-     Text, and turn off Edit > Substitutions > Smart Quotes. Smart quotes (“ ” ‘ ’) aren't
-     quotes to YAML, so they end up inside values or break the file.
+     Text, and turn off Edit > Substitutions > Smart Quotes. On Windows, Notepad already saves
+     plain text with straight quotes. Smart quotes (“ ” ‘ ’) aren't quotes to YAML, so they end
+     up inside values or break the file.
    - When they've saved it, check that it parses without printing any of it. The check
      prints only "ok", or the line to look at:
      ```
@@ -318,7 +389,9 @@ The win: a weekly letter and a monthly look-back, previewed.
    hour for the monthly look-back (`monthly_hour`, on the 1st).
 2. Preview both: `./run.sh weekly --dry-run` and `./run.sh monthly --preview`. Each one
    writes an HTML file in `out/` and says where. Open it and walk through it together.
-3. The schedule already sends them. Nothing more to install.
+3. The schedule already sends them. Nothing more to install on a Mac. On Windows, if the
+   weekly hour changed, run `.venv/Scripts/python.exe run.py schedule install` again, so the
+   computer also wakes for the letter.
 
 Next: Module 10, Train your butler (`/butler-tune`), after a week or two of briefs. Then
 Module 11, Your butler on your phone (`/butler-setup phone`).
@@ -337,14 +410,16 @@ The win: the portal on their phone, for their household only.
    The Tailscale app from the App Store or tailscale.com doesn't put a `tailscale` command on
    the PATH, so always run it by its full path, as `src/butler/portal.py` does:
    `/Applications/Tailscale.app/Contents/MacOS/Tailscale`. If that file is missing, Tailscale
-   isn't installed in Applications yet.
+   isn't installed in Applications yet. On Windows, the full path is
+   `C:\Program Files\Tailscale\tailscale.exe`.
 3. **Rename the Mac first.** The portal's address and its HTTPS certificate use the machine's
    name, and certificate names are public. In the Tailscale admin console, Machines > the Mac
    > Edit machine name, or run
-   `/Applications/Tailscale.app/Contents/MacOS/Tailscale set --hostname=butler`. Then, in the
-   admin console's DNS page, they turn on MagicDNS and HTTPS certificates.
-4. Run `/Applications/Tailscale.app/Contents/MacOS/Tailscale serve --bg 8787`. Put the
-   address it prints in `portal.url`.
+   `/Applications/Tailscale.app/Contents/MacOS/Tailscale set --hostname=butler` (on Windows,
+   with `tailscale.exe`'s full path). Then, in the admin console's DNS page, they turn on
+   MagicDNS and HTTPS certificates.
+4. Run `/Applications/Tailscale.app/Contents/MacOS/Tailscale serve --bg 8787` (on Windows,
+   with `tailscale.exe`'s full path). Put the address it prints in `portal.url`.
 5. Put each adult's Tailscale login in `portal.allowed_logins`, and map it to a name in
    `portal.people`.
 6. Explain in one sentence: the portal opens only in browsers they've paired, so other
@@ -369,11 +444,11 @@ done is the next step. If they chose to skip that one, say so and offer the one 
 | Done when | Step |
 |---|---|
 | `config/settings.yaml` has a real name, the adults, the town and their own news regions (not the example's), and a preview brief exists | install |
-| `bin/butler-ek` exists and `calendar.include` isn't empty | calendar |
-| Keychain has `butler-anthropic` and `household.about` isn't empty | brain |
-| Keychain has `butler-gmail`, `email.sender` and `email.recipients` are set, a real brief was built in `out/`, and `launchctl list` shows `com.buildyourbutler.butler` | inbox |
+| `bin/butler-ek` exists, or with `calendar.source: google` the password safe has `butler-google` (from `gcal connect`), and `calendar.include` isn't empty | calendar |
+| The password safe (Keychain, or Credential Manager on Windows) has `butler-anthropic`, and `household.about` isn't empty | brain |
+| The password safe has `butler-gmail`, `email.sender` and `email.recipients` are set, a real brief was built in `out/`, and the schedule is installed: `launchctl list` shows `com.buildyourbutler.butler`, or on Windows Task Scheduler has `\Butler\tick` | inbox |
 | `data/processed_replies.txt` isn't empty | replies |
-| Keychain has `butler-lunchmoney`, and `config/category_map.yaml` and `budget/budget.xlsx` exist | money |
+| The password safe has `butler-lunchmoney`, and `config/category_map.yaml` and `budget/budget.xlsx` exist | money |
 | `projects/` has a project (`reference.local.yaml` doesn't count) | projects |
 | A weekly letter (`out/weekly-*.html` or `out/preview/weekly-*.html`) and a monthly look-back (`out/monthly-*.html`) exist | letters |
 | `portal.url` is set | phone |
@@ -382,4 +457,5 @@ Module 10 is `/butler-tune`, and Module 12 is graduation. When everything's done
 
 When they stop for the day, tell them how to come back: open the Butler app (in Applications,
 or found with Spotlight), or type `butler resume` in Terminal. Either reopens Claude Code here,
-on their next step.
+on their next step. On Windows there's no Butler app: they choose Butler in the Start menu, or
+type `butler resume` in a new Terminal window.
