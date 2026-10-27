@@ -17,6 +17,8 @@ test_failures.TimeoutAndBrokenHelperTest      # the same
 test_privacy.PrivacyTest                      # the same
 test_progress.JohnsonsIntegrationTest         # the same
 test_model_check.EndToEndTest                 # the same
+test_gcal.GoogleHouseholdTest                 # the same
+test_gcal.GoogleNotConnectedTest              # the same
 
 # bash: bin/butler, scripts/first-run.sh, bootstrap.sh and scripts/lib/*.sh, until the entry
 # points move to Python. On a runner, `bash` can also be WSL's, which has no Linux installed.
