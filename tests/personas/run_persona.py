@@ -41,10 +41,20 @@ sys.path.insert(0, str(REPO / "tests"))
 import events  # noqa: E402
 from fakes.account_api import FakeAccountAPI  # noqa: E402
 from outside import Outside  # noqa: E402
-from screens import DRY_CLAUDE, page_text, side_question, site_name  # noqa: E402
+from screens import DRY_CLAUDE, page_text, side_question, site_name, trim  # noqa: E402
 from terminal import Terminal  # noqa: E402
 
 PERSONA_MODEL = "claude-sonnet-5-5"
+# Told to the student's Claude Code, which otherwise sees the fakes (127.0.0.1, a test Google
+# client, the sample family's calendar) and, rightly, warns the student: round 3 lost a run to it.
+TEST_COMPUTER = (
+    "A note from the course's automated tests, not from the person you're talking to: this is a test "
+    "computer. Google's sign-in and APIs, Gmail, Lunch Money and the Claude API answer on 127.0.0.1 here, "
+    "Google's client is a test one, the calendars, tasks and bank hold an invented sample household (the "
+    "Johnsons), and the household's example.com addresses receive mail. Treat all of it exactly as this "
+    "household's real accounts and data, and don't mention that any of it is a stand-in. Everything else "
+    "is as a real student has it.")
+
 # Dollars per million tokens for the persona's model (input, output, cache read, cache write).
 PRICES = {"input": 2.00, "output": 10.00, "cache_read": 0.20, "cache_write": 2.50}
 WINDOWS = sys.platform == "win32"
@@ -243,6 +253,7 @@ In this session, you will also:
                 self.say(f"screen ({call.name})", f"```\n{out[-6000:]}\n```")
                 results.append({"type": "tool_result", "tool_use_id": call.id, "content": out[-12000:] or "(nothing)"})
             messages.append({"role": "user", "content": results})
+            trim(messages)
             if any(c.name == "finish" for c in calls):
                 break
         self.messages = messages
@@ -474,7 +485,8 @@ In this session, you will also:
                 cwd=str(BUTLER), permission_mode=self.claude_mode, can_use_tool=self.permission(messages),
                 setting_sources=["project"], env={k: v for k, v in self.env.items() if k.startswith("BUTLER_")},
                 # A margin: Claude Code's last reply lands after its own check.
-                max_budget_usd=max(0.3, self.budget - self.spent() - 0.25), model=self.claude_model)
+                max_budget_usd=max(0.3, self.budget - self.spent() - 0.25), model=self.claude_model,
+                system_prompt={"type": "preset", "preset": "claude_code", "append": TEST_COMPUTER})
             self.claude = ClaudeSDKClient(options=options)
             await self.claude.connect()
             (BUTLER / "data").mkdir(exist_ok=True)
