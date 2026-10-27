@@ -26,6 +26,7 @@ import webbrowser
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from . import config, system
@@ -33,7 +34,9 @@ from .calendar_source import Failed
 from .config import NotSetUp
 
 KEYCHAIN_GOOGLE = "butler-google"
-CLIENT_FILE = config.ROOT / "config" / "google-oauth.json"   # git-ignored; the installer writes it
+CLIENT_FILE = config.ROOT / "config" / "google-oauth.json"   # git-ignored: a household's own client, if it has one
+# Butler's own client, which the release workflow builds into every installer (git-ignored here).
+BUNDLED_CLIENT = Path(__file__).with_name("google_client.json")
 SCOPES = ("https://www.googleapis.com/auth/calendar.readonly",
           "https://www.googleapis.com/auth/calendar.events",
           "https://www.googleapis.com/auth/tasks")
@@ -77,13 +80,16 @@ def _urls() -> Urls:
 
 def _client() -> tuple[str, str]:
     """This install's Google client: from the environment, else config/google-oauth.json (Google's
-    downloaded file, or plain client_id and client_secret)."""
+    downloaded file, or plain client_id and client_secret), else the one the installer carries.
+    A desktop app's client secret isn't confidential: Google expects it inside every copy."""
     cid, secret = os.environ.get("BUTLER_GOOGLE_CLIENT_ID"), os.environ.get("BUTLER_GOOGLE_CLIENT_SECRET")
-    if not (cid and secret) and CLIENT_FILE.exists():
+    for path in (CLIENT_FILE, BUNDLED_CLIENT):
+        if (cid and secret) or not path.exists():
+            continue
         try:
-            data = json.loads(CLIENT_FILE.read_text())
+            data = json.loads(path.read_text())
         except ValueError:
-            raise NotSetUp(f"{NO_CLIENT}: config/google-oauth.json isn't valid JSON") from None
+            raise NotSetUp(f"{NO_CLIENT}: {path.name} isn't valid JSON") from None
         data = data.get("installed", data) if isinstance(data, dict) else {}
         cid, secret = data.get("client_id"), data.get("client_secret")
     if not (cid and secret):

@@ -44,6 +44,13 @@ printf '%s\n' "$version" > "$stage/.butler-version"
 if [ -n "$helper" ]; then
   install -m 755 "$helper" "$stage/bin/butler-ek"
 fi
+# Butler's Google client (Calendar and Tasks), when the release workflow has it: read from the
+# environment, never from the command line. A desktop app's client secret isn't confidential (it
+# ships in every copy), but it stays out of the public repo. src/butler/gcal.py reads it.
+if [ -n "${BUTLER_GOOGLE_CLIENT_ID:-}" ] && [ -n "${BUTLER_GOOGLE_CLIENT_SECRET:-}" ]; then
+  python3 -c 'import json, os, sys; json.dump({"client_id": os.environ["BUTLER_GOOGLE_CLIENT_ID"], "client_secret": os.environ["BUTLER_GOOGLE_CLIENT_SECRET"]}, open(sys.argv[1], "w"))' \
+    "$stage/src/butler/google_client.json"
+fi
 if [ -n "$app" ]; then
   mkdir -p "$work/root/Applications"
   ditto "$app" "$work/root/Applications/Butler.app"

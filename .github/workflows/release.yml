@@ -111,6 +111,11 @@ jobs:
 
       - name: The package
         id: build
+        env:
+          # Butler's Google client for Calendar and Tasks (gcal.py): a desktop app's, not
+          # confidential, but kept out of the public repo. build-pkg.sh reads it from here.
+          BUTLER_GOOGLE_CLIENT_ID: ${{ secrets.BUTLER_GOOGLE_CLIENT_ID }}
+          BUTLER_GOOGLE_CLIENT_SECRET: ${{ secrets.BUTLER_GOOGLE_CLIENT_SECRET }}
         run: |
           if [ -n "${INSTALLER_IDENTITY:-}" ]; then
             pkg="$(packaging/macos/build-pkg.sh --version "$VERSION" --out dist --helper "$RUNNER_TEMP/butler-ek" --app "$RUNNER_TEMP/Butler.app" --sign "$INSTALLER_IDENTITY")"
@@ -124,6 +129,11 @@ jobs:
           pkgutil --payload-files "$pkg" | grep -qx './Butler/requirements.lock'
           pkgutil --payload-files "$pkg" | grep -qx './Butler/scripts/lib/uv.sh'
           pkgutil --payload-files "$pkg" | grep -qx './Applications/Butler.app/Contents/MacOS/Butler'
+          if [ -n "$BUTLER_GOOGLE_CLIENT_ID" ]; then
+            pkgutil --payload-files "$pkg" | grep -qx './Butler/src/butler/google_client.json'
+          else
+            echo "### No Google client: this package can't connect Google Calendar (BUTLER_GOOGLE_CLIENT_ID)" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Notarize and staple
         if: steps.mode.outputs.signed == 'true'
@@ -148,24 +158,88 @@ jobs:
         run: security delete-keychain "$SIGNING_KEYCHAIN"
 
   windows:
-    # Butler-Setup.exe for this version, unsigned for now (#40), proven to install. Kept as an
-    # artifact only: publish doesn't need or use it, so a Windows failure never holds up the Mac.
+    # Butler-Setup.exe for this version, proven to install. With the signing settings it's signed
+    # through Azure Artifact Signing as Andrew Edmond (the certificate the updater checks for,
+    # updates.PUBLISHER), timestamped, and checked the way Butler's updater will check it; a tag
+    # then publishes it beside the Mac's package. Without them it stays an unsigned artifact.
+    # publish attaches it only when it's signed, and a Windows failure never holds up the Mac.
     needs: package
-    runs-on: windows-latest
+    runs-on: windows-2025
     timeout-minutes: 30
+    # The Azure app's federated credential trusts only this environment (no password exists).
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      signed: ${{ steps.mode.outputs.signed }}
     env:
       VERSION: ${{ needs.package.outputs.version }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      SIGNING_ENDPOINT: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+      SIGNING_ACCOUNT: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+      SIGNING_PROFILE: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
     steps:
       - uses: actions/checkout@v4
+      - name: Signing mode
+        id: mode
+        shell: pwsh
+        run: |
+          $missing = @("AZURE_CLIENT_ID", "AZURE_TENANT_ID", "AZURE_SUBSCRIPTION_ID", "SIGNING_ENDPOINT", "SIGNING_ACCOUNT", "SIGNING_PROFILE") |
+            Where-Object { -not [Environment]::GetEnvironmentVariable($_) }
+          if ($missing) {
+            "signed=false" >> $env:GITHUB_OUTPUT
+            "### Windows installer UNSIGNED: missing $($missing -join ', '). It isn't published." >> $env:GITHUB_STEP_SUMMARY
+          } else { "signed=true" >> $env:GITHUB_OUTPUT }
       - name: Inno Setup 6 (the runner image has it; installed only if it doesn't)
         shell: pwsh
         run: |
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
       - name: Build the installer
         shell: pwsh
+        env:
+          BUTLER_GOOGLE_CLIENT_ID: ${{ secrets.BUTLER_GOOGLE_CLIENT_ID }}
+          BUTLER_GOOGLE_CLIENT_SECRET: ${{ secrets.BUTLER_GOOGLE_CLIENT_SECRET }}
         run: |
-          powershell -ExecutionPolicy Bypass -File packaging\windows\build-installer.ps1 -Version $env:VERSION
+          if ("${{ steps.mode.outputs.signed }}" -eq "true") {
+            powershell -ExecutionPolicy Bypass -File packaging\windows\build-installer.ps1 -Version $env:VERSION -Signed
+          } else {
+            powershell -ExecutionPolicy Bypass -File packaging\windows\build-installer.ps1 -Version $env:VERSION
+          }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Sign in to Azure (OpenID Connect, no secret)
+        if: steps.mode.outputs.signed == 'true'
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Sign it with Artifact Signing, timestamped
+        if: steps.mode.outputs.signed == 'true'
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
+          files: ${{ github.workspace }}\dist\Butler-Setup.exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+      - name: The signature, as Butler's updater checks it
+        if: steps.mode.outputs.signed == 'true'
+        shell: pwsh
+        run: |
+          $sig = Get-AuthenticodeSignature dist\Butler-Setup.exe
+          Write-Host "$($sig.Status): $($sig.SignerCertificate.Subject); timestamped by $($sig.TimeStamperCertificate.Subject)"
+          if ($sig.Status -ne "Valid") { throw "the installer's signature is $($sig.Status)" }
+          if (-not $sig.TimeStamperCertificate) { throw "the signature isn't timestamped, so it would expire with the certificate" }
+          # WinVerifyTrust and the publisher check, from Butler's own code (system/windows.py, updates.py).
+          $env:PYTHONPATH = "src"
+          python -c "import re, sys; from butler.system import windows; publisher = re.search(r'^PUBLISHER = \"(.+)\"', open('src/butler/updates.py').read(), re.M)[1]; s = windows.installer_signer(sys.argv[1]); print(s); sys.exit(0 if s and s['name'] == publisher and s.get('organization', '') in ('', publisher) else 1)" dist\Butler-Setup.exe
+          if ($LASTEXITCODE -ne 0) { throw "the signer isn't the one Butler's updater accepts" }
+          "### Windows installer signed: $($sig.SignerCertificate.Subject)" >> $env:GITHUB_STEP_SUMMARY
       - name: It installs, silently, as the overnight updater will run it
         shell: pwsh
         run: |
@@ -173,10 +247,12 @@ jobs:
           $b = "$env:USERPROFILE\Butler"
           if ($p.ExitCode -ne 0) { Get-Content "$env:RUNNER_TEMP\install.txt" -Tail 40; Get-Content -ErrorAction SilentlyContinue "$b\logs\bootstrap.log"; throw "the installer exited $($p.ExitCode)" }
           if ((Get-Content -Raw "$b\.butler-version").Trim() -ne $env:VERSION) { throw "the installed version isn't $env:VERSION" }
+          if ("${{ steps.mode.outputs.signed }}" -eq "true" -and (Test-Path "$b\.butler-unsigned-build")) { throw "a signed build carries the unsigned-build marker" }
+          if (-not (Test-Path "$b\src\butler\google_client.json")) { "### No Google client in the Windows installer: it can't connect Google Calendar" >> $env:GITHUB_STEP_SUMMARY }
           & "$b\bin\butler.cmd" help
           if ($LASTEXITCODE -ne 0) { throw "butler.cmd help exited $LASTEXITCODE" }
           $hash = (Get-FileHash -Algorithm SHA256 dist\Butler-Setup.exe).Hash.ToLower()
-          "### Windows installer (unsigned, not published): Butler-Setup.exe, sha256 $hash" >> $env:GITHUB_STEP_SUMMARY
+          "Butler-Setup.exe, sha256 $hash" >> $env:GITHUB_STEP_SUMMARY
       - uses: actions/upload-artifact@v4
         with:
           name: butler-setup-${{ env.VERSION }}
@@ -241,7 +317,7 @@ jobs:
     # Tags only. A signed package is published only once signed-update has passed from every
     # origin (a matrix succeeds only when all its runs do). An unsigned
     # one (secrets missing) goes out only as a prerelease, which students never get.
-    needs: [package, signed-update]
+    needs: [package, signed-update, windows]
     if: >-
       !cancelled() && github.ref_type == 'tag' && needs.package.result == 'success' &&
       (needs.signed-update.result == 'success' || needs.package.outputs.signed != 'true')
@@ -251,10 +327,17 @@ jobs:
       VERSION: ${{ needs.package.outputs.version }}
       PKG: dist/${{ needs.package.outputs.pkg }}
       SIGNED: ${{ needs.package.outputs.signed }}
+      # The Windows installer goes out only when it was signed and proven to install.
+      WINDOWS: ${{ needs.windows.result == 'success' && needs.windows.outputs.signed == 'true' }}
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: butler-pkg-${{ needs.package.outputs.version }}
+          path: dist
+      - uses: actions/download-artifact@v4
+        if: needs.windows.result == 'success' && needs.windows.outputs.signed == 'true'
+        with:
+          name: butler-setup-${{ needs.package.outputs.version }}
           path: dist
       - name: Publish the release
         env:
@@ -268,10 +351,12 @@ jobs:
             whatsnew="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/${ref#* }" --jq .message)"
           fi
           download="Download Butler from https://buildyourbutler.com. This package installs into your home folder (~/Butler) and opens the guided first run."
+          assets=("$PKG")
+          [ "$WINDOWS" = true ] && assets+=(dist/Butler-Setup.exe)
           if [ "$SIGNED" = true ]; then
             printf '%s\n\n%s\n' "$whatsnew" "$download" | sed '/./,$!d' > notes.md
-            gh release create "$VERSION" "$PKG" --repo "$GITHUB_REPOSITORY" --title "Butler $VERSION" --notes-file notes.md
+            gh release create "$VERSION" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --title "Butler $VERSION" --notes-file notes.md
           else
-            gh release create "$VERSION" "$PKG" --repo "$GITHUB_REPOSITORY" --title "Butler $VERSION (unsigned)" --prerelease \
+            gh release create "$VERSION" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --title "Butler $VERSION (unsigned)" --prerelease \
               --notes "UNSIGNED build: signing secrets were missing. $download"
           fi

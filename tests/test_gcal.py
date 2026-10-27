@@ -262,7 +262,8 @@ class TokenTest(Connected):
 
     def test_no_client_id_is_not_set_up(self):
         with mock.patch.dict(os.environ, {"BUTLER_GOOGLE_CLIENT_ID": "", "BUTLER_GOOGLE_CLIENT_SECRET": ""}), \
-                mock.patch.object(gcal, "CLIENT_FILE", Path(tempfile.gettempdir()) / "no-such-google-oauth.json"):
+                mock.patch.object(gcal, "CLIENT_FILE", Path(tempfile.gettempdir()) / "no-such-google-oauth.json"), \
+                mock.patch.object(gcal, "BUNDLED_CLIENT", Path(tempfile.gettempdir()) / "no-such-google-client.json"):
             with self.assertRaisesRegex(NotSetUp, "no Google client ID"):
                 gcal.run(["calendars"])
 
@@ -276,6 +277,17 @@ class TokenTest(Connected):
                 path.write_text("{not json")
                 with self.assertRaisesRegex(NotSetUp, "isn't valid JSON"):
                     gcal._client()
+
+    def test_the_client_the_installer_carries_is_read_and_a_households_own_comes_first(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            own, bundled = Path(tmp) / "google-oauth.json", Path(tmp) / "google_client.json"
+            with mock.patch.dict(os.environ, {"BUTLER_GOOGLE_CLIENT_ID": "", "BUTLER_GOOGLE_CLIENT_SECRET": ""}), \
+                    mock.patch.object(gcal, "CLIENT_FILE", own), mock.patch.object(gcal, "BUNDLED_CLIENT", bundled):
+                bundled.write_text(json.dumps({"client_id": CLIENT_ID, "client_secret": CLIENT_SECRET}))
+                self.assertEqual(gcal._client(), (CLIENT_ID, CLIENT_SECRET))
+                self.assertEqual(len(self.ask("calendars")), 4)
+                own.write_text(json.dumps({"installed": {"client_id": "households-own", "client_secret": "theirs"}}))
+                self.assertEqual(gcal._client(), ("households-own", "theirs"))
 
     def test_a_wrong_client_is_a_failure_not_a_reconnect(self):
         with mock.patch.dict(os.environ, {"BUTLER_GOOGLE_CLIENT_SECRET": "wrong"}):
@@ -311,7 +323,8 @@ class TokenTest(Connected):
         self.refresh = None
         self.assertIn("isn't connected yet", gcal.status())
         with mock.patch.dict(os.environ, {"BUTLER_GOOGLE_CLIENT_ID": ""}), \
-                mock.patch.object(gcal, "CLIENT_FILE", Path(tempfile.gettempdir()) / "no-such-google-oauth.json"):
+                mock.patch.object(gcal, "CLIENT_FILE", Path(tempfile.gettempdir()) / "no-such-google-oauth.json"), \
+                mock.patch.object(gcal, "BUNDLED_CLIENT", Path(tempfile.gettempdir()) / "no-such-google-client.json"):
             self.assertIn("Not ready", gcal.status())
         self.refresh = REFRESH_TOKEN
         self.google.revoked = True

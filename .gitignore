@@ -45,3 +45,4 @@ coverage.json
 .env
 .DS_Store
 /.venvs/
+/src/butler/google_client.json
