@@ -37,6 +37,49 @@ class FreshTest(unittest.TestCase):
             self.assertNotIn(key, s)
         self.assertEqual(s["portal"]["url"], "")
 
+    def test_none_of_the_johnsons_choices_either(self):
+        """Found by the persona tests: a household in Leeds was told its currency is the euro."""
+        s = ss.fresh()
+        text = yaml.safe_dump(s)
+        for theirs in ("Example Bank", "Little sport", "schools and transport", "NPR"):
+            self.assertNotIn(theirs, text, theirs)
+        self.assertNotIn("second", s["currency"], "the Johnsons are paid in USD; a new household isn't")
+        self.assertEqual([r["key"] for r in s["news"]["regions"]], ["world"])
+        self.assertEqual(s["calendar"]["source"], "google" if ss.system.NAME == "windows" else "apple")
+
+
+class TownCurrencyAndNewsTest(unittest.TestCase):
+    LEEDS = ss.Place("Leeds", "United Kingdom", "GB", 53.8, -1.55, "Europe/London")
+    PARIS_FR = ss.Place("Paris", "France", "FR", 48.85, 2.35, "Europe/Paris")
+    PARIS_TX = ss.Place("Paris", "United States", "US", 33.66, -95.56, "America/Chicago", "Texas")
+    TOKYO = ss.Place("Tokyo", "Japan", "JP", 35.69, 139.69, "Asia/Tokyo")
+
+    def keys(self, s):
+        return [r["key"] for r in s["news"]["regions"]]
+
+    def test_the_first_town_brings_its_currency_and_news(self):
+        s = ss.fresh()
+        ss.set_town(s, self.LEEDS)
+        self.assertEqual((s["currency"]["primary"], self.keys(s)), ("GBP", ["europe", "world"]))
+        s = ss.fresh()
+        ss.set_town(s, self.TOKYO)
+        self.assertEqual((s["currency"]["primary"], self.keys(s)), ("JPY", ["world"]))
+
+    def test_a_corrected_town_corrects_them(self):
+        s = ss.fresh()
+        ss.set_town(s, self.PARIS_FR)
+        self.assertEqual((s["currency"]["primary"], self.keys(s)), ("EUR", ["europe", "world"]))
+        ss.set_town(s, self.PARIS_TX)
+        self.assertEqual((s["currency"]["primary"], self.keys(s)), ("USD", ["us", "world"]))
+
+    def test_the_households_own_choices_stay(self):
+        s = ss.fresh()
+        ss.set_town(s, self.LEEDS)
+        s["currency"]["primary"] = "EUR"                       # Lunch Money's, in Module 7
+        s["news"]["regions"].insert(0, {"key": "local", "label": "Leeds", "feeds": []})   # Module 2
+        ss.set_town(s, self.PARIS_TX)
+        self.assertEqual((s["currency"]["primary"], self.keys(s)), ("EUR", ["local", "europe", "world"]))
+
     def test_mac_timezone_falls_back(self):
         with mock.patch("os.readlink", side_effect=OSError):
             self.assertEqual(ss.mac_timezone(), "UTC")
