@@ -6,8 +6,10 @@ import json
 import re
 import unittest
 from datetime import timedelta
+from pathlib import Path
 
 from butler.agenda import OUTSIDE_LABEL, OUTSIDE_MARK
+from butler.fmt import strftime
 from fakes import fixtures
 from fakes.home import Home
 
@@ -278,7 +280,7 @@ class BudgetByReplyTest(unittest.TestCase):
         applied = mails[self.APPLY]
         self.assertEqual(sorted(applied["to"]), ["alex@example.com", "sam@example.com"])
         self.assertIn("Subscriptions and outings (Lifestyle) from €120 to €25 a month", applied["text"])
-        self.assertIn(f"saved as budget/history/{self.history()[0].name}", applied["text"])
+        self.assertIn(f"saved as {Path('budget', 'history', self.history()[0].name)}", applied["text"])
         unclear = mails[self.UNCLEAR]
         self.assertEqual(sorted(unclear["to"]), ["alex@example.com", "sam@example.com"])
         self.assertIn("I didn't change the budget.", unclear["text"])
@@ -307,7 +309,7 @@ class WeeklyOnFridayTest(unittest.TestCase):
         self.assertIsNone(self.weekly["error"], self.weekly["error"])
         m = self.weekly["mails"][0]
         friday = fixtures.today() + timedelta(days=(4 - fixtures.today().weekday()) % 7)
-        self.assertEqual(m["subject"], f"Bento · your week ahead, {friday + timedelta(days=1):%-d %B}")
+        self.assertEqual(m["subject"], f"Bento · your week ahead, {strftime(friday + timedelta(days=1), '%-d %B')}")
         self.assertIn(f"Week ending Friday {friday.day} {friday:%B %Y}", m["text"])
         self.assertIn("Bento, Friday letter.", m["html"])
         for part in ("subject", "text", "html"):

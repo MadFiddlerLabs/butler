@@ -544,7 +544,7 @@ class GoogleHouseholdTest(unittest.TestCase):
         for secret in (REFRESH_TOKEN, CLIENT_SECRET, *self.google.access):
             self.assertNotIn(secret, everything)
             for name, text in files.items():
-                if name != "fakes/secrets.json":
+                if Path(name) != Path("fakes", "secrets.json"):
                     self.assertNotIn(secret, text, name)
 
 
