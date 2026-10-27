@@ -168,6 +168,8 @@ How this works:
 - Keep going, lesson after lesson, until read_lesson tells you that was the last lesson. Use finish only then,
   or if you're truly stuck and would give up.
 - This computer is already signed in to Claude (claude.ai), so Claude Code won't ask you to sign in.
+- When Claude Code asks permission for something, you'll be asked in that moment, and what you answer is your
+  own choice: the claude_code result then shows the question and your answer.
 
 In this session, you will also:
 {cards}"""
@@ -181,7 +183,7 @@ In this session, you will also:
 
     async def persona_loop(self) -> None:
         messages = [{"role": "user", "content": "Your computer is on and the course website is open. Start with the first lesson."}]
-        while self.spent() < self.budget:
+        while self.spent() < self.budget - 0.1:
             response = await self.ask(messages, TOOLS)
             messages.append({"role": "assistant", "content": response.content})
             calls = [b for b in response.content if b.type == "tool_use"]
@@ -262,7 +264,10 @@ In this session, you will also:
             w.type(text)
         elif action == "keys":
             w.keys("".join(KEYS.get(part, part) for part in re.split(r"(ENTER|CTRL_C|TAB|UP|DOWN|BACKSPACE|ESCAPE)", text)))
-        screen = w.read(quiet=3.0, limit=300.0)
+        # 'look' is a person watching the window: it waits for something to appear, then for it to settle.
+        if action == "look":
+            w.wait_new(limit=30.0)   # at once if something's there already
+        screen = w.read(quiet=3.0 if action != "look" else 5.0, limit=300.0)
         return self.after_screen(screen)
 
     def after_screen(self, screen: str) -> str:
@@ -395,7 +400,8 @@ In this session, you will also:
             options = ClaudeAgentOptions(
                 cwd=str(BUTLER), permission_mode=self.claude_mode, can_use_tool=self.permission(messages),
                 setting_sources=["project"], env={k: v for k, v in self.env.items() if k.startswith("BUTLER_")},
-                max_budget_usd=max(0.5, self.budget - self.spent()), model=self.claude_model)
+                # A margin: Claude Code's last reply lands after its own check.
+                max_budget_usd=max(0.3, self.budget - self.spent() - 0.25), model=self.claude_model)
             self.claude = ClaudeSDKClient(options=options)
             await self.claude.connect()
             (BUTLER / "data").mkdir(exist_ok=True)
@@ -434,7 +440,8 @@ In this session, you will also:
             what = json.dumps(tool_input, ensure_ascii=False)[:800]
             question = (f"Claude Code stops and asks you, in the Terminal window:\n\n  {tool_name}: {what}\n\n"
                         "  Do you want to proceed?\n  ❯ 1. Yes\n    2. No, and tell Claude what to do differently (esc)\n\n"
-                        "Answer with the answer tool.")
+                        "This is your decision, as you, with this session's habits and choices in mind. Answer with the "
+                        "answer tool.")
             snapshot = messages + [{"role": "user", "content": question}] if messages[-1]["role"] == "assistant" else \
                 messages[:-1] + [{"role": "user", "content": question}]
             try:
@@ -443,9 +450,9 @@ In this session, you will also:
             except Exception as e:  # noqa: BLE001 - a broken question shouldn't stop the run
                 answer = {"choice": "yes", "say": f"(harness: {e})"}
             self.say(f"{self.persona['name']} answers Claude Code", f"{tool_name}: {answer}")
-            self._shown.append(f"[Claude Code asked: {tool_name} {what[:300]} — Do you want to proceed? "
-                               f"You chose: {'1. Yes' if answer['choice'] == 'yes' else '2. No'}"
-                               f"{(' and said: ' + answer['say']) if answer['choice'] != 'yes' and answer.get('say') else ''}]")
+            self._shown.append(f"Claude Code stopped and asked you: {tool_name}: {what[:300]}\n  Do you want to proceed?\n"
+                               f"  You answered: {'1. Yes' if answer['choice'] == 'yes' else '2. No'}"
+                               f"{(', and told Claude: ' + answer['say']) if answer['choice'] != 'yes' and answer.get('say') else ''}")
             if answer["choice"] == "yes":
                 return PermissionResultAllow()
             return PermissionResultDeny(message=answer.get("say") or "The user said no.")
