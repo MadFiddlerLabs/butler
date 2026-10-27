@@ -1,6 +1,7 @@
 # Butler on Windows, end to end (#40), as macos-e2e does for the Mac: on a clean Windows runner,
 # bootstrap.ps1 brings the pinned uv, its Python and the locked packages; the first preview
 # builds a brief that sends nothing; and the Task Scheduler tasks install, run and come out.
+# A second job builds the installer and installs, upgrades and uninstalls it.
 # No secrets: the brief leaves out the parts Claude writes, as it does before a key is stored.
 name: windows-e2e
 
@@ -63,3 +64,70 @@ jobs:
             logs/
             out/preview/
           if-no-files-found: ignore
+
+  installer:
+    # The installer as a household runs it, silently: into %USERPROFILE%\Butler without admin
+    # rights, its own Python, named from the file; an upgrade keeps the household's files; and
+    # uninstalling leaves them.
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inno Setup 6 (the runner image has it; installed only if it doesn't)
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+          (Get-Item "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe").VersionInfo.ProductVersion
+      - name: Build the installer
+        run: powershell -ExecutionPolicy Bypass -File packaging\windows\build-installer.ps1 -Version v0.0.1-ci
+      - name: Install it as Bento, as a household would (silently here)
+        shell: pwsh
+        run: |
+          Copy-Item dist\Butler-Setup.exe "$env:RUNNER_TEMP\Bento.exe"
+          $p = Start-Process "$env:RUNNER_TEMP\Bento.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/LOG=$env:RUNNER_TEMP\install-1.txt" -Wait -PassThru
+          $b = "$env:USERPROFILE\Butler"
+          if ($p.ExitCode -ne 0) { Get-Content "$env:RUNNER_TEMP\install-1.txt" -Tail 40; Get-Content -ErrorAction SilentlyContinue "$b\logs\bootstrap.log"; throw "the installer exited $($p.ExitCode)" }
+          if (-not (Test-Path "$b\.venv\Scripts\python.exe")) { throw "no Python in $b\.venv" }
+          if ((Get-Content -Raw "$b\.butler-name").Trim() -ne "Bento") { throw "not named from the installer's filename" }
+          Get-Content "$b\logs\install.log"
+          if ((Get-Content -Raw "$b\logs\install.log") -notmatch "installed \(fresh\), silently") { throw "install.log doesn't say what happened" }
+          if ([Environment]::GetEnvironmentVariable("Path", "User") -notlike "*$b\bin*") { throw "Butler's bin isn't on the PATH" }
+          if (-not (Test-Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Butler.lnk")) { throw "no Start menu shortcut" }
+      - name: The first preview, from the installed copy
+        shell: pwsh
+        env:
+          BUTLER_NO_OPEN: "1"
+        run: |
+          $b = "$env:USERPROFILE\Butler"
+          & "$b\.venv\Scripts\python.exe" "$b\run.py" preview
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Get-ChildItem "$b\out\preview\brief-*.html")) { throw "no brief" }
+          # The butler command, as the Start menu shortcut and a new terminal run it.
+          & "$b\bin\butler.cmd" help
+          if ($LASTEXITCODE -ne 0) { throw "butler.cmd help exited $LASTEXITCODE" }
+      - name: Upgrading keeps the household's files
+        shell: pwsh
+        run: |
+          $b = "$env:USERPROFILE\Butler"
+          Set-Content -Encoding utf8 "$b\config\settings.yaml" "name: Bento"
+          Set-Content -Encoding utf8 "$b\data\household_notes.md" "- a note"
+          Copy-Item dist\Butler-Setup.exe "$env:RUNNER_TEMP\Jeeves.exe"
+          $p = Start-Process "$env:RUNNER_TEMP\Jeeves.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/LOG=$env:RUNNER_TEMP\install-2.txt" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content "$env:RUNNER_TEMP\install-2.txt" -Tail 40; throw "the upgrade exited $($p.ExitCode)" }
+          if ((Get-Content -Raw "$b\config\settings.yaml").Trim() -ne "name: Bento") { throw "settings.yaml changed" }
+          if ((Get-Content -Raw "$b\data\household_notes.md").Trim() -ne "- a note") { throw "household_notes.md changed" }
+          if ((Get-Content -Raw "$b\.butler-name").Trim() -ne "Bento") { throw ".butler-name changed" }
+          if ((Get-Content -Raw "$b\logs\install.log") -notmatch "installed \(finished\), silently") { throw "the upgrade wasn't seen as one over a finished first run" }
+          $paths = [Environment]::GetEnvironmentVariable("Path", "User") -split ";" | Where-Object { $_ -eq "$b\bin" }
+          if (@($paths).Count -ne 1) { throw "Butler's bin is on the PATH $(@($paths).Count) times" }
+      - name: Uninstalling leaves the household's files
+        shell: pwsh
+        run: |
+          $b = "$env:USERPROFILE\Butler"
+          $un = Get-ChildItem "$b\.uninstall\unins*.exe" | Select-Object -First 1
+          $p = Start-Process $un.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "the uninstaller exited $($p.ExitCode)" }
+          Start-Sleep -Seconds 5   # the uninstaller finishes in a copy of itself
+          if (Test-Path "$b\run.py") { throw "Butler's own files are still there" }
+          if ((Get-Content -Raw "$b\config\settings.yaml").Trim() -ne "name: Bento") { throw "the household's settings went" }
+          if ((Get-Content -Raw "$b\data\household_notes.md").Trim() -ne "- a note") { throw "the household's notes went" }

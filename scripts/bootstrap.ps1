@@ -32,11 +32,16 @@ if ($have -ne $version) {
             try { Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $zip; break }
             catch { $tries++; if ($tries -ge 5) { throw "Couldn't download uv. Check the internet connection and try again." }; Start-Sleep -Seconds ([math]::Pow(2, $tries)) }
         }
-        $got = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower()
+        # .NET, not Get-FileHash or Expand-Archive: those live in PowerShell modules that a PC with
+        # more than one PowerShell can fail to load.
+        $stream = [IO.File]::OpenRead($zip)
+        try { $got = ([BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($stream)) -replace "-", "").ToLower() }
+        finally { $stream.Dispose() }
         if ($got -ne $sha) { throw "The uv download doesn't match its checksum ($got), so Butler won't use it." }
-        Expand-Archive -Path $zip -DestinationPath $tmp -Force
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        [IO.Compression.ZipFile]::ExtractToDirectory($zip, (Join-Path $tmp "uv"))
         New-Item -ItemType Directory -Force $bin | Out-Null
-        Copy-Item (Join-Path $tmp "uv.exe") $uv -Force
+        Copy-Item (Join-Path $tmp "uv\uv.exe") $uv -Force
     } finally {
         Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
     }
