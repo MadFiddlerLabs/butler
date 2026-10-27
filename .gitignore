@@ -44,3 +44,4 @@ coverage.json
 *.pyc
 .env
 .DS_Store
+/.venvs/
