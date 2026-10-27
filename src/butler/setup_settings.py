@@ -24,6 +24,15 @@ COLORS = [("#3f51b5", "#8c9eff"), ("#e67c73", "#f4a39d"), ("#33b679", "#6fd3a0")
           ("#8e24aa", "#c77ddb"), ("#f4511e", "#ff8a65"), ("#039be5", "#4fc3f7")]
 OPTIONAL_FEATURES = ("language_learning", "score_tracker")
 FAHRENHEIT_COUNTRIES = {"US", "LR", "MM", "BS", "BZ", "KY", "PW", "FM", "MH"}
+# A town's usual currency, as the first guess: Lunch Money's own currency replaces it in Module 7.
+EURO_COUNTRIES = {"AT", "BE", "HR", "CY", "EE", "FI", "FR", "DE", "GR", "IE", "IT", "LV", "LT", "LU", "MT", "NL",
+                  "PT", "SK", "SI", "ES"}
+CURRENCIES = {"US": "USD", "GB": "GBP", "CA": "CAD", "AU": "AUD", "NZ": "NZD", "CH": "CHF", "SE": "SEK", "NO": "NOK",
+              "DK": "DKK", "PL": "PLN", "CZ": "CZK", "HU": "HUF", "JP": "JPY", "IN": "INR", "SG": "SGD", "HK": "HKD",
+              "ZA": "ZAR", "MX": "MXN", "BR": "BRL", "IL": "ILS", **{c: "EUR" for c in EURO_COUNTRIES}}
+EUROPE = EURO_COUNTRIES | {"GB", "CH", "SE", "NO", "DK", "PL", "CZ", "HU", "IS", "RO", "BG", "RS", "UA"}
+# The news a new household starts with, by where it lives; Module 2 makes it theirs.
+STARTING_NEWS_INTERESTS = "Local news, the economy and major world events."
 HEADER = ("# Written by the `butler` command. Edit freely: docs/CONFIG.md explains every setting.\n"
           "# Never put ID numbers, account numbers or passwords in this file.\n")
 
@@ -62,11 +71,26 @@ def fresh() -> dict:
     s["reminders"]["todo_list"] = PLACEHOLDER_NAME
     s["portal"].update(url="", allowed_logins=[], people={})
     s["llm"].pop("monthly_limit", None)    # theirs, from the Console: /butler-setup brain asks
+    # The Johnsons' own choices, which a new household shouldn't start with: their second currency,
+    # their bank's account names, what they want from the news, and Apple's calendar on Windows.
+    s["currency"].pop("second", None)
+    s.get("networth", {})["labels"] = {}
+    s["news"]["interests"] = STARTING_NEWS_INTERESTS
+    s["news"]["regions"] = starting_regions(s["news"]["regions"], None)
+    s["calendar"]["source"] = "google" if system.NAME == "windows" else "apple"
     s.pop("weather", None)
     s.pop("claude_mode", None)              # theirs to choose: `butler claude` asks once
     for key in OPTIONAL_FEATURES:
         s.pop(key, None)
     return s
+
+
+def starting_regions(example: list[dict], country: str | None) -> list[dict]:
+    """The example's news regions that fit a household in `country` (a code like "GB", or None
+    before the town is known): Europe for a European town, the United States for an American one,
+    and the world for everyone."""
+    wanted = {"world"} | ({"europe"} if country in EUROPE else set()) | ({"us"} if country == "US" else set())
+    return [r for r in example if r.get("key") in wanted]
 
 
 def load() -> dict:
@@ -184,6 +208,19 @@ def set_town(s: dict, place: Place) -> None:
         unit = "fahrenheit" if place.country_code in FAHRENHEIT_COUNTRIES else "celsius"
     s["weather"] = {**old, "place": place.name, "latitude": round(place.latitude, 2),
                     "longitude": round(place.longitude, 2), "unit": unit, "country": place.country_code}
+    # A town in a new country brings that country's usual currency and starting news, while they're
+    # still what the last town implied (so a corrected first town fixes them too). Once the
+    # household has its own, from Lunch Money in Module 7 or the news in Module 2, they stay.
+    before, now = old.get("country"), place.country_code
+    if before != now:
+        currency = s.setdefault("currency", {})
+        first_town = before is None
+        if CURRENCIES.get(now) and (first_town or currency.get("primary") == CURRENCIES.get(before)):
+            currency["primary"] = CURRENCIES[now]
+        news = s.get("news", {})
+        example = yaml.safe_load(EXAMPLE.read_text())["news"]["regions"]
+        if [r.get("key") for r in news.get("regions", [])] == [r["key"] for r in starting_regions(example, before)]:
+            news["regions"] = starting_regions(example, now)
 
 
 CLAUDE_MODES = ("ask", "auto")
