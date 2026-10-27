@@ -328,8 +328,12 @@ class FirstRun:
         self.say("I'll email you a link to sign in. It keeps your place in the course.")
         self.say(f"We never see your household's data. It goes only from this {self.computer} to services you "
                  "choose, such as Anthropic and Google.")
+        next_email = None
         while True:
-            email = re.sub(r"\s", "", self.keys.line("Your email \u203a ") or "")
+            if next_email:
+                email, next_email = next_email, None
+            else:
+                email = re.sub(r"\s", "", self.keys.line("Your email \u203a ") or "")
             if not email or email == "skip":
                 self.say("No problem. Sign in later with: butler setup")
                 return
@@ -350,13 +354,17 @@ class FirstRun:
                     return
                 self.say(f"That didn't work ({e}). Try again, or type skip.")
                 continue
-            self.ok("Sent! Check your inbox for an email from Butler and click the link inside.")
-            self.say("Waiting for your click. I'm getting my things ready meanwhile. To do this later, type skip "
-                     "and press Enter.")
+            # The address back, so a typo shows; while it waits, a corrected one sends a new link.
+            self.ok(f"Sent to {email}! Check your inbox for an email from Butler and click the link inside.")
+            self.say("Waiting for your click. I'm getting my things ready meanwhile. Wrong address? Type the right "
+                     "one. To do this later, type skip and press Enter.")
             token, status = self.wait_for_click(str(started.get("request_id", "")), str(started.get("poll_secret", "")))
             if token:
                 self.signed_in_as(email, token)
                 return
+            if status.startswith("retype:"):
+                next_email = status.removeprefix("retype:")
+                continue
             if status == "expired":
                 continue
             self.say("We'll finish signing in later. Type: butler setup")
@@ -377,8 +385,14 @@ class FirstRun:
                 self.say("That link expired. Let's send a new one.")
                 return None, status
             typed, line = self.keys.within(self.poll_seconds)
+            line = re.sub(r"\s", "", line or "")
             if typed and line == "skip":
                 break
+            if typed and EMAIL.fullmatch(line):
+                self.say(f"Sending a new link to {line}.")
+                return None, f"retype:{line}"
+            if typed and line:
+                self.say("Type your email again if it was wrong, or type skip to do this later.")
         return None, status
 
     def signed_in_as(self, email: str, token: str) -> None:
