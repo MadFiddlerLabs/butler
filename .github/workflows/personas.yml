@@ -3,7 +3,7 @@
 # installer, Butler and Claude Code, and the fake account API. Every run draws its own choices and
 # slips, and starts with no memory of any other. One report collects the findings.
 #
-# By hand only, on each major change: it costs about $2-4 a run for Modules 0-2 (docs/TESTING.md).
+# By hand only, on each major change: it costs about $3-4.50 a run for Modules 0-2 (docs/TESTING.md).
 # Needs ANTHROPIC_API_KEY, and COURSE_READ_TOKEN: a fine-grained token that can only read the
 # private website repo's contents (the organization allows no deploy keys).
 name: personas
@@ -29,6 +29,9 @@ on:
       personas:
         description: "Personas to run, space-separated (empty for all)"
         default: ""
+      claude_model:
+        description: "The student's Claude Code model (sonnet is a Pro plan's; empty for Claude Code's default)"
+        default: "sonnet"
 
 permissions:
   contents: read
@@ -132,7 +135,7 @@ jobs:
         run: |
           python -X utf8 tests/personas/run_persona.py --persona "${{ matrix.persona }}" --platform "${{ matrix.platform }}" \
             --seed "${{ matrix.seed }}" --lessons "lessons-${{ matrix.platform }}.json" --installer "$INSTALLER" \
-            --budget "${{ inputs.budget }}" --out "persona-out"
+            --budget "${{ inputs.budget }}" --claude-model "${{ inputs.claude_model }}" --out "persona-out"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -90,6 +90,18 @@ class Terminal:
             new, self.seen = self.screen[self.seen:], len(self.screen)
         return plain(new)
 
+    def wait_new(self, limit: float = 30.0) -> bool:
+        """Waits until something new appears in the window, as a person watching it would."""
+        deadline = time.monotonic() + limit
+        while time.monotonic() < deadline:
+            with self._lock:
+                if len(self.screen) > self.seen:
+                    return True
+            if not self._alive():
+                return False
+            time.sleep(0.2)
+        return False
+
     def wait_for(self, text: str, limit: float = 300.0) -> bool:
         deadline = time.monotonic() + limit
         while time.monotonic() < deadline:
