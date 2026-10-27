@@ -668,7 +668,7 @@ In this session, you will also:
             report = {"findings": [], "how_it_felt": f"(report failed: {e})"}
         result = {"persona": self.key, "name": self.persona["name"], "platform": self.platform, "seed": self.seed,
                   "cards": self.cards, "outcome": self.outcome, "reached": self.current()["id"],
-                  "lessons_total": len(self.lessons), "lessons_read": self.at + 1, "notes": self.notes,
+                  "lessons_total": len(self.lessons), "lessons_read": min(self.at + 1, len(self.lessons)), "notes": self.notes,
                   "report": report, "checks": self.checks(),
                   "cost_usd": {k: round(v, 3) for k, v in {**self.cost, "butler_claude": self.outside.relay.cost,
                                                            "total": self.spent()}.items()},
