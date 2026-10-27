@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -725,7 +726,7 @@ class PostInstallTest(Sandbox):
         check, restart = system.portal_restart()
         self.assertEqual(ran, [system.bootstrap_command(self.root), check, *restart])
         self.assertTrue(system.bootstrap_command(self.root)[-1].endswith(
-            "bootstrap.ps1" if system.NAME == "windows" else "bootstrap.sh"))
+            "bootstrap.ps1" if sys.platform == "win32" else "bootstrap.sh"))
 
     def test_each_failure_stops_it_with_the_reason(self):
         result, ran = self.post_install(bootstrap=1)
