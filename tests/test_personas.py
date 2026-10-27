@@ -47,6 +47,21 @@ class PersonasTest(unittest.TestCase):
                     self.assertEqual(valid_name(got), got, "the setup accepts what the site lets through")
                 self.assertEqual(bool(said), got == "Butler" and typed.strip() != "")
 
+    def test_a_question_mid_action_is_one_the_api_takes_and_keeps_the_cache(self):
+        """Claude Code's questions come while the persona's claude_code call runs. A plain question
+        after a pending tool call is a 400 (every pilot answer fell back to "yes" for that)."""
+        from types import SimpleNamespace
+        call = SimpleNamespace(type="tool_use", id="toolu_1", name="claude_code", input={})
+        history = [{"role": "user", "content": "Start."}, {"role": "assistant", "content": [call]}]
+        got = screens.side_question(history, "Do you want to proceed?")
+        self.assertEqual(got[:2], history, "nothing before is changed, so it stays cached")
+        self.assertEqual(got[2]["role"], "user")
+        self.assertEqual([b["type"] for b in got[2]["content"]], ["tool_result", "text"])
+        self.assertEqual(got[2]["content"][0]["tool_use_id"], "toolu_1")
+        after_results = history + [{"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": "x"}]}]
+        got = screens.side_question(after_results, "Pick one")
+        self.assertEqual([b["type"] for b in got[-1]["content"]], ["tool_result", "text"])
+
     def test_screens_read_as_plain_text(self):
         self.assertEqual(plain("\x1b[1mBold\x1b[0m\r\nnext\r"), "Bold\nnext\n")
         self.assertEqual(screens.page_text("<style>x{}</style><h1>Good morning</h1><p>Rain\n at 9</p>"), "Good morning Rain at 9")

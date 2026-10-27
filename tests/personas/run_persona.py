@@ -37,7 +37,7 @@ REPO = HERE.parents[1]
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(REPO / "tests"))
 from fakes.account_api import FakeAccountAPI  # noqa: E402
-from screens import DRY_CLAUDE, page_text, site_name  # noqa: E402
+from screens import DRY_CLAUDE, page_text, side_question, site_name  # noqa: E402
 from terminal import Terminal  # noqa: E402
 
 PERSONA_MODEL = "claude-sonnet-5-5"
@@ -137,6 +137,8 @@ class Run:
         self.trusted = False
         self.page = None          # the web page open in the browser, when it has a button to click
         self._shown: list[str] = []
+        self.claude_closed = 0.0  # what Claude Code sessions already closed cost
+        self.fallbacks = 0        # questions the harness answered because asking the persona failed
 
     def current(self) -> dict:
         """The lesson the persona is on (the last one, once it has read past the end)."""
@@ -442,6 +444,7 @@ In this session, you will also:
             return "Claude Code isn't open. Type `butler claude` in a Terminal window first."
         if message.strip() == "/exit":
             await self.claude.disconnect()
+            self.claude_closed = self.cost["claude_code"]
             self.claude, self.claude_pending = None, False   # a folder is trusted once, as Claude Code keeps it
             return "(Claude Code closes. The Terminal prompt is back.)"
         return opening + await self.claude_turn(message)
@@ -457,7 +460,9 @@ In this session, you will also:
                     elif isinstance(block, ToolUseBlock):
                         shown.append(f"⏺ {block.name}({json.dumps(block.input, ensure_ascii=False)[:300]})")
             elif isinstance(msg, ResultMessage):
-                self.cost["claude_code"] += msg.total_cost_usd or 0.0
+                # total_cost_usd is the session's running total, not this turn's: the sessions
+                # already closed, plus this one's latest.
+                self.cost["claude_code"] = self.claude_closed + (msg.total_cost_usd or 0.0)
         return "\n".join(shown) or "(Claude Code shows nothing new.)"
 
     def permission(self, messages: list):
@@ -469,12 +474,12 @@ In this session, you will also:
                         "  Do you want to proceed?\n  ❯ 1. Yes\n    2. No, and tell Claude what to do differently (esc)\n\n"
                         "This is your decision, as you, with this session's habits and choices in mind. Answer with the "
                         "answer tool.")
-            snapshot = messages + [{"role": "user", "content": question}] if messages[-1]["role"] == "assistant" else \
-                messages[:-1] + [{"role": "user", "content": question}]
+            snapshot = side_question(messages, question)
             try:
                 response = await self.ask(snapshot, [PERMISSION_TOOL], max_tokens=1500)
                 answer = next((b.input for b in response.content if b.type == "tool_use"), {"choice": "yes", "say": ""})
             except Exception as e:  # noqa: BLE001 - a broken question shouldn't stop the run
+                self.fallbacks += 1     # counted in the checks: the persona didn't decide this one
                 answer = {"choice": "yes", "say": f"(harness: {e})"}
             self.say(f"{self.persona['name']} answers Claude Code", f"{tool_name}: {answer}")
             self._shown.append(f"Claude Code stopped and asked you: {tool_name}: {what[:300]}\n  Do you want to proceed?\n"
@@ -495,12 +500,12 @@ In this session, you will also:
             shown.append(f"  {i}. {q.get('question')}\n{options}\n    (or type something else)")
         question = ("Claude Code asks you, with choices to pick from:\n\n" + "\n".join(shown)
                     + "\n\nThis is your decision, as you. Answer with the choose tool, one answer per question.")
-        snapshot = messages + [{"role": "user", "content": question}] if messages[-1]["role"] == "assistant" else \
-            messages[:-1] + [{"role": "user", "content": question}]
+        snapshot = side_question(messages, question)
         try:
             response = await self.ask(snapshot, [CHOICE_TOOL], max_tokens=1500)
             picked = next((b.input["answers"] for b in response.content if b.type == "tool_use"), [])
         except Exception:  # noqa: BLE001 - a broken question shouldn't stop the run
+            self.fallbacks += 1
             picked = []
         answers = {q.get("question", ""): (picked[i] if i < len(picked) else "") for i, q in enumerate(questions)}
         self.say(f"{self.persona['name']} chooses", json.dumps(answers, ensure_ascii=False))
@@ -537,6 +542,7 @@ In this session, you will also:
             "claude_code_opened": exists("data/claude-welcomed"),
             "lessons_reported": sorted({p.get("lesson") for p in self.api.progress if p.get("lesson")}),
             "tracebacks": len(re.findall(r"Traceback \(most recent call last\)", screens)),
+            "harness_answered": self.fallbacks,
         }
 
     async def main(self) -> int:

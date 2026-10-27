@@ -29,6 +29,11 @@ def render(runs: list[dict]) -> str:
                    f"({r['lessons_read']}/{r['lessons_total']}) | {'yes' if c['signed_in'] else 'no'} | "
                    f"{'yes' if c['first_brief'] else 'no'} | {'yes' if c['claude_code_opened'] else 'no'} | "
                    f"${r['cost_usd']['total']:.2f} | {r['minutes']} |")
+    guessed = [r for r in runs if r["checks"].get("harness_answered")]
+    if guessed:
+        out += ["", "**The harness answered for the persona** (asking it failed) in: "
+                + ", ".join(f"{r['name']}/{r['platform']}/{r['seed']} ({r['checks']['harness_answered']})" for r in guessed)
+                + ". Findings about those answers are the harness's, not the course's."]
     crashes = [r for r in runs if r["checks"]["tracebacks"]]
     if crashes:
         out += ["", f"**Python tracebacks on screen in {len(crashes)} runs:** "

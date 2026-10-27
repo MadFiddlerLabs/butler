@@ -29,3 +29,21 @@ def page_text(html: str) -> str:
     """A web page as the persona reads it: the words, without scripts, styles or tags."""
     html = re.sub(r"<(script|style)[\s\S]*?</\1>", "", html)
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()
+
+
+def side_question(messages: list, question: str) -> list:
+    """The persona's conversation, with a question for it mid-action: Claude Code's permission
+    prompt or multiple-choice question, which comes while the persona's claude_code call is still
+    running. The API needs a result for every pending tool call before anything else, so each gets
+    a placeholder, then the question follows. Nothing before is changed, so it stays cached."""
+    last = messages[-1]
+    blocks = last["content"] if isinstance(last["content"], list) else []
+    if last["role"] == "assistant":
+        pending = [b.id if hasattr(b, "id") else b["id"] for b in blocks
+                   if (b.type if hasattr(b, "type") else b.get("type")) == "tool_use"]
+        content = [{"type": "tool_result", "tool_use_id": i, "content": "(Waiting: Claude Code is asking you something first.)"}
+                   for i in pending] + [{"type": "text", "text": question}]
+        return messages + [{"role": "user", "content": content}]
+    text = last["content"] if isinstance(last["content"], str) else None
+    content = ([{"type": "text", "text": text}] if text is not None else list(last["content"])) + [{"type": "text", "text": question}]
+    return messages[:-1] + [{"role": "user", "content": content}]
