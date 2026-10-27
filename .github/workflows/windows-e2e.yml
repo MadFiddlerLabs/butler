@@ -29,8 +29,10 @@ jobs:
         run: |
           $before = "$((Get-Item .venv).Target)"
           if (-not $before) { throw ".venv isn't a junction" }
-          $held = Start-Process .venv\Scripts\python.exe -ArgumentList "-c", "import numpy, pydantic_core, markupsafe, time; time.sleep(900)" -PassThru -WindowStyle Hidden
+          # Start-Process joins its arguments with spaces, so the code goes in quotes of its own.
+          $held = Start-Process .venv\Scripts\python.exe -ArgumentList '-c "import numpy, pydantic_core, markupsafe, time; time.sleep(900)"' -PassThru -WindowStyle Hidden
           Start-Sleep -Seconds 10
+          if ($held.HasExited) { throw "the Python holding the packages didn't start (exit $($held.ExitCode))" }
           Copy-Item requirements.lock "$env:RUNNER_TEMP\requirements.lock"
           Add-Content requirements.lock "# a new lock, as a release brings one"
           powershell -ExecutionPolicy Bypass -File scripts\bootstrap.ps1
