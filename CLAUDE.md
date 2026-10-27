@@ -64,6 +64,7 @@ someone developing Butler itself. The hard rules apply to both.
 | `src/butler/setup_settings.py`, `account.py` | Settings written one answer at a time; the course account |
 | `src/butler/progress.py`, `course_progress.json` | Progress that marks itself: each setup step's check, the step-to-lesson map, the offline queue (`data/progress.json`), `butler progress` |
 | `packaging/macos/` | The installer package and the universal Calendar helper (docs/RELEASING.md) |
+| `packaging/windows/`, `src/butler/installed.py`, `scripts/bootstrap.ps1` | The Windows installer (Inno Setup, into `%USERPROFILE%\Butler` without admin rights), what it does after copying (names the butler, opens the first run), and Butler's Python on Windows |
 | `src/butler/updates.py`, `update_report.py`, `migrations.py` | Over-the-air updates: the manifest, signature checks, rollback, the anonymous outcome report; settings migrations (docs/UPDATES.md) |
 | `scripts/install.sh`, `bootstrap.sh`, `lock.sh` | Download to `~/Butler`; Python through a pinned uv, no Xcode tools; packages exactly as `requirements.lock` pins them, with hashes |
 | `scripts/store-secret.sh` | A Mac dialog that puts a secret straight into Keychain |
