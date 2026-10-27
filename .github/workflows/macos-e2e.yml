@@ -84,13 +84,20 @@ jobs:
       - name: Upgrading keeps the household's files
         run: |
           b="$HOME/Butler"
+          # Each check says what failed, with what it found (#37: this step failed now and then
+          # without saying which check).
+          check() { local what="$1"; shift; "$@" || { echo "::error::upgrade: $what"; ps -axo pid,command | grep -E "Butler|Terminal|first-run|bootstrap" | grep -v grep; for f in config/settings.yaml data/household_notes.md .butler-name; do echo "--- $f"; cat "$b/$f" 2>&1; done; tail -n 20 "$b/logs/install.log" "$b/logs/setup.log" 2>&1; exit 1; }; }
+          # Nothing the step before started may still be writing in the Butler folder.
+          pkill -x Terminal || true
+          pkill -f "$b/scripts/" || true
+          for _ in $(seq 20); do pgrep -f "$b/scripts/" >/dev/null || pgrep -x Terminal >/dev/null || break; sleep 1; done
           printf 'name: Bento\n' > "$b/config/settings.yaml"
           mkdir -p "$b/data" && echo "- a note" > "$b/data/household_notes.md"
           cp "$RUNNER_TEMP/Bento (1).pkg" "$RUNNER_TEMP/Jeeves.pkg"
           installer -pkg "$RUNNER_TEMP/Jeeves.pkg" -target CurrentUserHomeDirectory
-          [ "$(cat "$b/config/settings.yaml")" = "name: Bento" ]
-          [ "$(cat "$b/data/household_notes.md")" = "- a note" ]
-          [ "$(cat "$b/.butler-name")" = "Bento" ]
+          check "settings.yaml changed" test "$(cat "$b/config/settings.yaml")" = "name: Bento"
+          check "household_notes.md changed" test "$(cat "$b/data/household_notes.md")" = "- a note"
+          check ".butler-name changed" test "$(cat "$b/.butler-name")" = "Bento"
           # The upgrade kept the app current where it was: in /Applications, replaced in place.
           tail -n 3 "$b/logs/install.log"
           grep -q "the Butler app is in /Applications (replaced the older one, from ~/Applications)" "$b/logs/install.log"
