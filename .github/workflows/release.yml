@@ -9,6 +9,10 @@
 # Without every signing secret it still builds, as Butler-unsigned.pkg, says so in the summary,
 # and a tagged run publishes it only as a prerelease, so /releases/latest stays signed.
 # docs/RELEASING.md says how to create the certificates and add the secrets.
+#
+# Every run also builds the Windows installer (job windows), installs it on a clean runner and
+# keeps it as a build artifact. It isn't published or offered as an update yet: that waits for
+# Windows signing (#40).
 name: release
 
 on:
@@ -142,6 +146,41 @@ jobs:
       - name: Remove the temporary keychain
         if: always() && env.SIGNING_KEYCHAIN != ''
         run: security delete-keychain "$SIGNING_KEYCHAIN"
+
+  windows:
+    # Butler-Setup.exe for this version, unsigned for now (#40), proven to install. Kept as an
+    # artifact only: publish doesn't need or use it, so a Windows failure never holds up the Mac.
+    needs: package
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      VERSION: ${{ needs.package.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inno Setup 6 (the runner image has it; installed only if it doesn't)
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File packaging\windows\build-installer.ps1 -Version $env:VERSION
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: It installs, silently, as the overnight updater will run it
+        shell: pwsh
+        run: |
+          $p = Start-Process dist\Butler-Setup.exe -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/LOG=$env:RUNNER_TEMP\install.txt" -Wait -PassThru
+          $b = "$env:USERPROFILE\Butler"
+          if ($p.ExitCode -ne 0) { Get-Content "$env:RUNNER_TEMP\install.txt" -Tail 40; Get-Content -ErrorAction SilentlyContinue "$b\logs\bootstrap.log"; throw "the installer exited $($p.ExitCode)" }
+          if ((Get-Content -Raw "$b\.butler-version").Trim() -ne $env:VERSION) { throw "the installed version isn't $env:VERSION" }
+          & "$b\bin\butler.cmd" help
+          if ($LASTEXITCODE -ne 0) { throw "butler.cmd help exited $LASTEXITCODE" }
+          $hash = (Get-FileHash -Algorithm SHA256 dist\Butler-Setup.exe).Hash.ToLower()
+          "### Windows installer (unsigned, not published): Butler-Setup.exe, sha256 $hash" >> $env:GITHUB_STEP_SUMMARY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: butler-setup-${{ env.VERSION }}
+          path: dist/Butler-Setup.exe
 
   origins:
     # The releases installs really update from. Installs skip versions, so not just the latest:
