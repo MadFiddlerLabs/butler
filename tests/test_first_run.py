@@ -329,7 +329,7 @@ class FirstRunTest(unittest.TestCase):
         h = self.home()
         proc = h.first_run(["", "", "", "skip", *LESSONS[:4], ""])
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
-        self.assertIn("When you're ready, open Terminal and type: butler claude", proc.stdout)
+        self.assertIn("When you're ready, type butler resume in a new Terminal window.", proc.stdout)
         self.assertNotIn("Butler app", proc.stdout, "an install without the package has no app")
 
     def test_the_end_says_where_the_butler_app_is_and_leaves_the_dock_alone(self):
@@ -341,7 +341,7 @@ class FirstRunTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, out + proc.stderr)
         self.assertIn("To come back any time, open the Butler app in your Applications folder. Drag it to the "
                       "Dock to keep it one click away.", out)
-        self.assertIn("When you're ready, open the Butler app, or open Terminal and type: butler claude", out)
+        self.assertIn("When you're ready, open the Butler app, or type butler resume in a new Terminal window.", out)
         self.assertLess(out.index("Butler app in your Applications folder"), out.index("What's next"))
         script = (REPO / "scripts" / "first-run.sh").read_text()
         self.assertNotIn("com.apple.dock", script)

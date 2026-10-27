@@ -130,7 +130,8 @@ class FirstRunFlowTest(unittest.TestCase):
         for done in ("I know where you live.", "I know who I work for.", "your first brief is written."):
             self.assertIn(f"Already done: {done}", out)
         self.assertEqual(out.count("Paste here \u203a"), 1, "only the optional Claude Code line")
-        self.assertIn("When you're ready, open Terminal and type: butler claude", out)
+        self.assertIn("click Start, type Butler and press Enter, or type butler resume in a new Terminal window." if WINDOWS
+                      else "When you're ready, type butler resume in a new Terminal window.", out)
         self.assertNotIn("I added", out, "the PATH has it already")
 
     def test_an_ended_session_asks_for_the_email_again(self):
@@ -556,6 +557,15 @@ class PiecesTest(unittest.TestCase):
         self.assertIsNone(fr.bootstrap)
         self.assertEqual(fr.computer, "computer")
         self.assertEqual(fr.green, "", "no colour codes in a Windows console")
+
+    def test_on_windows_the_way_back_is_the_start_menu(self):
+        """The lessons send Windows students to Start, type Butler, as the Mac's go to the Butler app."""
+        with mock.patch.object(first_run.system, "NAME", "windows"):
+            come_back, goodbye = first_run.way_back(None)
+        self.assertEqual(come_back, "To come back any time, click Start, type Butler and press Enter.")
+        self.assertIn("click Start, type Butler and press Enter, or type butler resume in a new Terminal window.", goodbye)
+        installer = (REPO / "packaging" / "windows" / "butler.iss").read_text()
+        self.assertIn('Name: "{userprograms}\\Butler"', installer, "the Start menu has Butler")
 
 
 if __name__ == "__main__":

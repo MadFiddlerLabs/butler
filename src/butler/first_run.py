@@ -582,16 +582,12 @@ class FirstRun:
         # The first run is over. The installer reads this: installing again offers resume or start fresh.
         _write(self.data / "first-run-done", _now() + "\n")
 
-        # The Butler app is the way back. Say where it is, once. The Dock stays the student's to change.
-        app = system.butler_app()
-        if app and Path(app).is_relative_to(Path.home()):
+        # The Butler app is the way back (on Windows, Butler in the Start menu), as the lessons say.
+        # Say where it is, once. The Dock stays the student's to change.
+        come_back, goodbye = way_back(system.butler_app())
+        if come_back:
             self.say()
-            self.say("To come back any time, open the Butler app: it's in the Applications folder inside your home "
-                     "folder, and Spotlight finds it too. Drag it to the Dock to keep it one click away.")
-        elif app:
-            self.say()
-            self.say("To come back any time, open the Butler app in your Applications folder. Drag it to the Dock to "
-                     "keep it one click away.")
+            self.say(come_back)
 
         self.heading("What's next")
         self.say(f"That's your butler, running on your {self.computer}. Next, I move into Claude Code, an AI helper "
@@ -600,11 +596,24 @@ class FirstRun:
         if self.lesson("claude", "butler claude", optional=True):
             return 0
         self.say()
-        if app:
-            self.say("See you soon. When you're ready, open the Butler app, or open Terminal and type: butler claude")
-        else:
-            self.say("See you soon. When you're ready, open Terminal and type: butler claude")
+        self.say(goodbye)
         return 0
+
+
+def way_back(app: str | None) -> tuple[str | None, str]:
+    """(where the way back is, said once at the end of the first run; the goodbye). The lessons
+    say the same: the Butler app on a Mac, Butler in the Start menu on Windows, or `butler resume`."""
+    if system.NAME == "windows":
+        return ("To come back any time, click Start, type Butler and press Enter.",
+                "See you soon. When you're ready, click Start, type Butler and press Enter, or type butler resume in a "
+                "new Terminal window.")
+    if not app:
+        return None, "See you soon. When you're ready, type butler resume in a new Terminal window."
+    goodbye = "See you soon. When you're ready, open the Butler app, or type butler resume in a new Terminal window."
+    if Path(app).is_relative_to(Path.home()):
+        return ("To come back any time, open the Butler app: it's in the Applications folder inside your home folder, "
+                "and Spotlight finds it too. Drag it to the Dock to keep it one click away."), goodbye
+    return "To come back any time, open the Butler app in your Applications folder. Drag it to the Dock to keep it one click away.", goodbye
 
 
 def main(argv: list[str] | None = None) -> int:
