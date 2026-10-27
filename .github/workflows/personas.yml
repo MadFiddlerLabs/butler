@@ -1,0 +1,161 @@
+# Paid: persona tests. Claude agents play three students (tests/personas/personas.yaml) through
+# the course as the website shows it, each on a fresh Mac or Windows runner, with the real
+# installer, Butler and Claude Code, and the fake account API. Every run draws its own choices and
+# slips, and starts with no memory of any other. One report collects the findings.
+#
+# By hand only, on each major change: it costs about $2-4 a run for Modules 0-2 (docs/TESTING.md).
+# Needs ANTHROPIC_API_KEY, and COURSE_READ_TOKEN: a fine-grained token that can only read the
+# private website repo's contents (the organization allows no deploy keys).
+name: personas
+
+on:
+  workflow_dispatch:
+    inputs:
+      first_module:
+        description: "First module"
+        default: "0"
+      last_module:
+        description: "Last module"
+        default: "2"
+      runs:
+        description: "Runs per persona per computer"
+        default: "3"
+      budget:
+        description: "Most a run may spend, in dollars"
+        default: "6"
+      platforms:
+        description: "mac, windows or both"
+        default: "both"
+      personas:
+        description: "Personas to run, space-separated (empty for all)"
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    env:
+      RUNS: ${{ inputs.runs }}
+      PLATFORMS: ${{ inputs.platforms }}
+      BUDGET: ${{ inputs.budget }}
+      ONLY: ${{ inputs.personas }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: The runs, and the round's ceiling
+        id: matrix
+        run: |
+          python3 - <<'EOF' >> "$GITHUB_OUTPUT"
+          import json, os, yaml
+          personas = list(yaml.safe_load(open("tests/personas/personas.yaml"))["personas"])
+          only = os.environ["ONLY"].split()
+          if set(only) - set(personas):
+              raise SystemExit(f"no such persona: {sorted(set(only) - set(personas))}; there are {personas}")
+          personas = [p for p in personas if not only or p in only]
+          platforms = ["mac", "windows"] if os.environ["PLATFORMS"] == "both" else [os.environ["PLATFORMS"]]
+          runs = int(os.environ["RUNS"])
+          include = [{"persona": p, "platform": c, "seed": s, "os": "macos-latest" if c == "mac" else "windows-2025"}
+                     for p in personas for c in platforms for s in range(1, runs + 1)]
+          if len(include) * float(os.environ["BUDGET"]) > 400:
+              raise SystemExit(f"{len(include)} runs at ${os.environ['BUDGET']} could spend over $400: lower runs or budget")
+          print("matrix=" + json.dumps({"include": include}))
+          EOF
+      - name: The lessons each computer's students read
+        uses: actions/checkout@v4
+        with:
+          repository: MadFiddlerLabs/buildyourbutler.com
+          token: ${{ secrets.COURSE_READ_TOKEN }}
+          path: website
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Export them
+        working-directory: website
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          cp ../tests/personas/lessons.mjs scripts/persona-lessons.mjs
+          for p in mac windows; do
+            node scripts/persona-lessons.mjs "$p" "${{ inputs.first_module }}" "${{ inputs.last_module }}" > "../lessons-$p.json"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lessons
+          path: lessons-*.json
+
+  run:
+    needs: plan
+    name: ${{ matrix.persona }} on ${{ matrix.platform }} (run ${{ matrix.seed }})
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: lessons
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: "The harness's own tools (Butler installs its own Python)"
+        shell: bash
+        run: |
+          python -m pip install --disable-pip-version-check anthropic==2.3.0 claude-agent-sdk==0.2.174 pyyaml
+          [ "${{ matrix.platform }}" = windows ] && python -m pip install --disable-pip-version-check pywinpty==3.0.5 || true
+          npm install -g @anthropic-ai/claude-code
+      - name: The installer a student downloads (an unsigned test build)
+        if: matrix.platform == 'mac'
+        run: |
+          pkg="$(packaging/macos/build-pkg.sh --version v0.0.1-persona --out dist | tail -n 1)"
+          echo "INSTALLER=$pkg" >> "$GITHUB_ENV"
+      - name: The installer a student downloads (an unsigned test build)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+          powershell -ExecutionPolicy Bypass -File packaging\windows\build-installer.ps1 -Version v0.0.1-persona
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "INSTALLER=$((Resolve-Path dist\Butler-Setup.exe).Path)" >> $env:GITHUB_ENV
+      - name: ${{ matrix.persona }} takes the course
+        shell: bash
+        run: |
+          python -X utf8 tests/personas/run_persona.py --persona "${{ matrix.persona }}" --platform "${{ matrix.platform }}" \
+            --seed "${{ matrix.seed }}" --lessons "lessons-${{ matrix.platform }}.json" --installer "$INSTALLER" \
+            --budget "${{ inputs.budget }}" --out "persona-out"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: persona-${{ matrix.persona }}-${{ matrix.platform }}-${{ matrix.seed }}
+          path: persona-out/
+          if-no-files-found: ignore
+
+  report:
+    needs: run
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: persona-*
+          path: runs
+      - name: One report
+        run: |
+          python3 tests/personas/report.py runs > persona-report.md
+          cat persona-report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: persona-report
+          path: persona-report.md
