@@ -205,6 +205,17 @@ class FirstRunFlowTest(unittest.TestCase):
         self.assertIn("You're signed in as sam@example.com.", out)
         self.assertEqual(api.prefs, [{"email": "sam@example.com", "nudges": True}])
 
+    def test_a_mistyped_email_can_be_retyped_while_it_waits(self):
+        api = FakeAccountAPI().start()
+        self.addCleanup(api.stop)
+        h = self.home(api=api)
+        proc = h.py_first_run(["", "", "", "sam@exmaple.com", "butler setup", "sam@example.com", "skip"])
+        self.assertIn("Sent to sam@exmaple.com!", proc.stdout)
+        self.assertIn("Type your email again if it was wrong, or type skip to do this later.", proc.stdout)
+        self.assertIn("Sending a new link to sam@example.com.", proc.stdout)
+        self.assertEqual([r["email"] for r in api.requests.values()], ["sam@exmaple.com", "sam@example.com"])
+        self.assertEqual(proc.stdout.count("Your email \u203a"), 1, "the new address isn't asked for twice")
+
     def test_an_expired_link_sends_a_new_one(self):
         api = FakeAccountAPI(expire=True).start()
         self.addCleanup(api.stop)
@@ -424,6 +435,11 @@ class EquivalenceTest(unittest.TestCase):
 
     def test_skip_while_waiting_for_the_click(self):
         self.both((["", "", "", "sam@example.com", "skip"], ()), api={})
+
+    def test_a_mistyped_email_retyped_while_waiting(self):
+        """Found by the persona tests: the address shows back, and typing the right one while it
+        waits sends a new link to it; anything else typed gets a hint, not silence."""
+        self.both((["", "", "", "sam@exmaple.com", "butler setup", "sam@example.com", "skip"], ()), api={})
 
     def test_a_screen_reader(self):
         self.both((["", "", "", "skip"], ()), env={"CLAUDE_AX_SCREEN_READER": "1"})

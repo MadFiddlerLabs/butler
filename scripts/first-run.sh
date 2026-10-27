@@ -272,9 +272,15 @@ sign_in() {
   say "We never see your household's data. It goes only from this Mac to services you choose, such as Anthropic and Google."
   token=""
   email=""
+  next_email=""
   while :; do
-    printf 'Your email › '
-    read -r email || email=""
+    if [ -n "$next_email" ]; then
+      email="$next_email"
+      next_email=""
+    else
+      printf 'Your email › '
+      read -r email || email=""
+    fi
     email="$(printf '%s' "$email" | tr -d '[:space:]')"
     if [ -z "$email" ] || [ "$email" = "skip" ]; then
       say "No problem. Sign in later with: butler setup"
@@ -307,8 +313,9 @@ sign_in() {
     fi
     request_id="$(json_value request_id "$body")"
     poll_secret="$(json_value poll_secret "$body")"
-    ok "Sent! Check your inbox for an email from Butler and click the link inside."
-    say "Waiting for your click. I'm getting my things ready meanwhile. To do this later, type skip and press Enter."
+    # The address back, so a typo shows; while it waits, a corrected one sends a new link.
+    ok "Sent to $email! Check your inbox for an email from Butler and click the link inside."
+    say "Waiting for your click. I'm getting my things ready meanwhile. Wrong address? Type the right one. To do this later, type skip and press Enter."
     polls=0
     while [ "$polls" -lt "$poll_limit" ]; do
       polls=$((polls + 1))
@@ -323,10 +330,18 @@ sign_in() {
         say "That link expired. Let's send a new one."
         break
       fi
-      if read -r -t "$poll_seconds" line && [ "$line" = "skip" ]; then
-        break
+      if read -r -t "$poll_seconds" line; then
+        line="$(printf '%s' "$line" | tr -d '[:space:]')"
+        [ "$line" = "skip" ] && break
+        if printf '%s' "$line" | grep -Eq '^[^@"\\]+@[^@"\\]+\.[^@"\\]+$'; then
+          say "Sending a new link to $line."
+          next_email="$line"
+          break
+        fi
+        [ -n "$line" ] && say "Type your email again if it was wrong, or type skip to do this later."
       fi
     done
+    [ -n "$next_email" ] && continue
     if [ -n "$token" ]; then
       printf '%s' "$token" | keychain_store butler-account 2>>"$log" \
         || say "I couldn't save your sign-in to Keychain. You can sign in again later with: butler setup"
