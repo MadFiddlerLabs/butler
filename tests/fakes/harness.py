@@ -303,6 +303,11 @@ def _windows_fakes() -> None:
     path = Path(os.environ["BUTLER_FAKE_SECRETS"])
     system._impl.get_secret = lambda service: json.loads(path.read_text()).get(service)
     system._impl.has_secret = lambda service: service in json.loads(path.read_text())
+    system._impl.store_secret = lambda service, secret: path.write_text(
+        json.dumps({**json.loads(path.read_text()), service: secret}))
+    # A test that loads the schedule writes a fake launchctl that lists Butler's job.
+    launchctl = Path("fakebin", "launchctl")
+    system._impl.scheduled = lambda: launchctl.exists() and "com.buildyourbutler.butler" in launchctl.read_text()
     real_run = subprocess.run
 
     def run(cmd, *args, **kwargs):
