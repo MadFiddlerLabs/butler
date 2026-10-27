@@ -236,8 +236,7 @@ jobs:
           if ($sig.Status -ne "Valid") { throw "the installer's signature is $($sig.Status)" }
           if (-not $sig.TimeStamperCertificate) { throw "the signature isn't timestamped, so it would expire with the certificate" }
           # WinVerifyTrust and the publisher check, from Butler's own code (system/windows.py, updates.py).
-          $env:PYTHONPATH = "src"
-          python -c "import re, sys; from butler.system import windows; publisher = re.search(r'^PUBLISHER = \"(.+)\"', open('src/butler/updates.py').read(), re.M)[1]; s = windows.installer_signer(sys.argv[1]); print(s); sys.exit(0 if s and s['name'] == publisher and s.get('organization', '') in ('', publisher) else 1)" dist\Butler-Setup.exe
+          python .github/scripts/windows_signer.py dist\Butler-Setup.exe
           if ($LASTEXITCODE -ne 0) { throw "the signer isn't the one Butler's updater accepts" }
           "### Windows installer signed: $($sig.SignerCertificate.Subject)" >> $env:GITHUB_STEP_SUMMARY
       - name: It installs, silently, as the overnight updater will run it
