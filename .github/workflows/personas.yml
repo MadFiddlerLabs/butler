@@ -26,6 +26,9 @@ on:
       platforms:
         description: "mac, windows or both"
         default: "both"
+      personas:
+        description: "Personas to run, space-separated (empty for all)"
+        default: ""
 
 permissions:
   contents: read
@@ -40,6 +43,7 @@ jobs:
       RUNS: ${{ inputs.runs }}
       PLATFORMS: ${{ inputs.platforms }}
       BUDGET: ${{ inputs.budget }}
+      ONLY: ${{ inputs.personas }}
     steps:
       - uses: actions/checkout@v4
       - name: The runs, and the round's ceiling
@@ -48,6 +52,10 @@ jobs:
           python3 - <<'EOF' >> "$GITHUB_OUTPUT"
           import json, os, yaml
           personas = list(yaml.safe_load(open("tests/personas/personas.yaml"))["personas"])
+          only = os.environ["ONLY"].split()
+          if set(only) - set(personas):
+              raise SystemExit(f"no such persona: {sorted(set(only) - set(personas))}; there are {personas}")
+          personas = [p for p in personas if not only or p in only]
           platforms = ["mac", "windows"] if os.environ["PLATFORMS"] == "both" else [os.environ["PLATFORMS"]]
           runs = int(os.environ["RUNS"])
           include = [{"persona": p, "platform": c, "seed": s, "os": "macos-latest" if c == "mac" else "windows-2025"}
@@ -100,7 +108,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-      - name: The harness's own tools (not Butler's: Butler installs its own Python)
+      - name: "The harness's own tools (Butler installs its own Python)"
         shell: bash
         run: |
           python -m pip install --disable-pip-version-check anthropic==2.3.0 claude-agent-sdk==0.2.174 pyyaml
