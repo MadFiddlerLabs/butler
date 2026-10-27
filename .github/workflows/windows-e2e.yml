@@ -73,8 +73,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Inno Setup, pinned
-        run: choco install innosetup --version 6.6.1 -y --no-progress
+      - name: Inno Setup 6 (the runner image has it; installed only if it doesn't)
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+          (Get-Item "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe").VersionInfo.ProductVersion
       - name: Build the installer
         run: powershell -ExecutionPolicy Bypass -File packaging\windows\build-installer.ps1 -Version v0.0.1-ci
       - name: Install it as Bento, as a household would (silently here)
