@@ -69,12 +69,14 @@ TOOLS = [
          "Returns what Claude Code shows. '/exit' closes it.",
          {"message": {"type": "string"}}, ["message"]),
     tool("on_screen", "Do something on the computer outside a terminal, the way a person would with the mouse: "
-         "check the computer's version, download Butler from the website (give the name you typed), open the "
-         "downloaded file, check your email inbox, click the link in an email, look at what the browser shows, "
-         "buy or sign in to a Claude plan, open a folder. Describe it in 'what' and pick the closest 'action'.",
+         "check the computer's version, download Butler from the website (put the name you type in 'text'), open "
+         "the downloaded file, check your email inbox, click the link or button in an email, click a button on a "
+         "web page (its label in 'text'), look at what the browser shows, buy or sign in to a Claude plan, open the "
+         "Butler app (Mac) or Butler in the Start menu (Windows), open a folder. Describe it in 'what' and pick the "
+         "closest 'action'.",
          {"action": {"type": "string", "enum": ["check_version", "download_butler", "open_download", "check_inbox",
-                                                "click_email_link", "look_at_browser", "claude_plan",
-                                                "open_folder", "other"]},
+                                                "click_email_link", "click_on_page", "look_at_browser", "claude_plan",
+                                                "open_butler_app", "open_folder", "other"]},
           "what": {"type": "string"},
           "text": {"type": "string", "description": "What you type, if anything (the butler's name for download_butler); else empty."}},
          ["action", "what", "text"]),
@@ -82,7 +84,8 @@ TOOLS = [
          "didn't match what you saw, or something was good.",
          {"kind": {"type": "string", "enum": ["confused", "broken", "mismatch", "good", "idea"]},
           "lesson": {"type": "string"}, "text": {"type": "string"}}, ["kind", "lesson", "text"]),
-    tool("finish", "Stop: you finished the last lesson, or you're stuck and would give up here.",
+    tool("finish", "Stop: only after read_lesson has told you that was the last lesson, or when you're truly stuck "
+         "and would give up here. Not to take a break: carry on with the next lesson instead.",
          {"outcome": {"type": "string", "enum": ["finished", "stuck", "gave_up"]},
           "why": {"type": "string"}}, ["outcome", "why"]),
 ]
@@ -127,6 +130,10 @@ class Run:
         if not WINDOWS:   # a Mac's login shell is zsh; the runner's account says bash
             self.env["SHELL"] = "/bin/zsh"
         self.claude_pending, self.claude_mode, self.claude_prompt = False, "default", ""
+        self.claude_model = args.claude_model or None
+        self.trusted = False
+        self.page = None          # the web page open in the browser, when it has a button to click
+        self._shown: list[str] = []
 
     # ---------- money ----------
     def spent(self) -> float:
@@ -158,7 +165,9 @@ How this works:
 - Your email address is {self.email}. You already pay for a Claude Pro plan.
 - When something confuses you, looks broken, or doesn't match the lesson, use note straight away,
   then do what you'd really do: try the lesson's fix box, ask Claude, or try something else.
-- When you finish the last lesson, or you'd really give up, use finish.
+- Keep going, lesson after lesson, until read_lesson tells you that was the last lesson. Use finish only then,
+  or if you're truly stuck and would give up.
+- This computer is already signed in to Claude (claude.ai), so Claude Code won't ask you to sign in.
 
 In this session, you will also:
 {cards}"""
@@ -299,20 +308,42 @@ In this session, you will also:
             mine = [r for r in self.api.requests.values() if r["email"].strip().lower() == self.email]
             if not mine:
                 return "Your inbox has nothing new from Build Your Butler."
-            pending = [r for r in mine if r["status"] == "pending"]
-            return (f"An email from Build Your Butler: \"Sign in to Build Your Butler\". It says: \"Click to sign in "
-                    f"your butler{' ' + mine[-1]['butler_name'] if mine[-1]['butler_name'] else ''}. The link works once, "
-                    f"for 15 minutes.\" [Sign in]" + ("" if pending else " (You've already used this link.)"))
+            name = mine[-1]["butler_name"] or "your butler"
+            return (f"{len(mine)} email(s) from Build Your Butler. The newest: \"Your link to wake up {name}\".\n\n"
+                    f"Hello,\n\nHere's your link to finish setting up {name}, your new butler:\n\n[Wake up {name}]\n\n"
+                    "It works once, for the next 15 minutes. It opens a page that asks you to confirm it's you. Then go "
+                    f"back to your Terminal. {name} carries on from there.\n\nIf you didn't ask for this, ignore it. "
+                    "Nothing happens without the link.\n\nBuild Your Butler · support@buildyourbutler.com")
         if action == "click_email_link":
             pending = [(i, r) for i, (rid, r) in enumerate(self.api.requests.items())
                        if r["email"].strip().lower() == self.email and r["status"] == "pending"]
             if not pending:
-                return "The page says: \"This link expired or was already used.\""
-            self.api.click(self.api.links[pending[-1][0]])
-            return "The browser opens buildyourbutler.com: \"You're signed in. Go back to the Terminal window.\""
+                return ("The browser opens buildyourbutler.com: \"This link was already used\". If your Terminal says "
+                        "you're signed in, you're all set. If not, ask it for a new link.")
+            index, request = pending[-1]
+            self.page = ("confirm", index)
+            asker = "A Terminal on a Mac" if self.platform == "mac" else "A Terminal window"
+            butler = f" and set up {request['butler_name']}" if request["butler_name"] else ""
+            return (f"The browser opens buildyourbutler.com: \"Sign in your butler?\" {asker} asked to sign in{butler} "
+                    "just now. [Yes, sign me in]")
+        if action == "click_on_page":
+            if self.page and self.page[0] == "confirm" and "sign me in" in typed.lower() + what.lower():
+                self.api.click(self.api.links[self.page[1]])
+                self.page = None
+                return "The page says: \"You're in.\" Go back to your Terminal. Your butler is waiting for you there."
+            return "Nothing on the page matches that."
         if action == "look_at_browser":
             briefs = sorted((BUTLER / "out" / "preview").glob("brief-*.html")) if (BUTLER / "out" / "preview").exists() else []
             return self.page_text(briefs[-1])[:4000] if briefs else "The browser shows the course website."
+        if action == "open_butler_app":
+            if not (BUTLER / "bin").exists():
+                return "There's no Butler app yet." if not WINDOWS else "Start menu: no app called Butler."
+            if WINDOWS:
+                argv = ["cmd.exe", "/d", "/k", str(BUTLER / "bin" / "butler.cmd"), "resume"]
+            else:
+                argv = ["/bin/zsh", "-l", "-c", f'"{BUTLER}/bin/butler" resume; exec /bin/zsh -l']
+            window = self.open_window(argv)
+            return f"A new window opens (window {window}):\n" + self.windows[window].read(quiet=4.0, limit=300.0)
         if action == "claude_plan":
             return "You're signed in to claude.ai. Your plan: Claude Pro."
         if action == "open_folder":
@@ -348,11 +379,23 @@ In this session, you will also:
 
     # ---------- Claude Code ----------
     async def claude_say(self, message: str, messages: list) -> str:
-        if getattr(self, "claude_pending", False) and not self.claude:
+        if self.claude_pending and not self.claude and not self.trusted:
+            if self.trusted is False:
+                self.trusted = None   # asked
+                return (f"Claude Code starts in {BUTLER} and asks:\n\n Do you trust the files in this folder?\n\n"
+                        f" {BUTLER}\n\n Claude Code may read, write, or execute files contained in this directory. "
+                        "This can pose security risks, so only use files from trusted sources.\n\n ❯ 1. Yes, proceed\n"
+                        "   2. No, exit\n\n(Answer with claude_code: 1 or 2.)")
+            if message.strip().lower() in ("2", "no", "no, exit", "esc"):
+                self.claude_pending, self.trusted = False, False
+                return "(Claude Code exits. The Terminal prompt is back.)"
+            self.trusted = True
+            message = ""
+        if self.claude_pending and not self.claude:
             options = ClaudeAgentOptions(
                 cwd=str(BUTLER), permission_mode=self.claude_mode, can_use_tool=self.permission(messages),
                 setting_sources=["project"], env={k: v for k, v in self.env.items() if k.startswith("BUTLER_")},
-                max_budget_usd=max(0.5, self.budget - self.spent()))
+                max_budget_usd=max(0.5, self.budget - self.spent()), model=self.claude_model)
             self.claude = ClaudeSDKClient(options=options)
             await self.claude.connect()
             (BUTLER / "data").mkdir(exist_ok=True)
@@ -368,13 +411,13 @@ In this session, you will also:
             return "Claude Code isn't open. Type `butler claude` in a Terminal window first."
         if message.strip() == "/exit":
             await self.claude.disconnect()
-            self.claude = None
+            self.claude, self.claude_pending = None, False   # a folder is trusted once, as Claude Code keeps it
             return "(Claude Code closes. The Terminal prompt is back.)"
         return opening + await self.claude_turn(message)
 
     async def claude_turn(self, message: str) -> str:
         await self.claude.query(message)
-        shown = []
+        shown = self._shown = []    # the permission question goes in here too, where it appears
         async for msg in self.claude.receive_response():
             if isinstance(msg, AssistantMessage):
                 for block in msg.content:
@@ -400,6 +443,9 @@ In this session, you will also:
             except Exception as e:  # noqa: BLE001 - a broken question shouldn't stop the run
                 answer = {"choice": "yes", "say": f"(harness: {e})"}
             self.say(f"{self.persona['name']} answers Claude Code", f"{tool_name}: {answer}")
+            self._shown.append(f"[Claude Code asked: {tool_name} {what[:300]} — Do you want to proceed? "
+                               f"You chose: {'1. Yes' if answer['choice'] == 'yes' else '2. No'}"
+                               f"{(' and said: ' + answer['say']) if answer['choice'] != 'yes' and answer.get('say') else ''}]")
             if answer["choice"] == "yes":
                 return PermissionResultAllow()
             return PermissionResultDeny(message=answer.get("say") or "The user said no.")
@@ -472,6 +518,8 @@ def main() -> int:
     parser.add_argument("--lessons", required=True)
     parser.add_argument("--installer", required=True)
     parser.add_argument("--budget", type=float, default=6.0)
+    parser.add_argument("--claude-model", default="sonnet",
+                        help="Claude Code's model, as a Pro-plan student gets it; empty for Claude Code's own default")
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
     if not os.environ.get("CI"):
