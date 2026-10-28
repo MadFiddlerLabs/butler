@@ -35,7 +35,7 @@ ACTION_SCHEMA = {
                 "type": "object",
                 "properties": {
                     "type": {"type": "string", "enum": [
-                        "add_todo", "add_shopping", "add_event", "step_done", "step_checked",
+                        "add_todo", "add_shopping", "todo_done", "add_event", "step_done", "step_checked",
                         "step_status", "step_note", "categorize", "household_note", "feedback",
                         "practice_score", "budget_change", "question", "update", "unclear"]},
                     "text": {"type": "string"},
@@ -101,6 +101,9 @@ def plan_actions(settings: dict, reply: inbox.Reply, today: date, who: str | Non
 Action types:
 - add_todo: a small task doable now. text = the task.
 - add_shopping: something to buy. text = the item. One action per item.
+- todo_done: a to-do or shopping item is done or bought ("done: book the boiler service", "got
+  the olive oil"). text = the item as they named it, without "done". One action per item. Not
+  for project steps.
 - add_event: a calendar event. text = title; date = YYYY-MM-DD; start_time/end_time = HH:MM or null for all-day; location or null.
 - step_done: a project step is finished. step_id from the list below.
 - step_checked: a repeating check was done today (the step stays open). step_id.
@@ -162,6 +165,29 @@ def _ek(*args: str) -> dict:
     return calendar_source.ask(list(args), timeout=60)
 
 
+def _plain(text: str) -> str:
+    return " ".join(text.casefold().strip(" .,!?:;\"'").split())
+
+
+def _tick_off(settings: dict, text: str) -> str:
+    """Completes the one open to-do or shopping item the reply names. Python does the matching,
+    never Claude: the title exactly (ignoring case), else the one title that contains the words or
+    is contained in them. None or several, and nothing is ticked. It completes; it never deletes."""
+    rem, wanted = settings["reminders"], _plain(text)
+    items = [(rem[key], item) for key in ("todo_list", "shopping_list") if rem.get(key)
+             for item in _ek("reminders", "--list", rem[key])]
+    found = ([(name, i) for name, i in items if _plain(i["title"]) == wanted]
+             or [(name, i) for name, i in items
+                 if wanted and (wanted in _plain(i["title"]) or _plain(i["title"]) in wanted)])
+    if not found:
+        raise ValueError("nothing open on the lists matches it")
+    if len(found) > 1:
+        raise ValueError("more than one item matches: " + ", ".join(i["title"] for _, i in found))
+    name, item = found[0]
+    _ek("complete-reminder", "--id", item["id"])
+    return f"Ticked off {name} in {calendar_source.lists_app(settings)}: {item['title']}"
+
+
 def _append(path, line: str) -> None:
     path.parent.mkdir(exist_ok=True)
     existing = path.read_text() if path.exists() else ""
@@ -179,6 +205,8 @@ def perform(settings: dict, action: dict, who: str, today: date, said: str = "")
     if kind == "add_shopping":
         _ek("add-reminder", "--list", reminders["shopping_list"], "--title", text)
         return f"Added to {reminders['shopping_list']}: {text}"
+    if kind == "todo_done":
+        return _tick_off(settings, text)
     if kind == "add_event":
         zone = tz(settings)
         day = date.fromisoformat(action["date"])
