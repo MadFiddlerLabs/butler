@@ -148,6 +148,7 @@ class FirstRunFlowTest(unittest.TestCase):
         proc = h.py_first_run(["Bad!Name", "Alfred", "", "", "skip"])
         self.assertIn("That one won't work.", proc.stdout)
         self.assertEqual((h.root / ".butler-name").read_bytes(), b"Alfred\n")
+        self.assertEqual(sorted(p.name for p in h.root.rglob("*.new")), [], "each file is written whole (#37)")
         self.assertEqual(self.api.calls, [], "skipped the email")
 
     def test_a_screen_reader_hears_words_only(self):

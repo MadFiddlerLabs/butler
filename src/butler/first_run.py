@@ -48,8 +48,11 @@ def _now() -> str:
 
 
 def _write(path: Path, text: str) -> None:
-    """UTF-8 with \\n line ends on every computer, as bash writes them."""
-    path.write_text(text, encoding="utf-8", newline="\n")
+    """UTF-8 with \\n line ends on every computer, as bash writes them. Whole or not at all: a
+    window closed mid-write never leaves an empty file (#37)."""
+    new = path.with_name(path.name + ".new")
+    new.write_text(text, encoding="utf-8", newline="\n")
+    os.replace(new, path)
 
 
 def heard_token(answer: str) -> str | None:

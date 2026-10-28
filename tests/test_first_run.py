@@ -208,6 +208,10 @@ class FirstRunTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertEqual(h.settings()["name"], "Jeeves")
         self.assertEqual((h.root / ".butler-name").read_text().strip(), "Jeeves")
+        # Written whole, through a file beside it that's gone afterwards: `>` empties the name
+        # before writing it, and a window closed in between left none (#37).
+        self.assertFalse((h.root / ".butler-name.new").exists())
+        self.assertIn('mv -f "$home/.butler-name.new" "$home/.butler-name"', (REPO / "scripts" / "first-run.sh").read_text())
 
     def test_no_name_from_the_download_asks_for_one(self):
         h = self.home(name=None)
