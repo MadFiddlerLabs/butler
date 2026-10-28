@@ -145,6 +145,54 @@ class ProjectSteps(InAThrowawayHome):
         self.assertEqual(self.logged(), [])
 
 
+class TickingOff(InAThrowawayHome):
+    """'done: …' ticks off a to-do or shopping item (#38): the brief promises it."""
+
+    def setUp(self):
+        super().setUp()
+        lists = {"Bento": [{"id": "r1", "title": "Renew the parking permit"},
+                           {"id": "r2", "title": "Book the boiler service"},
+                           {"id": "r4", "title": "Book the car service"}],
+                 "Shopping": [{"id": "r3", "title": "Olive oil"}]}
+
+        def ek(*args):
+            self.ek.append(list(args))
+            return lists[args[2]] if args[0] == "reminders" else {}
+        replies._ek.side_effect = ek
+
+    def completed(self):
+        return [a for a in self.ek if a[0] == "complete-reminder"]
+
+    def test_the_named_item_is_completed_on_either_list(self):
+        self.assertEqual(self.do("todo_done", "olive oil"), "Ticked off Shopping in Reminders: Olive oil")
+        self.assertEqual(self.do("todo_done", "the parking permit"),
+                         "Ticked off Bento in Reminders: Renew the parking permit")
+        self.assertEqual(self.completed(), [["complete-reminder", "--id", "r3"], ["complete-reminder", "--id", "r1"]])
+
+    def test_an_exact_title_wins_over_a_looser_match(self):
+        self.assertEqual(self.do("todo_done", "Book the boiler service."), "Ticked off Bento in Reminders: Book the boiler service")
+        self.assertEqual(self.completed(), [["complete-reminder", "--id", "r2"]])
+
+    def test_nothing_or_several_matching_ticks_nothing(self):
+        with self.assertRaisesRegex(ValueError, "nothing open"):
+            self.do("todo_done", "walk the dog")
+        with self.assertRaisesRegex(ValueError, "Book the boiler service, Book the car service"):
+            self.do("todo_done", "book the")
+        with self.assertRaisesRegex(ValueError, "nothing open"):
+            self.do("todo_done", "  ")
+        self.assertEqual(self.completed(), [])
+
+    def test_on_google_the_confirmation_says_google_tasks(self):
+        google = {**SETTINGS, "calendar": {"write_to": "Johnson Family", "source": "google"}}
+        said = replies.perform(google, action("todo_done", "olive oil"), "Sam", TODAY)
+        self.assertEqual(said, "Ticked off Shopping in Google Tasks: Olive oil")
+
+    def test_the_brief_promises_only_what_a_reply_can_do(self):
+        self.assertIn("todo_done", replies.ACTION_SCHEMA["properties"]["actions"]["items"]["properties"]["type"]["enum"])
+        from butler import render
+        self.assertIn('reply "done: …"', Path(render.__file__).read_text())
+
+
 class OtherActions(InAThrowawayHome):
     def test_a_practice_score(self):
         said = self.do("practice_score", "Mia got 27 / 30 today")
