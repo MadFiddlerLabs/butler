@@ -21,6 +21,8 @@ The checks are written for a Mac. On Windows, `bin/butler` is `bin/butler.cmd`, 
 a check or a fix differs on Windows, its row says so. Where a row says "the Mac", say "the
 computer" on Windows. On Windows, Claude Code runs commands in Git Bash when Git for Windows is installed, and in PowerShell when it isn't. Write each command for the shell it runs in: in PowerShell, `PYTHONPATH=src <command>` is `$env:PYTHONPATH = "src"; <command>`, and a program in the folder runs as `.\.venv\Scripts\python.exe`.
 
+Every command already runs in the Butler folder, where Claude Code opened. Never change folders first: no `cd` and no `Set-Location`, on a Mac or Windows. A command that starts by changing folders is a new permission question each time, even for Butler's own checks.
+
 ## Run the checks
 
 Run them quietly and collect the results. Don't show raw output.
