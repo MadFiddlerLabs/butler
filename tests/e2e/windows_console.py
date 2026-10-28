@@ -154,6 +154,25 @@ def main(butler: Path) -> None:
     check("butler setup asks in the console and takes the answer", True)
     check("saying no records no agreement", not (butler / "data" / "terms.json").exists())
 
+    # The persona tests read this console through their screen model (tests/personas/terminal.py):
+    # a command typed a key at a time into PowerShell with PSReadLine (its profile loaded, as a
+    # student's is) reads back once, not as every redraw ("bbutbutl...", round 3).
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "personas"))
+    from terminal import Terminal
+    window = Terminal([str(windows / "WindowsPowerShell" / "v1.0" / "powershell.exe"), "-NoLogo"], home, env)
+    try:
+        window.read(quiet=3.0, limit=60.0)
+        for ch in "Write-Output persona-screen-check":
+            window.keys(ch)
+            time.sleep(0.03)
+        window.keys("\r")
+        screen = window.read(quiet=4.0, limit=120.0)
+    finally:
+        window.close()
+    check("a typed command reads back once in the persona tests' screen",
+          screen.count("Write-Output persona-screen-check") == 1 and "WWr" not in screen
+          and "\npersona-screen-check" in screen, screen)
+
 
 if __name__ == "__main__":
     main(Path(sys.argv[1]))

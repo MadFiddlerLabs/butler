@@ -13,7 +13,7 @@ HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE / "personas"))
 import report  # noqa: E402
 import screens  # noqa: E402
-from terminal import plain  # noqa: E402
+from terminal import Screen, Terminal, plain  # noqa: E402
 
 
 class PersonasTest(unittest.TestCase):
@@ -61,6 +61,46 @@ class PersonasTest(unittest.TestCase):
         after_results = history + [{"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": "x"}]}]
         got = screens.side_question(after_results, "Pick one")
         self.assertEqual([b["type"] for b in got[-1]["content"]], ["tool_result", "text"])
+
+    def test_old_screens_are_trimmed_rarely_and_recent_ones_never(self):
+        def turn(i, size):
+            return [{"role": "assistant", "content": [{"type": "tool_use", "id": f"t{i}"}]},
+                    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": f"t{i}", "content": "x" * size}]}]
+        messages = [{"role": "user", "content": "Start."}]
+        trimmed_at = []
+        for i in range(80):
+            messages += turn(i, 10_000)
+            if screens.trim(messages):
+                trimmed_at.append(i)
+        self.assertGreaterEqual(len(trimmed_at), 2)
+        self.assertGreater(min(b - a for a, b in zip(trimmed_at, trimmed_at[1:])), 5, "rarely, so the cache holds")
+        recent = [m["content"][0]["content"] for m in messages[-screens.RECENT:] if m["role"] == "user"]
+        self.assertTrue(all(len(c) == 10_000 for c in recent), "the last screens are whole")
+        self.assertTrue(messages[2]["content"][0]["content"].endswith(screens.TRIMMED))
+        self.assertEqual(messages[0]["content"], "Start.")
+
+    def test_a_redrawn_command_line_reads_once_as_windows_shows_it(self):
+        """PSReadLine redraws the line on each key; ConPTY sends cursor moves. Stripping them left
+        "bbutbutl..." in round 3's Windows screens."""
+        s = Screen(5, 40)
+        s.feed("\x1b[?25l\x1b[2J\x1b[HPS C:\\Users\\walter> \x1b[?25h")
+        for i in range(1, len("butler brief") + 1):
+            s.feed(f"\x1b[{len('PS C:/Users/walter> ') + 1}G" + "butler brief"[:i] + "\x1b[K")
+        self.assertEqual(s.lines(), ["PS C:\\Users\\walter> butler brief"])
+        s.feed("\r\n\x1b[32mThis takes about half a minute.\x1b[0m\r\n")
+        s.feed("\x1b[3;1HDone.\x1b[K\r\nline 4\r\nline 5\r\nline 6\r\n")
+        self.assertEqual(s.lines()[0], "PS C:\\Users\\walter> butler brief", "a line that scrolls off is kept")
+        self.assertEqual(s.lines()[1:4], ["This takes about half a minute.", "Done.", "line 4"])
+        s.feed("ab\bc\x1b[2Dz")
+        self.assertTrue(s.lines()[-1].startswith("zc"))
+
+    def test_each_read_shows_what_changed_once(self):
+        term = Terminal.__new__(Terminal)
+        term._shown = []
+        self.assertEqual(term.since(["PS C:\\> "]), "PS C:\\> \n")
+        self.assertEqual(term.since(["PS C:\\> butler", "Hello"]), "PS C:\\> butler\nHello\n")
+        self.assertEqual(term.since(["PS C:\\> butler", "Hello"]), "")
+        self.assertEqual(term.since(["PS C:\\> butler", "Hello", "Name ›"]), "Name ›\n")
 
     def test_screens_read_as_plain_text(self):
         self.assertEqual(plain("\x1b[1mBold\x1b[0m\r\nnext\r"), "Bold\nnext\n")

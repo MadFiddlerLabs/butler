@@ -47,3 +47,30 @@ def side_question(messages: list, question: str) -> list:
     text = last["content"] if isinstance(last["content"], str) else None
     content = ([{"type": "text", "text": text}] if text is not None else list(last["content"])) + [{"type": "text", "text": question}]
     return messages[:-1] + [{"role": "user", "content": content}]
+
+
+# The persona's conversation is trimmed once its screens pass this many characters: older screens
+# keep their first lines. Rarely, so the prompt cache is rebuilt only then: round 3 spent $5-6 a
+# persona rereading old screens. The recent messages are never trimmed (at most 8 screens of
+# 12,000 characters, so they alone can't set it off every turn).
+SCREENS_KEPT = 200_000
+RECENT = 16
+TRIMMED = "\n… (an earlier screen, trimmed)"
+
+
+def _screens(messages: list) -> list[dict]:
+    return [b for m in messages if m["role"] == "user" and isinstance(m["content"], list)
+            for b in m["content"] if isinstance(b, dict) and b.get("type") == "tool_result"
+            and isinstance(b.get("content"), str)]
+
+
+def trim(messages: list) -> bool:
+    """Once the untrimmed screens add up to SCREENS_KEPT characters, each one older than the last
+    RECENT messages keeps only its first 300. The persona still knows what it did; it rereads
+    less. True when it trimmed."""
+    if sum(len(b["content"]) for b in _screens(messages) if not b["content"].endswith(TRIMMED)) < SCREENS_KEPT:
+        return False
+    for b in _screens(messages[:-RECENT]):
+        if not b["content"].endswith(TRIMMED) and len(b["content"]) > 300 + len(TRIMMED):
+            b["content"] = b["content"][:300] + TRIMMED
+    return True
