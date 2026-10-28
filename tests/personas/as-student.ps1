@@ -55,7 +55,8 @@ try {
     Step "the persona, as $user"
     $quoted = ($Arguments | ForEach-Object { if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ } }) -join " "
     $line = "set CI=1&& set BYB_ADMIN_REQUESTS=$work\admin&& `"$env:pythonLocation\python.exe`" -X utf8 `"$work\engine\tests\personas\run_persona.py`" $quoted --key-file `"$work\secret\key`" --out `"$work\out`""
-    python "$repo\tests\e2e\run_as.py" --user $user --password-env BYB_PASSWORD --out "$work\harness.txt" --cwd $work --timeout 18000 -- $line
+    $limit = if ($Arguments -contains "--rehearse") { 5400 } else { 18000 }
+    python "$repo\tests\e2e\run_as.py" --user $user --password-env BYB_PASSWORD --out "$work\harness.txt" --cwd $work --timeout $limit -- $line
     $code = $LASTEXITCODE
 } finally {
     if (Test-Path "$env:ProgramFiles\Git.hidden") { Rename-Item "$env:ProgramFiles\Git.hidden" Git }
@@ -66,7 +67,7 @@ try {
 Step "what the run left"
 New-Item -ItemType Directory -Force $Out | Out-Null
 Copy-Item -Recurse -Force "$work\out\*" $Out -ErrorAction SilentlyContinue
-foreach ($log in "$work\admin.log", "$work\admin-err.log", "C:\Users\$user\Butler\logs\install.log", "C:\Users\$user\Butler\logs\bootstrap.log", "C:\Users\$user\Butler\logs\setup.log", "C:\Users\$user\Butler\logs\butler.log") {
+foreach ($log in "$work\harness.txt", "$work\out\live.md", "$work\admin.log", "$work\admin-err.log", "C:\Users\$user\Butler\logs\install.log", "C:\Users\$user\Butler\logs\bootstrap.log", "C:\Users\$user\Butler\logs\setup.log", "C:\Users\$user\Butler\logs\butler.log") {
     Write-Host "--- $log"; Get-Content -ErrorAction SilentlyContinue $log -Tail 40
 }
 exit $code

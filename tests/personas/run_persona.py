@@ -237,6 +237,11 @@ class Run:
 
     def say(self, who: str, text: str) -> None:
         self.log.append(f"**{who}** ({datetime.now(timezone.utc):%H:%M:%S}, ${self.spent():.2f}):\n\n{text}\n")
+        try:   # as it happens too, so a run that hangs or is stopped still shows how far it got
+            with open(self.out / "live.md", "a", encoding="utf-8") as live:
+                live.write(self.log[-1] + "\n")
+        except OSError:
+            pass
 
     # ---------- the persona ----------
     def system(self) -> str:

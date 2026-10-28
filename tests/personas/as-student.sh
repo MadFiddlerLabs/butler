@@ -88,6 +88,7 @@ sudo rm -f "$shared/secret/key"
 step "what the run left"
 sudo cp -R "$shared/out/." "$out/"
 sudo chown -R "$(id -un)" "$out"
+echo "--- live.md"; tail -n 120 "$out/live.md" 2>/dev/null || true
 echo "--- admin.log"; cat "$shared/admin.log" || true
 for f in install.log setup.log butler.log; do
   echo "--- $f"; sudo tail -n 40 "$home/Butler/logs/$f" 2>/dev/null || true
