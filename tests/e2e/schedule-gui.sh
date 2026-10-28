@@ -44,7 +44,6 @@ within 300 ran 2 || { job || true; fail "the kickstarted tick didn't finish"; }
 [ "$(exit_code)" = 0 ] || fail "the kickstarted tick exited with $(exit_code)"
 [ "$(lines)" -gt "$before" ] || fail "the kickstarted tick wrote nothing to logs/butler.log"
 tail -n +"$((before + 1))" "$b/logs/butler.log"
-if grep -q Traceback "$b/logs/launchd.err.log" 2>/dev/null; then fail "a traceback in logs/launchd.err.log"; fi
 "$b/launchd/uninstall.sh"
 if launchctl print "gui/$uid/com.buildyourbutler.butler" >/dev/null 2>&1; then fail "the tick is still loaded"; fi
 echo

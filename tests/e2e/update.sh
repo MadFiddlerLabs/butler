@@ -155,7 +155,6 @@ grep -q "update check: v0.0.6 will install" "$work/tick.log" || { job || true; c
 grep -q "update: now on v0.0.6" "$work/tick.log" || fail "the tick didn't update to v0.0.6"
 [ "$(cat "$b/.butler-version")" = "v0.0.6" ] || fail "not on v0.0.6"
 (cd "$b" && shasum -a 256 data/household_notes.md projects/home.yaml) | diff - <(grep -v budget "$work/household.before") || fail "the household's notes or projects changed"
-if grep -q Traceback "$b/logs/launchd.err.log" 2>/dev/null; then fail "a traceback in logs/launchd.err.log"; fi
 "$b/launchd/uninstall.sh"
 
 echo

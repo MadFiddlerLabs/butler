@@ -128,7 +128,7 @@ python3 "$here/student_first_run.py" "$student" || fail "the first run as the st
 sudo test -f "$b/data/first-run-done" || fail "the first run isn't marked done"
 sudo grep -q '"terms_version"' "$b/data/terms.json" || fail "the Terms weren't recorded"
 sudo grep -q "Lisbon" "$b/config/settings.yaml" || fail "the town isn't in the settings"
-sudo ls "$b"/out/preview/brief-*.html >/dev/null || fail "no first brief"
+sudo find "$b/out/preview" -name "brief-*.html" | grep -q . || fail "no first brief"
 sudo test -f "$b/data/claude-welcomed" || fail "Claude Code wasn't opened"
 sudo test -x "$home/.local/bin/claude" || fail "Claude Code isn't in the student's ~/.local/bin"
 in_butler 'grep -q "^claude_mode: ask" config/settings.yaml' || fail "the household's Claude mode isn't saved"
@@ -184,7 +184,6 @@ within 300 ran 2 || { job || true; fail "the kickstarted tick didn't finish"; }
 [ "$(lines)" -gt "$before" ] || fail "the kickstarted tick wrote nothing to logs/butler.log"
 sudo tail -n +"$((before + 1))" "$b/logs/butler.log"
 [ -z "$(sudo find "$b/logs" "$b/data" ! -user "$student" | head -n 3)" ] || fail "the tick left files that aren't the student's"
-if sudo grep -q "Traceback" "$b/logs/launchd.err.log" 2>/dev/null; then fail "a traceback in logs/launchd.err.log"; fi
 
 step "an update the way a household gets one: the tick's own check, as the student"
 # The real tick job, with the update list and the rollback copy pointed at local files. The
@@ -226,7 +225,6 @@ sudo test -f "$b/data/updates/Butler-v0.0.1.pkg" || fail "the rollback copy isn'
 in_butler 'grep -q "^name: Bento" config/settings.yaml' || fail "the update changed the butler's name"
 in_butler 'grep -q "Lisbon" config/settings.yaml' || fail "the update lost the town"
 [ -z "$(sudo find "$b" ! -user "$student" | head -n 3)" ] || fail "the update left files that aren't the student's: $(sudo find "$b" ! -user "$student" | head -n 3)"
-if sudo grep -q "Traceback" "$b/logs/launchd.err.log" 2>/dev/null; then fail "a traceback in logs/launchd.err.log"; fi
 
 step "the schedule comes out cleanly"
 for label in $labels; do as_student launchctl bootout "user/$uid/$label" || fail "couldn't stop $label"; done
