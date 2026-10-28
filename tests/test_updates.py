@@ -347,6 +347,30 @@ class ApplyTest(ApplySandbox):
                      "settings, data, projects and budget stay"):
             self.assertIn(part, text)
 
+    def test_an_installer_that_never_starts_leaves_the_old_version_working_and_says_so_calmly(self):
+        """Found by tests/e2e/standard-user.sh: Installer couldn't run at all (there, no installd for
+        an account without a screen session), so the reinstall failed too, and the household was
+        told Butler "may not run until it's reinstalled" while the old version sat untouched and
+        working. The old version's own checks decide."""
+        self.broken_installs.update({b"version one", b"version two"})
+        with mock.patch.object(updates, "post_install", return_value={"ok": True}) as post:
+            result = updates.apply(self.entry)
+        self.assertEqual(updates.installed_version(), "v0.1.0")
+        self.assertEqual((result["status"], result["restored"], result["restored_ok"]), ("rolled_back", "v0.1.0", True))
+        self.assertIn("disk is full", result["problem"])
+        post.assert_called_once_with("v0.1.0")
+        self.assertEqual(self.mailed, [], "nothing to fix, so no email")
+        self.assertIn("went back to v0.1.0", updates.brief_lines("Bento")[0])
+
+    def test_an_old_version_that_fails_its_checks_after_a_failed_reinstall_is_not_ok(self):
+        self.broken_installs.update({b"version one", b"version two"})
+        with mock.patch.object(updates, "post_install", return_value={"ok": False, "problem": "old is broken"}):
+            result = updates.apply(self.entry)
+        self.assertFalse(result["restored_ok"])
+        self.assertIn("disk is full", result["rollback_problem"])
+        self.assertIn("old is broken", result["rollback_problem"])
+        self.assertEqual(len(self.mailed), 1)
+
     def test_a_way_back_whose_own_check_fails_is_not_ok(self):
         answers = iter([{"ok": False, "problem": "new is broken"}, {"ok": False, "problem": "old is broken too"}])
         with mock.patch.object(updates, "post_install", side_effect=lambda prev: next(answers)):

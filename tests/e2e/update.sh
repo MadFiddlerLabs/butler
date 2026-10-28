@@ -2,7 +2,8 @@
 # Over-the-air updates end to end on a Mac, with the real Installer: install an old package into
 # this home, add a household's files, update to a new package from a local manifest, then try a
 # package that doesn't load and one that loads but breaks the brief (both rolled back), and an
-# unsigned one without the test flag (refused).
+# unsigned one without the test flag (refused). Last, the way a household really gets one: the
+# launchd tick's own daily check finds v0.0.6 and installs it, with no `butler update`.
 #
 # CI only: it installs into ~/Butler. Packages are unsigned test builds, so the signature check
 # is relaxed with BUTLER_UPDATE_ALLOW_UNSIGNED, which works only for a test build's own version
@@ -117,6 +118,44 @@ if "$b/bin/butler" update --yes > "$work/unsigned.log" 2>&1; then
 fi
 grep -q "isn't signed by Butler's publisher" "$work/unsigned.log" || { cat "$work/unsigned.log"; fail "wrong refusal"; }
 [ "$(cat "$b/.butler-version")" = "v0.0.2" ] || fail "the version changed"
+
+step "the tick's own daily check installs v0.0.6 with Installer, from inside the launchd job"
+# The way a household gets an update: no `butler update`, just the 5-minute tick in the logged-in
+# account's GUI domain (the runner's: only it has a screen session here; standard-user.sh runs
+# the same check as a standard account, where Installer can't run). launchd/install.sh loads the
+# real jobs with updates off, so no tick reaches the real update list; then the tick's plist gets
+# the test environment and loads again, and its first run is due to check.
+v6="$(build "$repo" v0.0.6)"
+manifest v0.0.6 "$v6"
+uid="$(id -u)"
+job() { launchctl print "gui/$uid/com.buildyourbutler.butler"; }
+ran() {  # ran <n>: the tick has run at least n times and isn't running now
+  local out runs; out="$(job)"
+  runs="$(printf '%s\n' "$out" | sed -n 's/^[[:space:]]*runs = //p' | head -n 1)"
+  [ "${runs:-0}" -ge "$1" ] && printf '%s\n' "$out" | grep -q "state = not running"
+}
+within() { local n="$1"; shift; for _ in $(seq 1 "$n"); do "$@" && return 0; sleep 1; done; return 1; }
+sed -i '' 's/^updates:.*/updates: off/' "$b/config/settings.yaml"
+grep -q "^updates: off" "$b/config/settings.yaml" || fail "couldn't turn updates off"
+"$b/launchd/install.sh"
+within 300 ran 1 || { job || true; fail "the tick didn't run at load"; }
+plist="$HOME/Library/LaunchAgents/com.buildyourbutler.butler.plist"
+launchctl bootout "gui/$uid/com.buildyourbutler.butler"
+plutil -insert EnvironmentVariables -json "{\"BUTLER_UPDATE_MANIFEST\": \"$BUTLER_UPDATE_MANIFEST\",
+  \"BUTLER_RELEASES_URL\": \"$BUTLER_RELEASES_URL\", \"BUTLER_UPDATE_ALLOW_UNSIGNED\": \"1\", \"BUTLER_API\": \"$BUTLER_API\"}" "$plist"
+sed -i '' 's/^updates:.*/updates: auto/' "$b/config/settings.yaml"
+before="$(wc -l < "$b/logs/butler.log")"
+launchctl bootstrap "gui/$uid" "$plist"
+within 900 ran 1 || { job || true; tail -n 40 "$b/logs/butler.log"; fail "the tick with the update didn't finish"; }
+tail -n +"$((before + 1))" "$b/logs/butler.log" | tee "$work/tick.log"
+code="$(job | sed -n 's/^[[:space:]]*last exit code = //p' | head -n 1)"
+[ "$code" = 0 ] || fail "the tick with the update exited with $code"
+grep -q "update check: v0.0.6 will install" "$work/tick.log" || fail "the tick's update check didn't find v0.0.6"
+grep -q "update: now on v0.0.6" "$work/tick.log" || fail "the tick didn't update to v0.0.6"
+[ "$(cat "$b/.butler-version")" = "v0.0.6" ] || fail "not on v0.0.6"
+(cd "$b" && shasum -a 256 data/household_notes.md projects/home.yaml) | diff - <(grep -v budget "$work/household.before") || fail "the household's notes or projects changed"
+if grep -q Traceback "$b/logs/launchd.err.log" 2>/dev/null; then fail "a traceback in logs/launchd.err.log"; fi
+"$b/launchd/uninstall.sh"
 
 echo
 echo "updates end to end: all good"

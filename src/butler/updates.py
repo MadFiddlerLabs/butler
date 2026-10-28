@@ -458,12 +458,17 @@ def _report(settings: dict | None, previous: str, new: str, outcome: str, reason
 
 def _roll_back(rollback_pkg: Path, previous: str) -> dict:
     """Reinstalls the kept package and runs its own checks. Never raises: a way back that fails
-    is reported, not lost."""
+    is reported, not lost. When Installer can't reinstall it but the old version is still what's
+    on disk (Installer never ran, or stopped before changing anything), the old version's own
+    checks decide: a household whose Butler still works isn't told to reinstall it."""
     try:
         install_package(rollback_pkg)
         back = post_install(previous)
     except UpdateError as e:
         back = {"ok": False, "problem": str(e)}
+        if installed_version() == previous:
+            checked = post_install(previous)
+            back = checked if checked.get("ok") else {"ok": False, "problem": f"{e}; then {checked.get('problem')}"}
     restored = installed_version()
     ok = bool(back.get("ok")) and restored == previous
     out = {"restored": restored, "restored_ok": ok}

@@ -83,10 +83,15 @@ else
   how="launchctl asuser $uid open"
   launchctl asuser "$uid" open -a Terminal "$file"
   code=$?
-  if [ "$code" != 0 ]; then
+  # Plain `open` reaches whoever is at the screen, so it's only a way in for the student when
+  # that's them. Run for anyone else (no screen session of their own), it opened Terminal in the
+  # other person's session.
+  if [ "$code" != 0 ] && [ "$(stat -f %Su /dev/console 2>/dev/null)" = "$user" ]; then
     how="open"
     open -a Terminal "$file"
     code=$?
+  elif [ "$code" != 0 ]; then
+    how="$how; $user isn't the one at the screen, so not open"
   fi
 fi
 if [ "$code" = 0 ]; then

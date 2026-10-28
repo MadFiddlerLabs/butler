@@ -192,7 +192,11 @@ class PostinstallTest(unittest.TestCase):
             f'#!/bin/bash\necho "$*" >> "{self.tmp}/dseditgroup.txt"\n[ -n "${{FAKE_ADMIN:-}}" ]\n')
         (fakebin / "ditto").write_text('#!/bin/bash\n[ -n "${FAKE_DITTO_FAILS:-}" ] && exit 1\ncp -R "$1" "$2"\n')
         (fakebin / "codesign").write_text('#!/bin/bash\n[ -z "${FAKE_CODESIGN_FAILS:-}" ]\n')
-        for f in ("open", "launchctl", "dseditgroup", "ditto", "codesign"):
+        # Who is at the screen: this user, unless FAKE_CONSOLE_USER says someone else is.
+        (fakebin / "stat").write_text(
+            '#!/bin/bash\nif [ "$*" = "-f %Su /dev/console" ]; then echo "${FAKE_CONSOLE_USER:-$(id -un)}"; exit 0; fi\n'
+            'exec /usr/bin/stat "$@"\n')
+        for f in ("open", "launchctl", "dseditgroup", "ditto", "codesign", "stat"):
             (fakebin / f).chmod(0o755)
         self.apps = self.tmp / "Applications"          # stands in for /Applications
         self.apps.mkdir()
@@ -252,6 +256,14 @@ class PostinstallTest(unittest.TestCase):
         self.run_postinstall("Bento.pkg", FAKE_ASUSER_FAILS="1")
         self.assertIn("first-run.command", self.opened.read_text())
         self.assertIn("opened Terminal with first-run.command (open)", self.log())
+
+    def test_a_student_who_isnt_at_the_screen_gets_no_window_in_someone_elses_session(self):
+        """Found by tests/e2e/standard-user.sh: run for an account with no screen session, the plain
+        `open` fallback opened Terminal in the session of whoever was at the screen."""
+        self.run_postinstall("Bento.pkg", FAKE_ASUSER_FAILS="1", FAKE_CONSOLE_USER="someone-else")
+        self.assertFalse(self.opened.exists(), "Terminal opened in another account's session")
+        self.assertRegex(self.log(), r"installed \(fresh\): could not open Terminal with first-run\.command "
+                                     r"\(launchctl asuser \d+ open; \S+ isn't the one at the screen, so not open, exit 5\)")
 
     def test_when_terminal_wont_open_the_log_says_so_and_the_install_still_succeeds(self):
         self.run_postinstall("Bento.pkg", FAKE_ASUSER_FAILS="1", FAKE_OPEN_EXIT="1")
