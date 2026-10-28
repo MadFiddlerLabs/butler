@@ -362,6 +362,8 @@ class Outside:
             self.save()
             return (f"Lunch Money > Settings > Developers: Request new access token, label {(text or 'Butler')[:30]!r}. "
                     f"The token:\n\n    {token}\n\nIt's shown only now.")
+        if action == "privacy_settings":
+            return self.privacy(what + " " + text)
         if action == "tailscale_install":
             return self.tailscale_install(text or what)
         if action == "tailscale_admin":
@@ -371,6 +373,24 @@ class Outside:
         if action == "open_app":
             return self.app(what + " " + text)
         return ""
+
+    def privacy(self, said: str) -> str:
+        """System Settings > Privacy & Security on a Mac: Calendars and Reminders, where the lessons'
+        fix box sends someone who clicked Don't Allow (bin/butler-ek's stub reads the same file)."""
+        if WINDOWS:
+            return "Settings > Privacy & security: nothing here is about Butler. (Google's sign-in is in the browser.)"
+        path = FAKES / "ek-grants.json"
+        grants = json.loads(path.read_text()) if path.exists() else {}
+        said = said.lower()
+        off = re.search(r"\b(off|deny|disallow|turn off|switch off)\b", said) is not None
+        changed = [kind for kind in ("calendar", "reminders") if kind.rstrip("s") in said]
+        for kind in changed:
+            grants[kind] = not off
+        path.write_text(json.dumps(grants))
+        rows = "; ".join(f"{k.title()}: butler-ek {'on' if grants.get(k) else 'off'}" for k in ("calendar", "reminders")
+                         if k in grants) or "no app has asked for Calendars or Reminders yet"
+        return ("System Settings > Privacy & Security" + (f": you switch {'off' if off else 'on'} butler-ek under "
+                + " and ".join(k.title() for k in changed) + "." if changed else ".") + f" Now: {rows}.")
 
     # ---------- Tailscale and the phone ----------
     def _tailscale(self) -> dict:

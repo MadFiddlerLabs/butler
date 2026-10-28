@@ -96,7 +96,8 @@ TOOLS = [
          "(the address you want in 'text'), turn on 2-Step Verification, or create an app password (its name in "
          "'text'); at Lunch Money, sign up and connect your bank, or create an access token (its name in 'text'); "
          "install Tailscale ('computer' or 'phone' in 'text'), use Tailscale's admin console (what you do in 'what', "
-         "a new machine name in 'text'), or open an address in your phone's browser (in 'text'). Describe it in "
+         "a new machine name in 'text'), open an address in your phone's browser (in 'text'), or switch an app on "
+         "or off in System Settings > Privacy & Security (what, in 'text', such as 'Calendars on'). Describe it in "
          "'what' and pick the closest 'action'.",
          {"action": {"type": "string", "enum": ["check_version", "download_butler", "open_download", "check_inbox",
                                                 "read_email", "reply_to_email", "click_email_link", "click_on_page",
@@ -104,7 +105,8 @@ TOOLS = [
                                                 "open_folder", "open_app", "wait", "console_set_limit",
                                                 "console_create_key", "gmail_create_account", "google_two_step",
                                                 "google_app_password", "lunchmoney_sign_up", "lunchmoney_create_token",
-                                                "tailscale_install", "tailscale_admin", "phone_open", "other"]},
+                                                "tailscale_install", "tailscale_admin", "phone_open",
+                                                "privacy_settings", "other"]},
           "what": {"type": "string"},
           "text": {"type": "string", "description": "What you type, if anything (the butler's name for download_butler); else empty."}},
          ["action", "what", "text"]),
@@ -225,17 +227,24 @@ How this works:
 In this session, you will also:
 {cards}"""
 
-    async def ask(self, messages: list, tools: list, max_tokens: int = 4000):
+    def left(self) -> float:
+        """What the run may still spend before it stops, keeping a reserve for the last Claude Code
+        turn and the report: round 3's check runs passed their cap by up to $1 without one."""
+        return self.budget - max(0.75, 0.1 * self.budget) - self.spent()
+
+    async def ask(self, messages: list, tools: list, max_tokens: int = 4000, effort: str = "medium"):
+        if self.spent() >= self.budget - 0.1:
+            raise RuntimeError("the run's budget is spent")
         response = await self.client.messages.create(
             model=PERSONA_MODEL, max_tokens=max_tokens, system=self.system(), messages=messages, tools=tools,
-            output_config={"effort": "medium"}, cache_control={"type": "ephemeral"})
+            output_config={"effort": effort}, cache_control={"type": "ephemeral"})
         self.charge(response.usage)
         return response
 
     async def persona_loop(self) -> None:
         messages = [{"role": "user", "content": "Your computer is on and the course website is open. Start with the first lesson."}]
         self.messages = messages    # kept for the report, however the session ends
-        while self.spent() < self.budget - 0.1:
+        while self.left() > 0:
             response = await self.ask(messages, TOOLS)
             messages.append({"role": "assistant", "content": response.content})
             calls = [b for b in response.content if b.type == "tool_use"]
@@ -253,7 +262,7 @@ In this session, you will also:
                     out += "\n\n" + "\n\n".join(self.pending)
                     self.pending.clear()
                 self.say(f"screen ({call.name})", f"```\n{out[-6000:]}\n```")
-                results.append({"type": "tool_result", "tool_use_id": call.id, "content": out[-12000:] or "(nothing)"})
+                results.append({"type": "tool_result", "tool_use_id": call.id, "content": out[-8000:] or "(nothing)"})
             messages.append({"role": "user", "content": results})
             trim(messages)
             if any(c.name == "finish" for c in calls):
@@ -536,11 +545,16 @@ In this session, you will also:
                         "answer tool.")
             snapshot = side_question(messages, question)
             try:
-                response = await self.ask(snapshot, [PERMISSION_TOOL], max_tokens=1500)
+                if self.left() <= 0:   # the run stops here: Claude Code stops with it
+                    raise RuntimeError("the run's budget is spent")
+                response = await self.ask(snapshot, [PERMISSION_TOOL], max_tokens=1500, effort="low")
                 answer = next((b.input for b in response.content if b.type == "tool_use"), {"choice": "yes", "say": ""})
             except Exception as e:  # noqa: BLE001 - a broken question shouldn't stop the run
-                self.fallbacks += 1     # counted in the checks: the persona didn't decide this one
-                answer = {"choice": "yes", "say": f"(harness: {e})"}
+                if "budget is spent" in str(e):     # the run is over: Claude Code stops too
+                    answer = {"choice": "no", "say": "Let's stop here for today."}
+                else:
+                    self.fallbacks += 1     # counted in the checks: the persona didn't decide this one
+                    answer = {"choice": "yes", "say": f"(harness: {e})"}
             self.say(f"{self.persona['name']} answers Claude Code", f"{tool_name}: {answer}")
             self._shown.append(f"Claude Code stopped and asked you: {tool_name}: {what[:300]}\n  Do you want to proceed?\n"
                                f"  You answered: {'1. Yes' if answer['choice'] == 'yes' else '2. No'}"
@@ -562,7 +576,7 @@ In this session, you will also:
                     + "\n\nThis is your decision, as you. Answer with the choose tool, one answer per question.")
         snapshot = side_question(messages, question)
         try:
-            response = await self.ask(snapshot, [CHOICE_TOOL], max_tokens=1500)
+            response = await self.ask(snapshot, [CHOICE_TOOL], max_tokens=1500, effort="low")
             picked = next((b.input["answers"] for b in response.content if b.type == "tool_use"), [])
         except Exception:  # noqa: BLE001 - a broken question shouldn't stop the run
             self.fallbacks += 1
@@ -589,7 +603,7 @@ In this session, you will also:
     async def window(self, question: str) -> dict:
         snapshot = side_question(self.messages, question)
         try:
-            response = await self.ask(snapshot, [WINDOW_TOOL], max_tokens=1500)
+            response = await self.ask(snapshot, [WINDOW_TOOL], max_tokens=1500, effort="low")
             return next(b.input for b in response.content if b.type == "tool_use")
         except Exception:  # noqa: BLE001
             self.fallbacks += 1
