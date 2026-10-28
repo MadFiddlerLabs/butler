@@ -135,13 +135,13 @@ def build(settings: dict, day: date, use_llm: bool, preview_projects: bool = Fal
         todos = sorted(found, key=lambda t: (t.get("due") is None, t.get("due") or ""))
     except calendar_source.Failed as e:
         log.warning("reminders: %s", e)
-        problems.append("Reminders unavailable")
+        problems.append("to-dos unavailable")
     except NotSetUp as e:
         log.info("reminders: %s", e)
-        not_set_up.append("Reminders")
+        not_set_up.append("to-dos")   # the lessons' word: Reminders on a Mac, Google Tasks on Google
     except Exception as e:
         log.exception("reminders failed")
-        problems.append(f"Reminders unavailable ({_short(e)})")
+        problems.append(f"to-dos unavailable ({_short(e)})")
 
     next_up = None
     if settings.get("projects", {}).get("in_brief") or preview_projects:

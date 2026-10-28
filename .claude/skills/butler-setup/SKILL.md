@@ -126,8 +126,8 @@ If they never ran the first run, do the whole step below.
    Module set up, so when you check or ask about them, open with "Setup Module ·". The rest is
    new in Module 2, so open with "Module 2 ·". For example: "Setup Module · Where you live: your
    settings say Lisbon, so 7 a.m. there is 2 a.m. in New York. Is Lisbon right?"
-   1. **Your butler's name** ("Setup Module · Your butler's name:"). It signs every email and
-      answers to it in Siri. Offer three playful ideas and let them pick their own. It's the
+   1. **Your butler's name** ("Setup Module · Your butler's name:"). It signs every email (and, on
+      an iPhone, answers to it in Siri from Module 6). Offer three playful ideas and let them pick their own. It's the
       fun part, so give it a moment.
    2. **The adults** ("Setup Module · The adults:") the emails are for: first names. Their
       email addresses come later.

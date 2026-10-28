@@ -35,7 +35,7 @@ rm -rf out/preview
 html="$(ls out/preview/brief-*.html)"
 grep -q "Traceback" "$work/preview.log" && { cat "$work/preview.log"; fail "traceback in preview"; }
 grep -q "Bento" "$html" || fail "the butler's name isn't in the brief"
-grep -q "Not connected yet: calendar, money, Reminders." "$html" || fail "no 'Not connected yet' line"
+grep -q "Not connected yet: calendar, money, to-dos." "$html" || fail "no 'Not connected yet' line"
 grep -q "Problems this morning" "$html" && fail "the preview reports problems"
 grep -q "Next up" "$html" && fail "example projects shown to a real household"
 grep -q "ts.net" "$html" && fail "the brief links to the example portal"
