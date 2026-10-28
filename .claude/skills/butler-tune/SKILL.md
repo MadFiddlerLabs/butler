@@ -29,6 +29,9 @@ Read, and summarize for yourself:
 
 - `data/feedback.md`: what they asked to change about the emails. Note what's already
   handled (the prompts read the last 30 lines) and what needs a config or code change.
+  Butler reads replies every five minutes, so feedback sent moments ago isn't there yet. If
+  they say they just replied and it's missing, say so, and offer to wait for the confirmation
+  email (it says the feedback was saved) before tuning.
 - `data/household_notes.md`: recent facts; look for ones that should change config (a new
   person, a new calendar, a nanny's new pay).
 - `logs/butler.log` (the last few days): failures, dead feeds, skipped sends.

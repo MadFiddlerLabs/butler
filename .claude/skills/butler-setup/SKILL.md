@@ -54,9 +54,10 @@ one sentence, and offer the next step by its module, title and command.
   website and the weekly email know. It sends only lesson names and dates. Tell them in one
   line ("Module 3 is ticked off on buildyourbutler.com."). If it still says "not done yet",
   something the check needs is missing: compare with the "Where am I?" table and fix it.
-- Never say they skipped a module from this conversation alone. Much of the course happens
-  outside Claude Code: Module 6's replies, for one, go by email. Run `bin/butler progress`
-  first, and go by what it says; it also ticks off a module they finished elsewhere.
+- Never say a module is done, not done, ticked or skipped from this conversation alone. Much
+  of the course happens outside Claude Code: Module 6's replies, for one, go by email. Run
+  `bin/butler progress` first, and go by what it says; it also ticks off a module they
+  finished elsewhere.
 
 ### Mac or Windows
 
