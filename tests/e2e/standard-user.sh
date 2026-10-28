@@ -69,7 +69,7 @@ as_student() { sudo -u "$student" -H "$@"; }
 # A command in the student's login shell, in the Butler folder, as Terminal would run it.
 in_butler() { sudo -u "$student" -i bash -c "cd ~/Butler && $1"; }
 read_file() { sudo cat "$b/$1"; }
-lines() { sudo cat "$b/logs/butler.log" 2>/dev/null | wc -l | tr -d ' '; }
+lines() { { sudo cat "$b/logs/butler.log" 2>/dev/null || true; } | wc -l | tr -d " "; }
 set_updates() {  # set_updates off|auto: the household's `updates` setting, as the student
   in_butler ".venv/bin/python -c 'import pathlib, yaml; p = pathlib.Path(\"config/settings.yaml\"); s = yaml.safe_load(p.read_text()); s[\"updates\"] = \"$1\"; p.write_text(yaml.safe_dump(s, sort_keys=False, allow_unicode=True))'"
 }
@@ -81,7 +81,7 @@ sudo sysadminctl -addUser "$student" -fullName "BYB Test" -password "$password" 
 unset password
 [ -d "$home" ] || sudo createhomedir -c -u "$student" >/dev/null
 uid="$(id -u "$student")"
-[ "$(dscl . -read "/Users/$student" NFSHomeDirectory | sed 's/^NFSHomeDirectory: //')" = "$home" ] || fail "the home folder isn't $home"
+[ "$(dscl . -read "/Users/$student" NFSHomeDirectory | sed -e "s/^NFSHomeDirectory://" -e "s/^ *//" | tail -n 1)" = "$home" ] || fail "the home folder isn't $home"
 [ "$(sudo -u "$student" -i printenv HOME)" = "$home" ] || fail "the student's login shell has another HOME"
 if dseditgroup -o checkmember -m "$student" admin >/dev/null 2>&1; then fail "$student is an admin"; fi
 echo "$student: uid $uid, home \"$home\", standard (not an admin)"
@@ -121,7 +121,7 @@ sudo test -x "$home/Applications/Butler.app/Contents/MacOS/Butler" || fail "the 
 sudo grep -q "the Butler app stays in ~/Applications: $student isn't an admin" "$b/logs/install.log" \
   || fail "install.log doesn't say why the app stays in ~/Applications"
 sudo grep -qF "export PATH=\"$b/bin:\$PATH\"" "$home/.zprofile" || fail "butler isn't on the student's PATH"
-[ "$(sudo stat -f %Su "$home/.zprofile")" = "$student" ] || fail "~/.zprofile isn't the student's"
+[ "$(sudo stat -f %Su "$home/.zprofile")" = "$student" ] || fail "the student's .zprofile isn't theirs"
 
 step "the first run, as the student types it, into Claude Code"
 python3 "$here/student_first_run.py" "$student" || fail "the first run as the student"
@@ -169,7 +169,8 @@ job() { as_student launchctl print "user/$uid/com.buildyourbutler.butler"; }
 ran() {  # ran <n>: the tick has run at least n times and isn't running now
   local out runs; out="$(job)"
   runs="$(printf '%s\n' "$out" | sed -n 's/^[[:space:]]*runs = //p' | head -n 1)"
-  [ "${runs:-0}" -ge "$1" ] && printf '%s\n' "$out" | grep -q "state = not running"
+  [ "${runs:-0}" -ge "$1" ] && [ "$(printf "%s\n" "$out" | grep -m 1 -E "^[[:space:]]*state = ")" = "$(printf "\tstate = not running")" ] \
+    && printf "%s\n" "$out" | grep -Eq "last exit code = [0-9]+"
 }
 exit_code() { job | sed -n 's/^[[:space:]]*last exit code = //p' | head -n 1; }
 within 300 ran 1 || { job || true; fail "the tick didn't run at load"; }

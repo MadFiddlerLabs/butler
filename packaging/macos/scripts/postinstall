@@ -28,7 +28,8 @@ user="$(id -un)"
 home="$HOME"
 if [ "$(id -u)" = 0 ]; then
   user="$(stat -f %Su /dev/console)"
-  home="$(dscl . -read "/Users/$user" NFSHomeDirectory | awk '{print $2}')"
+  # dscl puts a path with a space on a line of its own: "NFSHomeDirectory:\n /Users/sam jones".
+  home="$(dscl . -read "/Users/$user" NFSHomeDirectory | sed -e 's/^NFSHomeDirectory://' -e 's/^ *//' | tail -n 1)"
 fi
 dir="$home/Butler"
 if [ -n "$target" ] && [ -d "${target%/}/Butler" ]; then

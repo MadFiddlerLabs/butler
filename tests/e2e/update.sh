@@ -132,7 +132,8 @@ job() { launchctl print "gui/$uid/com.buildyourbutler.butler"; }
 ran() {  # ran <n>: the tick has run at least n times and isn't running now
   local out runs; out="$(job)"
   runs="$(printf '%s\n' "$out" | sed -n 's/^[[:space:]]*runs = //p' | head -n 1)"
-  [ "${runs:-0}" -ge "$1" ] && printf '%s\n' "$out" | grep -q "state = not running"
+  [ "${runs:-0}" -ge "$1" ] && [ "$(printf "%s\n" "$out" | grep -m 1 -E "^[[:space:]]*state = ")" = "$(printf "\tstate = not running")" ] \
+    && printf "%s\n" "$out" | grep -Eq "last exit code = [0-9]+"
 }
 within() { local n="$1"; shift; for _ in $(seq 1 "$n"); do "$@" && return 0; sleep 1; done; return 1; }
 sed -i '' 's/^updates:.*/updates: off/' "$b/config/settings.yaml"
@@ -150,7 +151,7 @@ within 900 ran 1 || { job || true; tail -n 40 "$b/logs/butler.log"; fail "the ti
 tail -n +"$((before + 1))" "$b/logs/butler.log" | tee "$work/tick.log"
 code="$(job | sed -n 's/^[[:space:]]*last exit code = //p' | head -n 1)"
 [ "$code" = 0 ] || fail "the tick with the update exited with $code"
-grep -q "update check: v0.0.6 will install" "$work/tick.log" || fail "the tick's update check didn't find v0.0.6"
+grep -q "update check: v0.0.6 will install" "$work/tick.log" || { job || true; cat "$b/data/updates/state.json" || true; fail "the tick's update check didn't find v0.0.6"; }
 grep -q "update: now on v0.0.6" "$work/tick.log" || fail "the tick didn't update to v0.0.6"
 [ "$(cat "$b/.butler-version")" = "v0.0.6" ] || fail "not on v0.0.6"
 (cd "$b" && shasum -a 256 data/household_notes.md projects/home.yaml) | diff - <(grep -v budget "$work/household.before") || fail "the household's notes or projects changed"

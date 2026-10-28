@@ -15,12 +15,13 @@ fail() {
   exit 1
 }
 within() { local n="$1"; shift; for _ in $(seq 1 "$n"); do "$@" && return 0; sleep 1; done; return 1; }
-lines() { cat "$b/logs/butler.log" 2>/dev/null | wc -l | tr -d ' '; }
+lines() { { cat "$b/logs/butler.log" 2>/dev/null || true; } | wc -l | tr -d " "; }
 job() { launchctl print "gui/$uid/com.buildyourbutler.butler"; }
 ran() {  # ran <n>: the tick has run at least n times and isn't running now
   local out runs; out="$(job)"
   runs="$(printf '%s\n' "$out" | sed -n 's/^[[:space:]]*runs = //p' | head -n 1)"
-  [ "${runs:-0}" -ge "$1" ] && printf '%s\n' "$out" | grep -q "state = not running"
+  [ "${runs:-0}" -ge "$1" ] && [ "$(printf "%s\n" "$out" | grep -m 1 -E "^[[:space:]]*state = ")" = "$(printf "\tstate = not running")" ] \
+    && printf "%s\n" "$out" | grep -Eq "last exit code = [0-9]+"
 }
 exit_code() { job | sed -n 's/^[[:space:]]*last exit code = //p' | head -n 1; }
 
