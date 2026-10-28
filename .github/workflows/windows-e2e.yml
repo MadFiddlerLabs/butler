@@ -317,27 +317,25 @@ jobs:
         if: always()
         shell: pwsh
         run: if (Test-Path "$env:ProgramFiles\Git.hidden") { Rename-Item "$env:ProgramFiles\Git.hidden" Git }
-      - name: BYB Test installs the schedule and runs the tick
-        # As /butler-setup inbox has Claude run it: Task Scheduler, no admin rights.
+      - name: BYB Test installs the schedule, and its tick runs
+        # As /butler-setup inbox has Claude run it: Task Scheduler, no admin rights. Then the tick,
+        # as BYB Test (tests/e2e/windows-tick.ps1 says why the runner starts it by hand).
         shell: pwsh
         run: |
           $b = "C:\Users\$env:BYB_USER\Butler"
           python tests\e2e\run_as.py --user $env:BYB_USER --password-env BYB_PASSWORD --out C:\byb\schedule.txt --cwd $b -- '.venv\Scripts\python.exe -X utf8 run.py schedule install'
           if ($LASTEXITCODE -ne 0) { throw "schedule install exited $LASTEXITCODE" }
+          foreach ($name in "tick", "morning", "portal") {
+            schtasks /Query /TN "\Butler\$name" | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "no \Butler\$name task" }
+          }
           $before = if (Test-Path "$b\logs\butler.log") { (Get-Content "$b\logs\butler.log").Count } else { 0 }
-          python tests\e2e\run_as.py --user $env:BYB_USER --password-env BYB_PASSWORD --out C:\byb\run-tick.txt -- 'schtasks /Run /TN "\Butler\tick"'
-          if ($LASTEXITCODE -ne 0) { throw "BYB Test couldn't start the tick" }
-          $deadline = (Get-Date).AddMinutes(5)
-          do {
-            Start-Sleep -Seconds 5
-            $info = schtasks /Query /TN "\Butler\tick" /V /FO LIST | Out-String
-          } until (($info -notmatch "Status:\s+Running" -and $info -notmatch "Last Result:\s+267011") -or (Get-Date) -gt $deadline)
-          Write-Host $info
-          if ($info -notmatch "Run As User:\s+.*BYB Test") { throw "the tick doesn't run as BYB Test" }
-          if ($info -notmatch "Last Result:\s+0\b") { Get-Content -ErrorAction SilentlyContinue "$b\logs\scheduled.log", "$b\logs\butler.log" -Tail 30; throw "the tick didn't finish cleanly" }
+          pwsh tests\e2e\windows-tick.ps1 -User $env:BYB_USER -Out C:\byb\tick.txt
+          if ($LASTEXITCODE -ne 0) { throw "the tick, as BYB Test, exited $LASTEXITCODE" }
           $lines = @(Get-Content "$b\logs\butler.log")
           if ($lines.Count -le $before) { throw "the tick wrote nothing to butler.log" }
           $lines[$before..($lines.Count - 1)] | Out-Host
+          if ($lines[$before..($lines.Count - 1)] -match "Traceback|ERROR") { throw "the tick logged an error" }
       - name: BYB Test's logs
         if: always()
         shell: pwsh

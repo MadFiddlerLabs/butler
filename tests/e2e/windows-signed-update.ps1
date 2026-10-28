@@ -100,17 +100,11 @@ $newExe = Join-Path $work "Butler-Setup-$NewVersion.exe"
 
 Step "BYB Test installs the schedule; its tick checks for updates and installs $NewVersion"
 if ((As-Student "schedule.txt" ".venv\Scripts\python.exe -X utf8 run.py schedule install" $b) -ne 0) { Fail "schedule install failed" }
-if ((As-Student "run-tick.txt" 'schtasks /Run /TN "\Butler\tick"') -ne 0) { Fail "BYB Test couldn't start the tick" }
-$deadline = (Get-Date).AddMinutes(25)
-do {
-    Start-Sleep -Seconds 10
-    $info = schtasks /Query /TN "\Butler\tick" /V /FO LIST | Out-String
-    $running = $info -match "Status:\s+Running"
-} until (((Version) -eq $NewVersion -and -not $running) -or (Get-Date) -gt $deadline)
-Write-Host $info
+pwsh (Join-Path $PSScriptRoot "windows-tick.ps1") -User $user -Out (Join-Path $work "tick.txt")
+if ($LASTEXITCODE -ne 0) { Fail "the tick, as BYB Test, exited $LASTEXITCODE" }
+$info = schtasks /Query /TN "\Butler\tick" /V /FO LIST | Out-String
 if ($info -notmatch "Run As User:\s+.*BYB Test") { Fail "the tick doesn't run as BYB Test" }
 if ((Version) -ne $NewVersion) { Fail "the tick didn't update $OldVersion to $NewVersion (still '$(Version)')" }
-if ($info -notmatch "Last Result:\s+0\b") { Fail "the tick that updated didn't finish cleanly" }
 if ((Get-FileHash "$b\data\household_notes.md").Hash -ne $household) { Fail "the household's notes changed" }
 $log = Get-Content -Raw "$b\logs\butler.log"
 if ($log -notmatch "update check") { Fail "butler.log doesn't show the tick's update check" }
@@ -121,6 +115,6 @@ if ($state.last_result.status -ne "updated" -or $state.last_result.from -ne $Old
 }
 if ($log -notmatch "update: now on $([regex]::Escape($NewVersion))") { Fail "butler.log doesn't say it's now on $NewVersion" }
 Show-Logs
-"### Windows: BYB Test (a standard account) updated itself from $OldVersion to $NewVersion, through its scheduled tick" >> $env:GITHUB_STEP_SUMMARY
+"### Windows: BYB Test (a standard account) updated itself from $OldVersion to $NewVersion, through its tick (its scheduled task's action, run as BYB Test)" >> $env:GITHUB_STEP_SUMMARY
 Write-Host ""
 Write-Host "Windows signed update as a standard account, through the tick: all good"
