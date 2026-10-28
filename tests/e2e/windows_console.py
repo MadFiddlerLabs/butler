@@ -143,7 +143,9 @@ def main(butler: Path) -> None:
     console = Console(cmd, home, env)
     try:
         console.type("butler setup")
-        console.wait_for("Hello! I'm Bento, your new butler.")
+        # The name the installer took from the download's filename.
+        name = (butler / ".butler-name").read_text(encoding="utf-8").strip()
+        console.wait_for(f"Hello! I'm {name}, your new butler.")
         console.wait_for("Name › ")
         console.type("")
         console.wait_for("Press Enter to agree, or type no to stop › ", seconds=180)
