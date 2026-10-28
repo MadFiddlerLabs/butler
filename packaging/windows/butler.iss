@@ -50,7 +50,9 @@ UninstallFilesDir={app}\.uninstall
 Source: "{#Source}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
-Name: "{userprograms}\Butler"; Filename: "{cmd}"; Parameters: "/k ""{app}\bin\butler.cmd"" resume"; WorkingDir: "{app}"; Comment: "Back to where you left off"
+; cmd /k keeps the path's own quotes only in simple cases, so the line goes in one more pair, as
+; installed.console_command does: a home folder can have spaces, & or brackets in it.
+Name: "{userprograms}\Butler"; Filename: "{cmd}"; Parameters: "/k """"{app}\bin\butler.cmd"" resume"""; WorkingDir: "{app}"; Comment: "Back to where you left off"
 
 [Registry]
 ; `butler` in any new terminal, as the Mac's installer adds Butler to the PATH in ~/.zprofile.

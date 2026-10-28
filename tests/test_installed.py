@@ -3,7 +3,9 @@ for Windows). The installer itself is tested end to end in windows-e2e.yml.
 
 Run with: PYTHONPATH=src .venv/bin/python -m unittest discover tests"""
 import shutil
+import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -96,3 +98,26 @@ class InstallTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConsoleTest(unittest.TestCase):
+    def test_the_window_runs_butler_with_exactly_the_words_asked_for(self):
+        line = installed.console_command(Path(r"C:\Users\BYB Test\Butler\bin\butler.cmd"), ["setup", "--again"])
+        self.assertEqual(line, 'cmd.exe /k '
+                               '""C:\\Users\\BYB Test\\Butler\\bin\\butler.cmd" setup --again"')
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows' own start and cmd")
+    def test_on_windows_the_real_window_gets_them_from_a_home_folder_with_spaces_and_brackets(self):
+        # The unit tests above stand in for the window; this opens a real one. A stand-in
+        # butler.cmd writes the words it got, then closes its window.
+        root = Path(tempfile.mkdtemp(suffix=" BYB Test (2) & Co"))
+        self.addCleanup(shutil.rmtree, root, True)
+        (root / "bin").mkdir()
+        got = root / "got.txt"
+        (root / "bin" / "butler.cmd").write_text(f'@echo off\n> "{got}" echo %*\nexit\n')
+        installed.open_console(root, ["setup", "--again"])
+        deadline = time.monotonic() + 30
+        while not got.exists() and time.monotonic() < deadline:
+            time.sleep(0.2)
+        time.sleep(0.5)
+        self.assertEqual(got.read_text().strip(), "setup --again")
