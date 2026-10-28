@@ -291,14 +291,19 @@ class CourseContractTest(unittest.TestCase):
         """The persona rounds asked about `butler progress` and `butler status` again and again,
         and the owner agreed (28 Oct 2026) that they, and `butler doctor`, run without asking:
         they only read (progress also sends the lesson ticks the skill means it to). Nothing else
-        is pre-approved, and none of the three takes arguments."""
+        is pre-approved, and none of the three takes arguments. On Windows, Claude Code often uses its
+        PowerShell tool, which Bash rules don't cover, so the same three have PowerShell rules too
+        (owner, 28 Oct)."""
         import json
         allow = json.loads((REPO / ".claude" / "settings.json").read_text())["permissions"]["allow"]
         for rule in allow:
-            m = re.fullmatch(r"Bash\((butler|bin/butler|\./bin/butler|bin/butler\.cmd) "
-                             r"(progress|status|doctor)( \*)?\)", rule)
+            m = (re.fullmatch(r"Bash\((butler|bin/butler|\./bin/butler|bin/butler\.cmd) "
+                              r"(progress|status|doctor)( \*)?\)", rule)
+                 or re.fullmatch(r"PowerShell\((butler|\.\\bin\\butler\.cmd|bin\\butler\.cmd|bin/butler\.cmd|\./bin/butler\.cmd) "
+                                 r"(progress|status|doctor)( \*)?\)", rule))
             self.assertTrue(m, rule)
-        self.assertEqual(len(allow), 24)
+        self.assertEqual(len(allow), 54)
+        self.assertIn("PowerShell(.\\bin\\butler.cmd progress)", allow, "the form Claude used in round 5")
 
     def test_commands_run_where_claude_code_opened_without_changing_folders(self):
         """Persona round 5 (28 Oct): on Windows, Claude began nearly every command with
