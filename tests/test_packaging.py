@@ -612,6 +612,21 @@ class LockTest(unittest.TestCase):
         self.assertNotIn("requirements.txt", script)
         self.assertNotRegex(script, r"(iex|Invoke-Expression)", "nothing run straight from the network")
 
+    def test_windows_install_never_waits_forever_and_works_for_a_standard_user(self):
+        """The owner's test PC (28 Oct 2026, Windows 11 build 26300 on ARM, a standard user named
+        "BYB Test"): Invoke-WebRequest stalled for minutes with no error, and inside Setup uv hit
+        os error 448 on its own Python junction. Every download is time-limited, and Setup leaves
+        RedirectionGuard off: it runs as the student, into their own profile."""
+        script = (REPO / "scripts" / "bootstrap.ps1").read_text()
+        self.assertRegex(script, r"curl\.exe")
+        self.assertRegex(script, r"--max-time \d+")
+        for call in re.findall(r"Invoke-WebRequest [^\n]*-Uri[^\n]*", script):
+            self.assertIn("-TimeoutSec", call, call)
+        installer = (REPO / "packaging" / "windows" / "butler.iss").read_text()
+        self.assertRegex(installer, r"(?m)^RedirectionGuard=no$")
+        self.assertRegex(installer, r"(?m)^PrivilegesRequired=lowest$", "the guard is off only because Setup isn't elevated")
+        self.assertNotIn("a minute or two", installer)
+
     def test_ci_tests_the_locked_packages_and_checks_the_lock(self):
         workflows = REPO / ".github" / "workflows"
         self.assertIn("scripts/lock.sh --check", (workflows / "tests.yml").read_text())
