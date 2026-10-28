@@ -229,8 +229,11 @@ def processes(name: str) -> list[dict]:
     script = (f"Get-CimInstance Win32_Process -Filter \"Name = '{name}'\" | Sort-Object CreationDate | "
               "ForEach-Object { [pscustomobject]@{ pid = $_.ProcessId; parent = $_.ParentProcessId; command = $_.CommandLine } } "
               "| ConvertTo-Json -Compress")
-    out = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-                         capture_output=True, text=True, timeout=60).stdout.strip()
+    try:   # WMI's first answer can take minutes on a fresh runner (Windows on ARM, 28 Oct): wait, then look again
+        out = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+                             capture_output=True, text=True, timeout=240).stdout.strip()
+    except subprocess.TimeoutExpired:
+        return []
     if not out:
         return []
     found = json.loads(out)
