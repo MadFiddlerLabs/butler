@@ -269,6 +269,10 @@ jobs:
         run: |
           set -uo pipefail
           b="$HOME/Butler"
+          # The schedule goes in during /butler-setup, after the first run has written settings; the
+          # tick does nothing without them. The example household's settings stand in, updates on.
+          cp "$b/config/settings.example.yaml" "$b/config/settings.yaml"
+          grep -q "^updates: auto" "$b/config/settings.yaml" || { echo "::error::the example settings don't have updates: auto"; exit 1; }
           "$b/launchd/install.sh"
           for _ in $(seq 1 120); do
             [ "$(cat "$b/.butler-version")" = "$LIVE" ] && break
