@@ -283,7 +283,10 @@ def write(settings: dict, w: Week, ps: list[projects.Project]) -> dict:
         "fixed_monthly_plan": round(sum(e for _, e in m.fixed_plan)),
         "daily_spending_month": round(m.day_to_day_mtd),
         "daily_spending_pace": round(m.day_to_day_budget * m.pace_fraction),
-        "month_budget": round(m.budget_month),
+        # Daily spending's own budget, named so: with only the whole month's (fixed and daily
+        # together), Claude wrote "daily spending at 0 of the 2168 month budget" (persona, 28 Oct).
+        "daily_spending_month_budget": round(m.day_to_day_budget),
+        "whole_month_budget_fixed_and_daily": round(m.budget_month),
         "share_of_month_elapsed": round(m.pace_fraction, 2),
         "categories_off_pace": [{"category": r.category, "budget": round(r.budget),
                                  "spent": round(r.spent), "expected_by_now": round(r.expected),

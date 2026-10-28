@@ -99,6 +99,15 @@ class FullHouseholdTest(unittest.TestCase):
         for own in ("standup", "school drop-off", "swimming"):
             self.assertNotIn(f"{own} (invite from outside)", m["text"])
 
+    def test_the_weekly_letter_gets_daily_spendings_own_budget_named(self):
+        """A persona's letter said daily spending was "of the 2168 month budget": the only budget
+        figure Claude had was fixed and daily together. Each now has its own, plainly named."""
+        prompt = next(p for p in self.weekly["prompts"] if p["schema"] == "weekly")["prompt"]
+        numbers = json.loads(re.search(r"\{\"currency\".*?\}(?=\n)", prompt, flags=re.S)[0])
+        self.assertNotIn("month_budget", numbers)
+        self.assertLess(numbers["daily_spending_month_budget"], numbers["whole_month_budget_fixed_and_daily"])
+        self.assertGreater(numbers["daily_spending_month_budget"], 0)
+
     def test_outside_titles_reach_claude_only_labelled_inside_a_data_block(self):
         title = "Dinner with the Costas"
         prompts = [p for flow in ("daily", "weekly", "monthly") for p in getattr(self, flow)["prompts"]]
