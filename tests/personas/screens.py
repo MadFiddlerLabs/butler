@@ -1,5 +1,6 @@
 """What the persona harness reads off a screen, without the paid libraries, so the free suite can
 check it against Butler (tests/test_personas.py)."""
+import html as html_lib
 import json
 import os
 import re
@@ -29,9 +30,10 @@ def site_name(typed: str) -> tuple[str, str]:
 
 
 def page_text(html: str) -> str:
-    """A web page as the persona reads it: the words, without scripts, styles or tags."""
+    """A web page as the persona reads it: the words, without scripts, styles or tags, and with
+    entities decoded as a browser shows them (round 6 saw "Ukraine&#x27;s" and called it a bug)."""
     html = re.sub(r"<(script|style)[\s\S]*?</\1>", "", html)
-    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()
+    return html_lib.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip())
 
 
 def side_question(messages: list, question: str) -> list:
