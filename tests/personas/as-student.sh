@@ -36,14 +36,16 @@ if dseditgroup -o checkmember -m "$student" admin >/dev/null 2>&1; then echo "::
 echo "$student: uid $(id -u "$student"), home \"$home\", standard (not an admin)"
 
 step "its login keychain, as macOS makes one at the first login"
+# Its password is "persona": not a secret, since the account and the runner live for one run. An
+# empty one can't be unlocked again from the command line.
 sudo -u "$student" -H bash -xc 'mkdir -p "$HOME/Library/Keychains"
   k="$HOME/Library/Keychains/login.keychain-db"
-  security create-keychain -p "" "$k"
+  security create-keychain -p persona "$k"
   security list-keychains -d user -s "$k"
   security default-keychain -d user -s "$k"
   security login-keychain -d user -s "$k" || true
   security set-keychain-settings "$k"
-  security unlock-keychain -p "" "$k"
+  security unlock-keychain -p persona "$k"
   security add-generic-password -U -s byb-persona-check -a butler -w ok "$k" &&
     security find-generic-password -s byb-persona-check -w &&
     security delete-generic-password -s byb-persona-check >/dev/null' \
@@ -80,7 +82,7 @@ code=0
 # same session as the harness, as a login unlocks it.
 sudo -u "$student" -H env -i HOME="$home" USER="$student" LOGNAME="$student" SHELL=/bin/zsh \
   PATH=/usr/bin:/bin:/usr/sbin:/sbin TERM=xterm-256color LANG=en_US.UTF-8 CI=1 BYB_ADMIN_REQUESTS="$shared/admin" \
-  /bin/bash -c 'security unlock-keychain -p "" "$HOME/Library/Keychains/login.keychain-db" && exec "$@"' bash \
+  /bin/bash -c 'security unlock-keychain -p persona "$HOME/Library/Keychains/login.keychain-db"; exec "$@"' bash \
   "$shared/venv/bin/python" -X utf8 "$shared/engine/tests/personas/run_persona.py" "$@" \
   --key-file "$shared/secret/key" --out "$shared/out" || code=$?
 sudo rm -f "$shared/secret/key"
