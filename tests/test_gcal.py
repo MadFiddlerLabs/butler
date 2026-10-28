@@ -477,6 +477,23 @@ class SourceTest(unittest.TestCase):
             self.assertEqual(calendar_source.ask(["calendars"], 9, {"calendar": {"source": "google"}}), [])
         run.assert_called_once_with(["calendars"], 9)
 
+    def test_googles_events_wait_for_chosen_calendars_but_its_lists_dont(self):
+        """Recording Google's verification video (28 Oct): after a fresh first run on Google the
+        brief said "Nothing on the calendar", as if the day were empty. Until Module 3 picks
+        calendars it's "not connected yet", as Apple's is. Google's lists need no choosing."""
+        google = {"calendar": {"source": "google", "include": []}}
+        with mock.patch.object(gcal, "run", return_value="[]") as run:
+            with self.assertRaisesRegex(NotSetUp, "no calendars are chosen yet"):
+                calendar_source.run(["events", "--start", "x", "--end", "y"], settings=google)
+            run.assert_not_called()
+            self.assertEqual(calendar_source.run(["reminders", "--list", "Bento"], settings=google), "[]")
+            google["calendar"]["include"] = ["Family"]
+            self.assertEqual(calendar_source.run(["events", "--start", "x", "--end", "y"], settings=google), "[]")
+
+    def test_the_lists_are_named_where_they_live(self):
+        self.assertEqual(calendar_source.lists_app({"calendar": {"source": "google"}}), "Google Tasks")
+        self.assertEqual(calendar_source.lists_app({"calendar": {}}), "Reminders")
+
     def test_a_typo_is_a_failure_that_says_so(self):
         with self.assertRaisesRegex(calendar_source.Failed, "takes apple or google"):
             calendar_source.run(["calendars"], settings={"calendar": {"source": "outlook"}})
@@ -542,6 +559,16 @@ class GoogleHouseholdTest(unittest.TestCase):
         self.assertEqual(event["start"], {"dateTime": "2026-10-15T10:00:00+01:00"})
         self.assertEqual(event["location"], "Clínica Exemplo")
         self.assertIn("Added to Johnson Family: Dentist for Mia", self.replies["mails"][0]["text"])
+        self.assertIn("in Google Tasks: Call the plumber", self.replies["mails"][0]["text"])
+
+    def test_the_lists_are_called_google_tasks_not_reminders(self):
+        """Seen while recording Google's verification video (28 Oct)."""
+        lists, brief = self.portal["portal"]["GET /lists"]["body"], self.daily["mails"][0]["html"]
+        self.assertIn("These are your Google Tasks lists", lists)
+        self.assertIn("From your household list in Google Tasks", brief)
+        for text in (lists, brief, self.replies["mails"][0]["text"]):
+            self.assertNotIn("Reminders", text)
+        self.assertIn("From your household list in Reminders", self.apple_daily["mails"][0]["html"])
 
     def test_the_portal_lists_are_googles(self):
         p = self.portal["portal"]
