@@ -76,7 +76,9 @@ prompt change in `src/butler/llm.py`, `weekly.py` or `monthly.py`, and show the 
 
 ## 4. Verify
 
-- `PYTHONPATH=src .venv/bin/python -m unittest discover tests`
+- `PYTHONPATH=src .venv/bin/python -m unittest tests.test_config`. Don't run the whole test suite
+  (`unittest discover tests`): it's for people changing Butler's code, and in a household's install
+  it reports failures that aren't problems.
 - `./run.sh daily --dry-run` and check the changed parts of `out/preview/brief-<today>.html`.
 - For money changes, show the before and after numbers that moved.
 

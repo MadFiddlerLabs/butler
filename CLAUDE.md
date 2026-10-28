@@ -103,7 +103,9 @@ the portal's test client.
   `logs/butler.log`. `/butler-tune` does this systematically.
 - Change behaviour through config first (`settings.yaml`, `category_map.yaml`, the budget
   workbook, `data/household_notes.md`). Change code only for something config can't express.
-- After any change: run the tests and a dry run.
+- After any change: run the config test (`tests.test_config`) and a dry run. The whole test suite is
+  for developing Butler: in a household's install it takes over ten minutes and reports failures
+  that aren't problems.
 
 ## Talking to someone learning with the course
 
@@ -134,7 +136,8 @@ terminal. It doesn't apply to developers.
   - A dry run: a practice run that sends nothing.
   - Terminal: the window where you type commands.
   - An API key: a password that lets your butler use Claude, billed by what it uses.
-  - A folder: what Finder shows; `~/Butler` is the Butler folder in your home folder.
+  - A folder: what Finder (on Windows, File Explorer) shows; `~/Butler` is the Butler folder in
+    your home folder.
 - Use short sentences. Show no tables unless they ask for one.
 - The student decides what Butler gets. Any module can be skipped. When they say "I'd rather
   not share that", accept it, leave that part empty and move on. Don't ask again.

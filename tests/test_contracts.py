@@ -300,6 +300,17 @@ class CourseContractTest(unittest.TestCase):
             self.assertTrue(m, rule)
         self.assertEqual(len(allow), 24)
 
+    def test_no_skill_runs_the_whole_test_suite_in_a_household(self):
+        """A persona (28 Oct) watched Claude start the whole suite at Module 7 and keep mentioning it:
+        it takes over ten minutes and, without requirements-dev.txt, fails where nothing is wrong.
+        The skills and the household half of CLAUDE.md name it only to say don't."""
+        household = (REPO / "CLAUDE.md").read_text().split("## When the user runs Butler")[1].split("\n## ")[0]
+        for name, text in [*SKILLS.items(), ("CLAUDE.md, household", household)]:
+            self.assertNotIn("full test suite passes", text, name)
+            self.assertNotRegex(text, r"(?i)run the tests\b", name)
+            for line in [p for p in re.split(r"\n\s*\n|\n(?=\s*(?:\d+\.|-) )", text) if "unittest discover" in p]:
+                self.assertIn("Don't", line, f"{name}: {line.strip()[:80]}")
+
     def test_the_skills_give_windows_students_the_windows_way(self):
         """Butler runs on Windows too (#40), and the skills are written for a Mac. A Mac-only
         command must sit in the same step, row or paragraph as Windows' own way, so Claude never

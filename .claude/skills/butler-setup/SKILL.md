@@ -351,7 +351,9 @@ The win: money in the brief, in three kinds of spending.
    with openpyxl (input cells only: Expenses A–F and I from row 5, Income A–D from row 5,
    Assumptions C5–C6). Propose amounts from the averages and let them adjust. Fixed lines in
    daily categories go in `rules.fixed_lines`. Category names must match the category map.
-9. Check: the full test suite passes, then `./run.sh preview` shows the money section.
+9. Check: `PYTHONPATH=src .venv/bin/python -m unittest tests.test_config` passes, then
+   `./run.sh preview` shows the money section. Don't run the whole test suite: it's for people
+   changing Butler's code, takes over ten minutes and reports failures that aren't problems here.
 
 Next: Module 8, Projects and paperwork (`/butler-setup projects`).
 
