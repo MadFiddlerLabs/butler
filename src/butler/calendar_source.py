@@ -33,7 +33,14 @@ def run(args: list[str], timeout: float = 60, settings: dict | None = None) -> s
         return gcal.run(list(args), timeout)
     if which != "apple":
         raise Failed(f"calendar.source is '{which}'; it takes {' or '.join(SOURCES)}")
-    out = subprocess.run([config.butler_ek(), *args], capture_output=True, text=True, timeout=timeout)
+    # A release ships the helper prebuilt, so its being there doesn't mean Module 3 is done. Until
+    # the household picks its calendars, running it would make macOS ask for Calendar and
+    # Reminders access at the first brief in Module 0, before any lesson explains why.
+    helper = config.butler_ek()
+    settings = config.load_settings() if settings is None else settings
+    if not (settings.get("calendar") or {}).get("include"):
+        raise config.NotSetUp("no calendars are chosen yet (/butler-setup calendar)")
+    out = subprocess.run([helper, *args], capture_output=True, text=True, timeout=timeout)
     if out.returncode != 0:
         raise Failed(out.stderr.strip() or "butler-ek failed")
     return out.stdout

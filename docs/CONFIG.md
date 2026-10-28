@@ -35,7 +35,7 @@ Plus the budget workbook, `budget/budget.xlsx`, and the household notes Claude r
 | `household.about` | A short description of the household for Claude. Never put ID numbers here |
 | `household.notes_file` | Facts Claude should know, kept up to date by replies |
 | `calendar.source` | Where Calendar and Reminders come from: `apple` (Calendar and Reminders on this Mac, through `bin/butler-ek`) or `google` (Google Calendar and Google Tasks, through `src/butler/gcal.py`). Absent means `apple`. Google needs a one-time sign-in: [SETUP.md](SETUP.md#google-calendar-and-tasks-instead-of-apples) |
-| `calendar.include` | Calendar titles to read, as `bin/butler-ek calendars` lists them (`./run.sh gcal calendars` on Google) |
+| `calendar.include` | Calendar titles to read, as `bin/butler-ek calendars` lists them (`./run.sh gcal calendars` on Google). Empty (as a new household starts) means Apple's calendar and Reminders aren't connected yet: the brief doesn't run the helper, so macOS asks for access only in Module 3 |
 | `calendar.holidays` | Holiday calendars, shown as a note on the day |
 | `calendar.write_to` | Where replies add events |
 | `people` | Everyone events can belong to (children too), with aliases, owned calendars and a color (`color`, optional `color_dark` for the portal in dark mode). Names are drawn in their color, so a light one such as Google's Flamingo is darkened until it reaches 4.5:1 against the page |
