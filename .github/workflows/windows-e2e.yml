@@ -242,7 +242,7 @@ jobs:
           Copy-Item -Recurse tests C:\byb\tests
           # The account reads the installer, the test scripts and this Python, and writes its output here.
           icacls C:\byb /grant "${env:BYB_USER}:(OI)(CI)M" | Out-Null
-          python -m pip install --disable-pip-version-check pywinpty==3.0.5 pywinauto==0.6.9
+          python -m pip install --disable-pip-version-check pywinpty==3.0.5 pywinauto==0.6.9 pillow==11.3.0
           icacls $env:pythonLocation /grant "${env:BYB_USER}:(OI)(CI)RX" /T /C /Q | Out-Null
           [Environment]::OSVersion.Version; $env:PROCESSOR_ARCHITECTURE
       - name: It really is the account, without admin rights
@@ -352,6 +352,13 @@ jobs:
             Write-Host "== $log"; Get-Content -ErrorAction SilentlyContinue "C:\Users\$env:BYB_USER\Butler\logs\$log" -Tail 60
           }
           foreach ($out in Get-ChildItem C:\byb\*.txt) { Write-Host "== $($out.Name)"; Get-Content $out -Tail 80 }
+      - name: Screenshots of anything the wizard got stuck on
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wizard-screens-${{ matrix.os }}
+          path: C:\byb\*.png
+          if-no-files-found: ignore
 
   standard-user-update:
     # An update as a household's computer gets it: "BYB Test", a standard account, installs

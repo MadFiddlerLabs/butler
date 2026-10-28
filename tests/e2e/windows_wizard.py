@@ -83,6 +83,25 @@ def box_text(hwnd: int) -> list[str]:
     return []
 
 
+def uia_text(hwnd: int) -> list[str]:
+    """Text as UI Automation reads it: a task dialog draws its text without child windows."""
+    try:
+        window = Application(backend="uia").connect(handle=hwnd, timeout=5).window(handle=hwnd)
+        return [t for t in dict.fromkeys(i.window_text().strip() for i in window.descendants()) if t]
+    except Exception as e:  # noqa: BLE001
+        return [f"(UI Automation: {type(e).__name__}: {e})"]
+
+
+def screenshot(name: str) -> None:
+    """The whole screen, kept beside the job's other files (windows-e2e.yml uploads C:\\byb\\*.png)."""
+    try:
+        from PIL import ImageGrab
+        ImageGrab.grab(all_screens=True).save(Path(r"C:\byb") / name)
+        print(f"  screenshot: C:\\byb\\{name}", flush=True)
+    except Exception as e:  # noqa: BLE001
+        print(f"  (no screenshot: {type(e).__name__}: {e})", flush=True)
+
+
 def download(installer: Path, name: str) -> Path:
     """A copy in Downloads, carrying the Mark of the Web as a browser leaves it."""
     downloads = Path.home() / "Downloads"
@@ -125,6 +144,27 @@ def press(window, label: str) -> bool:
     return False
 
 
+def answer_open_file(hwnd: int, window, tries: int) -> None:
+    """Run, on the "Open File" warning. A BM_CLICK didn't always take on ARM (28 Oct 2026: the
+    warning stayed up for 20 minutes), so it's pressed through UI Automation next, then with
+    Alt+R from the keyboard, as a person might."""
+    if tries <= 2:
+        press(window, "Run")
+    elif tries <= 4:
+        uia = Application(backend="uia").connect(handle=hwnd, timeout=5).window(handle=hwnd)
+        for item in uia.descendants(control_type="Button"):
+            if item.window_text().replace("&", "").strip() == "Run":
+                item.invoke()
+                print("  pressed Run (UI Automation)", flush=True)
+                return
+    elif tries <= 6:
+        window.set_focus()
+        window.type_keys("%r")
+        print("  pressed Alt+R", flush=True)
+    elif tries == 7:
+        screenshot("open-file-warning.png")
+
+
 def smartscreen(hwnd: int) -> None:
     """SmartScreen's prompt: More info, then Run anyway, as a person would."""
     window = Application(backend="uia").connect(handle=hwnd, timeout=5).window(handle=hwnd)
@@ -151,6 +191,7 @@ def main(installer: Path, name: str) -> int:
     deadline = time.monotonic() + 20 * 60
     on_screen: set[str] = set()
     last_page: list[str] = []
+    tries: dict[int, int] = {}
     finished = False
     while time.monotonic() < deadline:
         time.sleep(1)
@@ -163,9 +204,11 @@ def main(installer: Path, name: str) -> int:
         for hwnd, title, _ in now:
             try:
                 if title == OPEN_FILE:
+                    tries[hwnd] = tries.get(hwnd, 0) + 1
                     window = win32_window(hwnd)
-                    print(f"security prompt {title!r}: {labels(window)}", flush=True)
-                    press(window, "Run")
+                    if tries[hwnd] == 1:
+                        print(f"security prompt {title!r}: {labels(window)}", flush=True)
+                    answer_open_file(hwnd, window, tries[hwnd])
                 elif any(s in title for s in SMARTSCREEN):
                     print(f"security prompt {title!r}", flush=True)
                     smartscreen(hwnd)
@@ -182,7 +225,8 @@ def main(installer: Path, name: str) -> int:
                             break
                 elif title in ("Setup", "Butler", "Error"):
                     # A message box from Setup: an error, or "couldn't get its Python".
-                    print(f"message box {title!r}: {box_text(hwnd)}", flush=True)
+                    print(f"message box {title!r}: {box_text(hwnd)} {uia_text(hwnd)}", flush=True)
+                    screenshot("message-box.png")
                     return 1
             except Exception as e:  # noqa: BLE001 - the window went while we looked; look again
                 print(f"  ({title!r}: {type(e).__name__}: {e})", flush=True)

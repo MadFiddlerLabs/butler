@@ -86,17 +86,19 @@ Step "a household's files, and the manifest the website would serve"
 # Written by the account, as its own files. BUTLER_UPDATE_MANIFEST points the tick at this
 # manifest, and BUTLER_API at a port nothing listens on, so no test outcome reaches the website.
 # BUTLER_RELEASES_URL serves the copy of the old version kept for rollback.
-# All three go in the account's own environment, which its scheduled tasks start with. Quoted:
-# run_as.py runs the line in parentheses, and the last bare value took the ")" (28 Oct 2026).
-$notes = "- the Johnsons' plumber is Rui (invented)"
+# All three go in the account's own environment, which its scheduled tasks start with.
+# The notes avoid parentheses: run_as.py runs the line in parentheses, and "(invented)" closed
+# them early, so a setting further on took a stray ")" (28 Oct 2026). Each setting runs alone.
+$notes = "- the Johnsons' plumber is Rui, invented"
 $setup = @(
     "copy /y `"%USERPROFILE%\Butler\config\settings.example.yaml`" `"%USERPROFILE%\Butler\config\settings.yaml`"",
     "(if not exist `"%USERPROFILE%\Butler\data`" mkdir `"%USERPROFILE%\Butler\data`")",
-    "(echo $notes)> `"%USERPROFILE%\Butler\data\household_notes.md`"",
-    "setx BUTLER_UPDATE_MANIFEST `"$work\stable.json`"",
-    "setx BUTLER_API `"http://127.0.0.1:9/api`"",
-    "setx BUTLER_RELEASES_URL `"$work\releases`""
+    "(echo $notes)> `"%USERPROFILE%\Butler\data\household_notes.md`""
 ) -join " & "
+$settings = @{ BUTLER_UPDATE_MANIFEST = "$work\stable.json"; BUTLER_API = "http://127.0.0.1:9/api"; BUTLER_RELEASES_URL = "$work\releases" }
+foreach ($name in $settings.Keys) {
+    if ((As-Student "setx-$name.txt" "setx $name `"$($settings[$name])`"") -ne 0) { Fail "$name couldn't be set" }
+}
 if ((As-Student "household.txt" $setup) -ne 0) { Fail "the household's files couldn't be written" }
 $household = (Get-FileHash "$b\data\household_notes.md").Hash
 $newExe = Join-Path $work "Butler-Setup-$NewVersion.exe"
