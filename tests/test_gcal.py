@@ -460,6 +460,18 @@ class SourceTest(unittest.TestCase):
             with self.assertRaisesRegex(NotSetUp, "helper isn't built yet"):
                 calendar_source.run(["calendars"], settings={})
 
+    def test_apple_waits_for_chosen_calendars_though_the_helper_shipped(self):
+        """A release ships bin/butler-ek prebuilt: until Module 3 picks calendars, running it would
+        make macOS ask for access at the first brief."""
+        helper = Path(tempfile.mkdtemp()) / "butler-ek"
+        helper.write_text("#!/bin/sh\nexit 9\n")
+        with mock.patch("butler.config.BUTLER_EK", helper), mock.patch.object(calendar_source.subprocess, "run") as run:
+            with self.assertRaisesRegex(NotSetUp, "no calendars are chosen yet"):
+                calendar_source.run(["calendars"], settings={"calendar": {"include": []}})
+            run.assert_not_called()
+            run.return_value.returncode, run.return_value.stdout = 0, "[]"
+            self.assertEqual(calendar_source.run(["calendars"], settings={"calendar": {"include": ["Home"]}}), "[]")
+
     def test_google_goes_to_gcal(self):
         with mock.patch.object(gcal, "run", return_value="[]") as run:
             self.assertEqual(calendar_source.ask(["calendars"], 9, {"calendar": {"source": "google"}}), [])

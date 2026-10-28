@@ -135,6 +135,29 @@ class NotConnectedYetTest(Case):
         self.assertNotIn("money failed", log)
 
 
+class HelperShippedButNoCalendarsYetTest(Case):
+    """A release ships the Calendar helper prebuilt, so from the first brief (Module 0) it's in
+    bin/. Until Module 3 picks calendars, the brief must not run it: macOS would ask for Calendar
+    and Reminders access then, before any lesson says why (a persona test clicked Don't Allow)."""
+
+    @classmethod
+    def setUpClass(cls):
+        import yaml
+        cls.home = Home()
+        path = cls.home.root / "config" / "settings.yaml"
+        settings = yaml.safe_load(path.read_text())
+        settings["calendar"]["include"] = []   # as setup_settings.fresh() writes it
+        path.write_text(yaml.safe_dump(settings, sort_keys=False, allow_unicode=True))
+        cls.record = cls.home.run("daily")
+
+    def test_the_helper_never_runs(self):
+        self.assertEqual(self.home.ek_calls(), [])
+
+    def test_the_brief_says_not_connected_yet(self):
+        self.assertIn("Not connected yet: calendar, to-dos.", self.brief(self.record)["text"])
+        self.assertIn("no calendars are chosen yet", self.home.log())
+
+
 class GmailSendDownTest(Case):
     """SMTP refuses the login: the brief is built once and waits in the outbox. The next tick re-sends
     it as built, with no new Claude calls."""
