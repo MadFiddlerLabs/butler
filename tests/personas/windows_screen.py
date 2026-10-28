@@ -241,6 +241,16 @@ def kill(pid: int) -> None:
     subprocess.run(["taskkill", "/PID", str(pid), "/F"], capture_output=True)
 
 
+def shortcut(link: Path) -> tuple[str, str, str]:
+    """A .lnk file's program, arguments and folder, as Windows reads them."""
+    script = (f"$s = (New-Object -ComObject WScript.Shell).CreateShortcut('{link}'); "
+              "[pscustomobject]@{ target = $s.TargetPath; arguments = $s.Arguments; folder = $s.WorkingDirectory } "
+              "| ConvertTo-Json -Compress")
+    out = json.loads(subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+                                    capture_output=True, text=True, timeout=60).stdout)
+    return out["target"], out["arguments"], out["folder"]
+
+
 def mark_of_the_web(path: Path, page: str) -> None:
     """The Zone.Identifier a browser writes on a download from the internet, which makes Windows
     check the file when it's opened."""

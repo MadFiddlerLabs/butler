@@ -61,7 +61,7 @@ sys.path.insert(0, str(REPO / "tests"))
 import events  # noqa: E402
 from fakes.account_api import FakeAccountAPI  # noqa: E402
 from outside import Outside, at_screen, is_admin  # noqa: E402
-from screens import (CLAUDE_OPENING, butler_claude, forward, install_log_opened, mac_claude, page_text,  # noqa: E402
+from screens import (CLAUDE_OPENING, FORWARD, butler_claude, forward, install_log_opened, mac_claude, page_text,  # noqa: E402
                      side_question, site_name, split_windows, terminal_types, trim, trust_folder, waiting_only)
 from terminal import Terminal  # noqa: E402
 
@@ -586,7 +586,7 @@ In this session, you will also:
         opener.start()   # a security prompt blocks the call that opened the file, so it runs aside
         seen: list[str] = []
         asked: dict[int, tuple[str, float, int, dict]] = {}   # window: (what it showed, when, clicks, the answer)
-        ran = False
+        ran, stuck, went_on = False, "", False
         started = time.monotonic()
         while time.monotonic() - started < 30 * 60:
             time.sleep(1)
@@ -603,8 +603,12 @@ In this session, you will also:
                 last = asked.get(hwnd)
                 if last and last[0] == key:
                     # Still showing what was answered: the click didn't take yet. After 10 seconds
-                    # it's clicked again another way (windows_screen._click), at most three times.
-                    if last[2] and last[2] < 3 and time.monotonic() - last[1] > 10:
+                    # it's clicked again another way (windows_screen._click), three ways in all.
+                    if last[2] and time.monotonic() - last[1] > 10:
+                        if last[2] >= 3:
+                            stuck = f"{title!r} ({last[3].get('button')!r})"
+                            went_on = (last[3].get("button") or "").lower() in {f.lower() for f in FORWARD}
+                            break
                         ws.answer(hwnd, title, last[3], attempt=last[2] + 1)
                         self.say("harness", f"clicked {last[3].get('button')!r} again on {title!r} (way {last[2] + 1})")
                         asked[hwnd] = (key, time.monotonic(), last[2] + 1, last[3])
@@ -618,7 +622,7 @@ In this session, you will also:
                 seen.append(f"{title}: {shown['text']} [{' | '.join(shown['buttons'])}] You click "
                             f"{choice.get('button')!r}{'' if clicked else ' (there is no such button)'}.")
                 asked[hwnd] = (key, time.monotonic(), 1 if clicked else 3, choice)
-            if not opener.is_alive() and not setup and (ran or time.monotonic() - started > 90):
+            if stuck or not opener.is_alive() and not setup and (ran or time.monotonic() - started > 90):
                 break
         else:
             self.notes.append({"kind": "broken", "lesson": self.current()["id"],
@@ -627,6 +631,27 @@ In this session, you will also:
             return "You double-click the download.\n" + "\n".join(seen) + "\nThe installer is still working after 30 minutes."
         self.say("harness", "the installer's windows, as the persona saw and answered them:\n" + "\n".join(seen))
         told = f"You double-click {self.downloads.name} in your Downloads folder.\n" + "\n".join(seen)
+        if stuck and not went_on:
+            return told + "\nNothing installs."
+        if stuck:
+            # The closest real path: the same installer, as the account, then the step the wizard
+            # itself runs after copying (not silent), which opens the first run's window.
+            self.difference(f"the installer's windows appear for BYB Test but no click lands in them ({stuck}): on a "
+                            "hosted runner a second account has no desktop of its own (windows-e2e #91 found the same). "
+                            "So the installer ran silently as BYB Test, then ran the wizard's own after-copy step "
+                            "(run.py installed, not silent), which opens the first run's window")
+            for pid in ws.setup_pids(self.downloads):
+                ws.kill(pid)
+            p = subprocess.run([str(self.downloads), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART",
+                                f"/LOG={events.FAKES / 'setup-log.txt'}"], capture_output=True, timeout=1800)
+            if p.returncode != 0:
+                return told + f"\nThe installer says it couldn't finish (exit {p.returncode})."
+            python = BUTLER / ".venv" / "Scripts" / "python.exe"
+            subprocess.run([str(python), "-X", "utf8", str(BUTLER / "run.py"), "installed", "--installer", str(self.downloads)],
+                           cwd=BUTLER, capture_output=True, timeout=300)
+            ran = True
+            told += ("\nThe installer's pages follow: Next, Install (\"Getting Butler's own Python. This can take a few "
+                     "minutes.\"), then Finish. (This test computer can't show you the installer's own pages.)")
         if not ran:
             return told + "\nNothing installs."
         self.outside.after_install()
@@ -658,15 +683,28 @@ In this session, you will also:
         if not link.exists():
             return "Start menu: no app called Butler."
         before = {p["pid"] for p in ws.processes("cmd.exe")}
-        os.startfile(str(link))
-        for _ in range(30):
-            new = [p for p in ws.processes("cmd.exe") if p["pid"] not in before and "butler.cmd" in p["command"].lower()]
-            if new:
-                window = ws.ConsoleWindow(new[-1]["pid"])
-                self.windows.append(window)
-                index = len(self.windows) - 1
-                return f"A new window opens (window {index}):\n" + self.after_screen(window.read(quiet=4.0, limit=300.0), index)
-            time.sleep(1)
+        threading.Thread(target=os.startfile, args=(str(link),), daemon=True).start()   # it may never return
+        new: list[dict] = []
+        for attempt in range(2):
+            for _ in range(30):
+                new = [p for p in ws.processes("cmd.exe") if p["pid"] not in before and "butler.cmd" in p["command"].lower()]
+                if new:
+                    break
+                time.sleep(1)
+            if new or attempt:
+                break
+            # The closest real path: the shortcut's own command, opened in a new console.
+            target, arguments, folder = ws.shortcut(link)
+            self.difference("opening the Start menu's Butler shortcut (ShellExecute) opens nothing for BYB Test, which has "
+                            "no desktop of its own on a hosted runner: the harness ran the shortcut's own command "
+                            f"({target} {arguments}) in a new console instead")
+            subprocess.Popen(f'"{target}" {arguments}', cwd=folder or str(BUTLER),
+                             creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
+        if new:
+            window = ws.ConsoleWindow(new[-1]["pid"])
+            self.windows.append(window)
+            index = len(self.windows) - 1
+            return f"A new window opens (window {index}):\n" + self.after_screen(window.read(quiet=4.0, limit=300.0), index)
         self.notes.append({"kind": "broken", "lesson": self.current()["id"], "text": "(harness) Start, Butler opened no window"})
         return "You click Butler in the Start menu. Nothing opens."
 
@@ -1046,6 +1084,13 @@ In this session, you will also:
         status = await self.act("terminal", action="type", text="butler status", window=w)
         self.rehearsal["status_counts_schedule"] = bool(re.search(r"Done:\s+The daily schedule", status))
         await self.act("terminal", action="type", text=uninstall, window=w)
+        # The way back: the Butler app (Mac) or Start, Butler (Windows), which runs `butler resume`.
+        back = await self.act("on_screen", action="open_butler_app", what="Butler", text="")
+        self.rehearsal["way_back_opens"] = "A new window opens" in back
+        if self.claude_pending:
+            await self.act("claude_code", message="(look)")
+        if self.claude:
+            await self.act("claude_code", message="/exit")
 
     def rehearsal_failures(self, checks: dict) -> list[str]:
         """What the rehearsal must show, or the job fails."""
@@ -1064,6 +1109,7 @@ In this session, you will also:
             "a space in the account's home folder": " " in self.account["home"],
             "the schedule's tick ran as the account": r.get("tick_ran"),
             "butler status counts the schedule": r.get("status_counts_schedule"),
+            "the way back (the Butler app, or Start, Butler) opens a window": r.get("way_back_opens"),
             "no Python tracebacks on screen": checks["tracebacks"] == 0,
         }
         return [what for what, ok in want.items() if not ok]
