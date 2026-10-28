@@ -37,6 +37,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
+import admin  # noqa: E402
 import events  # noqa: E402
 from fakes import fixtures  # noqa: E402
 from fakes.google_api import SCOPES, FakeGoogle  # noqa: E402
@@ -89,11 +90,14 @@ class Relay:
     """Butler's Claude calls, to the real API: only with a key the Console showed the persona, and
     only while the run has budget left (`allowed()`). The run's own key replaces the persona's."""
 
-    def __init__(self, allowed):
+    def __init__(self, allowed, api_key: str | None = None):
         self.keys: set[str] = set()
         self.cost = 0.0
         self.calls = 0
         self.allowed = allowed
+        # The run's key, kept out of the environment: the student's windows inherit it, and a
+        # student has no ANTHROPIC_API_KEY.
+        self.api_key = api_key
         relay = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -121,7 +125,7 @@ class Relay:
                 headers = {k: v for k, v in self.headers.items()
                            if k.lower() in ("content-type", "anthropic-version", "anthropic-beta", "accept")}
                 req = urllib.request.Request(ANTHROPIC + self.path, data=body, method="POST",
-                                             headers={**headers, "x-api-key": os.environ["ANTHROPIC_API_KEY"]})
+                                             headers={**headers, "x-api-key": relay.api_key or os.environ.get("ANTHROPIC_API_KEY", "")})
                 try:
                     with urllib.request.urlopen(req, timeout=600) as r:
                         code, answer, kind = r.status, r.read(), r.headers.get("content-type", "application/json")
@@ -146,12 +150,12 @@ def _code(n: int, alphabet: str = string.ascii_lowercase + string.digits) -> str
 
 
 class Outside:
-    def __init__(self, persona_name: str, email: str, allowed, butler: Path):
+    def __init__(self, persona_name: str, email: str, allowed, butler: Path, api_key: str | None = None):
         self.name, self.email, self.butler = persona_name, email, butler
         shutil.rmtree(FAKES, ignore_errors=True)
         (FAKES / "bin").mkdir(parents=True)
         (FAKES / "imap").mkdir()
-        self.relay = Relay(allowed)
+        self.relay = Relay(allowed, api_key)
         self.google = FakeGoogle().start()
         self.cfg = {"relay": self.relay.url, "google_api": self.google.url,
                     "google_client_id": self.google.env()["BUTLER_GOOGLE_CLIENT_ID"],
@@ -175,9 +179,13 @@ class Outside:
     # ---------- Butler's side ----------
     def _stubs(self) -> None:
         """osascript (its dialogs come to the persona) goes first on PATH; the Calendar helper and
-        Tailscale are put in place later, when Butler or Tailscale is installed."""
+        Tailscale are put in place later, when Butler or Tailscale is installed. On a Mac where
+        the student isn't the one at the screen (a standard account on a hosted runner), launchctl
+        too: see stubs/launchctl.py."""
         if not WINDOWS:
             self._wrapper(FAKES / "bin" / "osascript", "osascript.py")
+            if not at_screen():
+                self._wrapper(FAKES / "bin" / "launchctl", "launchctl.py")
 
     @staticmethod
     def _wrapper(path: Path, stub: str) -> None:
@@ -186,8 +194,19 @@ class Outside:
         path.chmod(0o755)
 
     def path(self, env: dict) -> dict:
+        """The stubs first on PATH. A Mac's login shell (a new Terminal window) rebuilds PATH with
+        /etc/paths first, so its zsh reads the student's own dotfiles through a ZDOTDIR whose
+        .zprofile puts the stubs back in front afterwards."""
         if not WINDOWS:
             env["PATH"] = f"{FAKES / 'bin'}:{env.get('PATH', '')}"
+            zdot = FAKES / "zdot"
+            zdot.mkdir(parents=True, exist_ok=True)
+            for name in (".zshenv", ".zprofile", ".zshrc", ".zlogin"):
+                line = f'[ -f "$HOME/{name}" ] && . "$HOME/{name}"\n'
+                if name == ".zprofile":
+                    line += f'export PATH="{FAKES / "bin"}:$PATH"\n'
+                (zdot / name).write_text(line)
+            env["ZDOTDIR"] = str(zdot)
         return env
 
     def after_install(self) -> None:
@@ -407,14 +426,13 @@ class Outside:
         state = {**self._tailscale(), "up": True, "login": self.email, "tailnet": TAILNET}
         state.setdefault("hostname", "macbook" if not WINDOWS else "desktop-4k2j")
         (FAKES / "tailscale.json").write_text(json.dumps(state))
-        if WINDOWS:
-            _windows_tailscale()
-        else:
-            app = Path("/Applications/Tailscale.app/Contents/MacOS/Tailscale")
-            app.parent.mkdir(parents=True, exist_ok=True)
-            self._wrapper(app, "tailscale.py")
-        return (f"Tailscale installs; you sign in as {self.email} in the browser and click Connect. Its icon shows "
-                f"Connected. This computer is called {state['hostname']} on your tailnet.")
+        # Into /Applications or C:\Program Files: an admin's password or a UAC yes on a real
+        # computer, the runner's admin here (admin.py).
+        admin.request("tailscale", python=sys.executable, stub=str(HERE / "stubs" / "tailscale.py"))
+        asks = ("An administrator's password window comes first; your household's admin types it."
+                if not is_admin() else "")
+        return (f"{asks + ' ' if asks else ''}Tailscale installs; you sign in as {self.email} in the browser and click "
+                f"Connect. Its icon shows Connected. This computer is called {state['hostname']} on your tailnet.")
 
     def tailscale_admin(self, what: str, text: str) -> str:
         state = self._tailscale()
@@ -475,18 +493,20 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def _windows_tailscale() -> None:
-    """C:\\Program Files\\Tailscale\\tailscale.exe: a small program that runs stubs/tailscale.py,
-    built with the C# compiler Windows has."""
-    target = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Tailscale" / "tailscale.exe"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    source = FAKES / "tailscale.cs"
-    stub = str(HERE / "stubs" / "tailscale.py").replace("\\", "\\\\")
-    python = sys.executable.replace("\\", "\\\\")
-    source.write_text(
-        "using System.Diagnostics; using System.Linq;\n"
-        "class P { static int Main(string[] a) {\n"
-        f"  var i = new ProcessStartInfo(\"{python}\", \"\\\"{stub}\\\" \" + string.Join(\" \", a.Select(x => \"\\\"\" + x + \"\\\"\")));\n"
-        "  i.UseShellExecute = false; var p = Process.Start(i); p.WaitForExit(); return p.ExitCode; } }\n")
-    csc = Path(os.environ["SystemRoot"]) / "Microsoft.NET" / "Framework64" / "v4.0.30319" / "csc.exe"
-    subprocess.run([str(csc), "/nologo", f"/out:{target}", str(source)], check=True, capture_output=True)
+def is_admin() -> bool:
+    """Whether this run's account is an admin (the runner's own) or a standard one, as most
+    students' accounts are."""
+    if WINDOWS:
+        import ctypes
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    import getpass
+    return subprocess.run(["dseditgroup", "-o", "checkmember", "-m", getpass.getuser(), "admin"],
+                          capture_output=True).returncode == 0
+
+
+def at_screen() -> bool:
+    """On a Mac: whether this account is the one logged in at the screen. A hosted runner's
+    console is its own admin account, so a standard account has no screen session there."""
+    import getpass
+    owner = subprocess.run(["stat", "-f", "%Su", "/dev/console"], capture_output=True, text=True).stdout.strip()
+    return owner == getpass.getuser()
