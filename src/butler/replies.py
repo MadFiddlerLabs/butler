@@ -175,7 +175,7 @@ def perform(settings: dict, action: dict, who: str, today: date, said: str = "")
     reminders = settings["reminders"]
     if kind == "add_todo":
         _ek("add-reminder", "--list", reminders["todo_list"], "--title", text)
-        return f"Added to {reminders['todo_list']} in Reminders: {text}"
+        return f"Added to {reminders['todo_list']} in {calendar_source.lists_app(settings)}: {text}"
     if kind == "add_shopping":
         _ek("add-reminder", "--list", reminders["shopping_list"], "--title", text)
         return f"Added to {reminders['shopping_list']}: {text}"

@@ -828,8 +828,12 @@ def _ek(*args: str):
 
 @app.get("/lists")
 def lists():
-    rem = load_settings()["reminders"]
-    body = ["<h1>Lists</h1><div class=sub>These are your Apple Reminders lists; changes sync to your phones.</div>"]
+    settings = load_settings()
+    rem = settings["reminders"]
+    where = ("These are your Google Tasks lists; changes show in Google Tasks on your phones too."
+             if calendar_source.source(settings) == "google"
+             else "These are your Apple Reminders lists; changes sync to your phones.")
+    body = [f"<h1>Lists</h1><div class=sub>{where}</div>"]
     for key, label in (("todo_list", "To do now"), ("shopping_list", "Shopping")):
         name = rem[key]
         body.append(f"<h2>{label} <span class=sub>({escape(name)})</span></h2>")

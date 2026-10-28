@@ -24,7 +24,8 @@ class Brief:
     networth: str = ""
     portal_url: str = ""
     banner: str = ""        # a note at the top, e.g. for a rebuilt page
-    todos: list[dict] = field(default_factory=list)   # open items in the household Reminders list
+    todos: list[dict] = field(default_factory=list)   # open items in the household's to-do list
+    lists_app: str = "Reminders"                      # where that list lives: Reminders or Google Tasks
     headsup: list[str] = field(default_factory=list)  # deadlines and expiring documents
     weather: str = ""
     phrase: dict | None = None                        # {phrase, translation, why}, for language learning
@@ -135,7 +136,7 @@ def _todo_text(t: dict, day: date) -> str:
 def _todo_html(brief: Brief) -> str:
     items = "".join(f'<li style="margin:3px 0">{escape(_todo_text(t, brief.day))}</li>' for t in brief.todos)
     return (_h2("To do") + f'<ul style="margin:0 0 0 18px;padding:0">{items}</ul>'
-            f'<p style="margin:4px 0 0;color:{MUTED};font-size:13px">From your household list in Reminders. '
+            f'<p style="margin:4px 0 0;color:{MUTED};font-size:13px">From your household list in {escape(brief.lists_app)}. '
             f'Tick them off there, in the portal, or reply "done: …".</p>')
 
 

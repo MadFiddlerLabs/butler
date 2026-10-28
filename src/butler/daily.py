@@ -170,6 +170,7 @@ def build(settings: dict, day: date, use_llm: bool, preview_projects: bool = Fal
                  practice=practice.summary(day),
                  people=settings.get("people", []), money=money, next_up=next_up,
                  charts=chart_pngs, networth=nw_line, todos=todos,
+                 lists_app=calendar_source.lists_app(settings),
                  portal_url=settings.get("portal", {}).get("url", ""),
                  problems=problems, not_set_up=not_set_up, updates=update_lines)
 
