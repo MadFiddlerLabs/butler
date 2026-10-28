@@ -290,7 +290,12 @@ class WorkflowsParseTest(unittest.TestCase):
         windows = (HERE / "personas" / "as-student.ps1").read_text()
         self.assertNotIn("@anthropic-ai/claude-code", workflow, "Claude Code comes from `butler claude`")
         self.assertNotIn("\"BUTLER_CLAUDE_DRY_RUN\":", harness)
-        self.assertNotIn("/VERYSILENT", harness)
+        # A silent install only where a double-click's windows take no click, and said as it happens.
+        double_click = harness.index("threading.Thread(target=os.startfile, args=(str(self.downloads),)")
+        silent = harness.index('"/VERYSILENT"')
+        self.assertEqual(harness.count('"/VERYSILENT"'), 1)
+        self.assertLess(double_click, silent)
+        self.assertIn("self.difference(", harness[harness.rindex("if stuck:", 0, silent):silent])
         self.assertIn("as-student.sh", workflow)
         self.assertIn("as-student.ps1", workflow)
         self.assertIn('"BYB Test"', windows)
