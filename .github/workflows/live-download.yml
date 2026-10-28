@@ -220,9 +220,80 @@ jobs:
           path: ~/Butler/logs/
           if-no-files-found: ignore
 
+  mac-update:
+    # A student on the release before the live one gets the live one over the air, as their Mac
+    # does: no test manifest, no test signature, the real Installer. Once from `butler update --yes`,
+    # once from the tick's own daily check inside the real launchd job. (An e2e run on 28 Oct 2026
+    # saw the tick refuse the live v0.5.6 as "isn't signed by Butler's publisher"; this is the check.)
+    name: mac update from the previous release (${{ matrix.how }})
+    strategy:
+      fail-fast: false
+      matrix:
+        how: [command, tick]
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: The release before the live one, installed, with its Python
+        id: old
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          live="$(curl -fsSL "$SITE/updates/stable.json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')"
+          previous="$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases --json tagName --jq '.[].tagName' \
+            | python3 -c 'import sys; live=sys.argv[1]; key=lambda t: tuple(int(x) for x in t.lstrip("v").split("."));
+          tags=[t.strip() for t in sys.stdin if t.strip()]; print(max((t for t in tags if key(t) < key(live)), key=key))' "$live")"
+          echo "live $live, installing $previous first"
+          gh release download "$previous" --repo "$GITHUB_REPOSITORY" --pattern Butler.pkg --dir "$RUNNER_TEMP/old"
+          installer -pkg "$RUNNER_TEMP/old/Butler.pkg" -target CurrentUserHomeDirectory
+          b="$HOME/Butler"
+          [ "$(cat "$b/.butler-version")" = "$previous" ] || { echo "::error::installed $(cat "$b/.butler-version"), not $previous"; exit 1; }
+          (cd "$b" && bash scripts/bootstrap.sh)
+          { echo "live=$live"; echo "previous=$previous"; } >> "$GITHUB_OUTPUT"
+      - name: butler update --yes takes it to the live version
+        if: matrix.how == 'command'
+        env:
+          LIVE: ${{ steps.old.outputs.live }}
+        run: |
+          set -uo pipefail
+          b="$HOME/Butler"
+          "$b/bin/butler" update --yes; code=$?
+          cat "$b/data/updates/state.json" 2>/dev/null || true
+          [ "$code" = 0 ] || { echo "::error::butler update --yes exited $code"; tail -n 40 "$b/logs/butler.log"; exit 1; }
+          [ "$(cat "$b/.butler-version")" = "$LIVE" ] || { echo "::error::still on $(cat "$b/.butler-version"), not $LIVE"; exit 1; }
+      - name: The tick's own check, in the real launchd job, takes it to the live version
+        if: matrix.how == 'tick'
+        env:
+          LIVE: ${{ steps.old.outputs.live }}
+        run: |
+          set -uo pipefail
+          b="$HOME/Butler"
+          # The schedule goes in during /butler-setup, after the first run has written settings; the
+          # tick does nothing without them. The example household's settings stand in, updates on.
+          cp "$b/config/settings.example.yaml" "$b/config/settings.yaml"
+          grep -q "^updates: auto" "$b/config/settings.yaml" || { echo "::error::the example settings don't have updates: auto"; exit 1; }
+          "$b/launchd/install.sh"
+          for _ in $(seq 1 120); do
+            [ "$(cat "$b/.butler-version")" = "$LIVE" ] && break
+            sleep 10
+          done
+          launchctl print "gui/$(id -u)/com.buildyourbutler.butler" | grep -E "runs =|last exit code|state =" || true
+          cat "$b/data/updates/state.json" 2>/dev/null || true
+          grep -E "update" "$b/logs/butler.log" | tail -n 20 || true
+          "$b/launchd/uninstall.sh" || true
+          [ "$(cat "$b/.butler-version")" = "$LIVE" ] || { echo "::error::the tick didn't update to $LIVE within 20 minutes"; exit 1; }
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-update-${{ matrix.how }}-logs
+          path: ~/Butler/logs/
+          if-no-files-found: ignore
+
   report:
     # One issue for the run, not one per job.
-    needs: [windows, mac]
+    needs: [windows, mac, mac-update]
     if: failure() && github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 5
