@@ -27,10 +27,22 @@ if ($have -ne $version) {
     try {
         $zip = Join-Path $tmp "uv.zip"
         $url = "https://github.com/astral-sh/uv/releases/download/$version/uv-$target.zip"
+        # Windows' own curl.exe (Windows 10 1803 and later), with a time limit: Invoke-WebRequest
+        # can stall with no error and wait forever (owner's test PC, 28 Oct 2026), where curl fetched
+        # the same file in 15 seconds. Invoke-WebRequest, also time-limited, only where curl is missing.
+        $curl = Join-Path $env:SystemRoot "System32\curl.exe"
         $tries = 0
         while ($true) {
-            try { Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $zip; break }
-            catch { $tries++; if ($tries -ge 5) { throw "Couldn't download uv. Check the internet connection and try again." }; Start-Sleep -Seconds ([math]::Pow(2, $tries)) }
+            try {
+                if (Test-Path $curl) {
+                    & $curl -fsSL --connect-timeout 30 --max-time 300 -o $zip $url
+                    if ($LASTEXITCODE -ne 0) { throw "curl exit $LASTEXITCODE" }
+                } else {
+                    Invoke-WebRequest -UseBasicParsing -TimeoutSec 300 -Uri $url -OutFile $zip
+                }
+                break
+            }
+            catch { $tries++; Write-Host "The download didn't finish ($_). Trying again."; if ($tries -ge 5) { throw "Couldn't download uv. Check the internet connection and try again." }; Start-Sleep -Seconds ([math]::Pow(2, $tries)) }
         }
         # .NET, not Get-FileHash or Expand-Archive: those live in PowerShell modules that a PC with
         # more than one PowerShell can fail to load.
@@ -73,8 +85,10 @@ if ($existing -and -not ($existing.Attributes -band [IO.FileAttributes]::Reparse
     if (-not (Test-Path (Join-Path $want ".butler-ready"))) {
         # Half made by a run that stopped: nothing points at it, so it starts again.
         if (Test-Path $want) { Remove-Item -Recurse -Force $want }
+        Write-Host "Getting Python 3.13 and making Butler's own copy of it."
         & $uv venv --quiet --python 3.13 $want
         if ($LASTEXITCODE -ne 0) { throw "uv couldn't make Butler's Python." }
+        Write-Host "Installing Butler's packages, exactly as requirements.lock pins them."
         & $uv pip sync --quiet --python $python --require-hashes --no-build requirements.lock
         if ($LASTEXITCODE -ne 0) { throw "Butler's packages didn't install." }
         Set-Content -Encoding ascii (Join-Path $want ".butler-ready") $lockId

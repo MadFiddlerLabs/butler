@@ -36,6 +36,12 @@ ChangesEnvironment=yes
 ; replaces isn't held open, and a new lock gets a virtualenv of its own (scripts/bootstrap.ps1).
 CloseApplications=no
 RestartApplications=no
+; Inno Setup turns on Windows' RedirectionGuard by default, and on Windows 11 build 26300 Setup's
+; steps then can't follow a junction a standard user made: uv's Python (and Butler's .venv) are
+; behind such junctions, so uv stopped with os error 448, "untrusted mount point" (owner's test PC,
+; 28 Oct 2026). The guard protects an elevated installer from a planted junction; this one runs as
+; the student, into their own profile, so it guards nothing here.
+RedirectionGuard=no
 UninstallDisplayName=Butler
 ; Butler's files are its own; the household's are never in this list, so they stay.
 UninstallFilesDir={app}\.uninstall
@@ -53,7 +59,7 @@ Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; Value
 [Run]
 ; Butler's Python first. cmd carries every line of its output, errors too, into the log, and the
 ; 64-bit PowerShell ({sysnative}) sees the computer's real processor (the installer is 32-bit).
-Filename: "{cmd}"; Parameters: "/c """"{sysnative}\WindowsPowerShell\v1.0\powershell.exe"" -NoProfile -ExecutionPolicy Bypass -File ""{app}\scripts\bootstrap.ps1"" > ""{app}\logs\bootstrap.log"" 2>&1"""; WorkingDir: "{app}"; StatusMsg: "Getting Butler's own Python. This takes a minute or two."; Flags: runhidden waituntilterminated; BeforeInstall: MakeLogs
+Filename: "{cmd}"; Parameters: "/c """"{sysnative}\WindowsPowerShell\v1.0\powershell.exe"" -NoProfile -ExecutionPolicy Bypass -File ""{app}\scripts\bootstrap.ps1"" > ""{app}\logs\bootstrap.log"" 2>&1"""; WorkingDir: "{app}"; StatusMsg: "Getting Butler's own Python. This can take a few minutes."; Flags: runhidden waituntilterminated; BeforeInstall: MakeLogs
 Filename: "{app}\.venv\Scripts\python.exe"; Parameters: "-X utf8 ""{app}\run.py"" installed --installer ""{srcexe}"" --silent"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; Check: WizardSilent and HasPython
 Filename: "{app}\.venv\Scripts\python.exe"; Parameters: "-X utf8 ""{app}\run.py"" installed --installer ""{srcexe}"""; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; Check: (not WizardSilent) and HasPython
 
