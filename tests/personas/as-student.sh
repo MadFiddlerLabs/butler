@@ -19,7 +19,8 @@
 #   (ANTHROPIC_API_KEY in the environment for a paid run; none for --rehearse)
 set -euo pipefail
 repo="$(cd "$(dirname "$0")/../.." && pwd)"
-out="$1"; shift
+mkdir -p "$1"
+out="$(cd "$1" && pwd)"; shift
 [ "${1:-}" = "--" ] && shift
 student="bybtest"
 home="/Users/byb test"
@@ -35,13 +36,18 @@ if dseditgroup -o checkmember -m "$student" admin >/dev/null 2>&1; then echo "::
 echo "$student: uid $(id -u "$student"), home \"$home\", standard (not an admin)"
 
 step "its login keychain, as macOS makes one at the first login"
-sudo -u "$student" -H bash -c 'mkdir -p ~/Library/Keychains && cd ~/Library/Keychains &&
-  security create-keychain -p "" login.keychain-db &&
-  security list-keychains -d user -s login.keychain-db &&
-  security default-keychain -d user -s login.keychain-db &&
-  security login-keychain -d user -s login.keychain-db &&
-  security set-keychain-settings login.keychain-db &&
-  security default-keychain -d user'
+sudo -u "$student" -H bash -xc 'mkdir -p "$HOME/Library/Keychains"
+  k="$HOME/Library/Keychains/login.keychain-db"
+  security create-keychain -p "" "$k"
+  security list-keychains -d user -s "$k"
+  security default-keychain -d user -s "$k"
+  security login-keychain -d user -s "$k" || true
+  security set-keychain-settings "$k"
+  security unlock-keychain -p "" "$k"
+  security add-generic-password -U -s byb-persona-check -a butler -w ok "$k" &&
+    security find-generic-password -s byb-persona-check -w &&
+    security delete-generic-password -s byb-persona-check >/dev/null' \
+  || { echo "::error::the account's login keychain couldn't be made"; exit 1; }
 
 step "the harness, its Python, the package and the lessons, where the account can read them"
 sudo rm -rf "$shared"
@@ -74,13 +80,12 @@ code=0
 # same session as the harness, as a login unlocks it.
 sudo -u "$student" -H env -i HOME="$home" USER="$student" LOGNAME="$student" SHELL=/bin/zsh \
   PATH=/usr/bin:/bin:/usr/sbin:/sbin TERM=xterm-256color LANG=en_US.UTF-8 CI=1 BYB_ADMIN_REQUESTS="$shared/admin" \
-  /bin/bash -c 'security unlock-keychain -p "" login.keychain-db && exec "$@"' bash \
+  /bin/bash -c 'security unlock-keychain -p "" "$HOME/Library/Keychains/login.keychain-db" && exec "$@"' bash \
   "$shared/venv/bin/python" -X utf8 "$shared/engine/tests/personas/run_persona.py" "$@" \
   --key-file "$shared/secret/key" --out "$shared/out" || code=$?
 sudo rm -f "$shared/secret/key"
 
 step "what the run left"
-mkdir -p "$out"
 sudo cp -R "$shared/out/." "$out/"
 sudo chown -R "$(id -un)" "$out"
 echo "--- admin.log"; cat "$shared/admin.log" || true
