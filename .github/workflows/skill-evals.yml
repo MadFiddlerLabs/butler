@@ -1,60 +1,146 @@
-# Paid: headless Claude Code runs /butler-setup install, /butler-doctor and a pasted-secret
-# scenario in a fresh install, with a scripted user, and Python checks the results and the
-# safety rules. Needs the ANTHROPIC_API_KEY repository secret; skips cleanly without it.
+# Paid, and by hand only: headless Claude Code runs /butler-setup steps and /butler-doctor in a
+# fresh install, with a scripted student, and Python grades what a student would see and what
+# Claude did (tests/evals/). The owner runs it after big changes or major updates, never on every
+# build (docs/TESTING.md). On Windows, the installer a student downloads installs Butler, and
+# Google, Gmail and Butler's own Claude calls go to fakes on the runner.
+#
+# The plan job validates the request and writes the estimated cost to the run's summary before
+# anything is spent; each run stops at the budget input. With dry ticked, or on a pull request
+# that changes the evals, everything runs except the Claude call: free, and no key is used.
 name: skill-evals
 
 on:
-  schedule:
-    - cron: "41 6 * * 1"
   workflow_dispatch:
     inputs:
+      platform:
+        description: "Which computers"
+        type: choice
+        options: [windows-arm, windows-x64, windows, mac, all]
+        default: windows-arm
       scenarios:
-        description: "Scenarios to run (space-separated; empty for all)"
+        description: "Scenarios, space-separated (empty for every one the computer runs): install doctor secret-paste calendar brain inbox schedule"
         default: ""
       model:
         description: "Model for Claude Code (empty for its default)"
         default: ""
+      budget:
+        description: "Most one scenario run may spend, in dollars"
+        default: "2"
+      dry:
+        description: "Dry run: everything but the Claude call (free)"
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - tests/evals/**
+      - tests/test_evals.py
+      - .github/workflows/skill-evals.yml
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
-  evals:
-    runs-on: macos-latest
-    timeout-minutes: 90
-    env:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      windows: ${{ steps.plan.outputs.windows }}
+      dry: ${{ steps.plan.outputs.dry }}
     steps:
-      - name: Check for the API key
-        id: key
-        run: |
-          if [ -n "$ANTHROPIC_API_KEY" ]; then echo "present=true" >> "$GITHUB_OUTPUT"
-          else echo "No ANTHROPIC_API_KEY secret: skipping." >> "$GITHUB_STEP_SUMMARY"; fi
       - uses: actions/checkout@v4
-        if: steps.key.outputs.present == 'true'
+      - name: The runs, and what they should cost
+        id: plan
+        env:
+          PLATFORM: ${{ github.event_name == 'workflow_dispatch' && inputs.platform || 'all' }}
+          SCENARIOS: ${{ inputs.scenarios }}
+          BUDGET: ${{ inputs.budget || '2' }}
+          DRY: ${{ github.event_name != 'workflow_dispatch' || inputs.dry }}
+        run: |
+          flags="--plan --platform $PLATFORM --budget $BUDGET"
+          [ "$DRY" = true ] && flags="$flags --dry"
+          # Word splitting on SCENARIOS is intended: one argument per scenario.
+          # shellcheck disable=SC2086
+          matrix="$(python3 tests/evals/run_evals.py $flags $SCENARIOS)"   # the image's Python has PyYAML
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "windows=$(echo "$matrix" | grep -q '"system": "windows"' && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "dry=$DRY" >> "$GITHUB_OUTPUT"
+
+  installer:
+    # The installer a student downloads, unsigned (a test build), for every Windows run.
+    needs: plan
+    if: needs.plan.outputs.windows == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inno Setup 6 (the runner image has it; installed only if it doesn't)
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+      - name: Build the installer
+        run: powershell -ExecutionPolicy Bypass -File packaging\windows\build-installer.ps1 -Version v0.0.1-eval
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eval-installer
+          path: dist/Butler-Setup.exe
+          retention-days: 1
+
+  evals:
+    needs: [plan, installer]
+    if: ${{ always() && needs.plan.result == 'success' && needs.installer.result != 'failure' && needs.installer.result != 'cancelled' }}
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        if: steps.key.outputs.present == 'true'
         with:
           python-version: "3.13"
-      - if: steps.key.outputs.present == 'true'
-        run: |
-          pip install pyyaml
-          npm install -g @anthropic-ai/claude-code
-      - if: steps.key.outputs.present == 'true'
-        # Word splitting on SCENARIOS is intended: one argument per scenario.
-        run: python tests/evals/run_evals.py $SCENARIOS
-        env:
-          SCENARIOS: ${{ inputs.scenarios }}
-          EVAL_MODEL: ${{ inputs.model }}
-      - uses: actions/upload-artifact@v4
-        if: failure()
+      - uses: actions/setup-node@v4
         with:
-          name: eval-transcripts
+          node-version: "24"
+      - name: The harness's own tools (Butler installs its own Python)
+        shell: bash
+        run: |
+          python -m pip install --disable-pip-version-check pyyaml tzdata==2026.5
+          npm install -g @anthropic-ai/claude-code
+          claude --version
+      - uses: actions/download-artifact@v4
+        if: matrix.system == 'windows'
+        with:
+          name: eval-installer
+          path: ${{ runner.temp }}/installer
+      - name: ${{ matrix.scenario }}
+        shell: bash
+        env:
+          ANTHROPIC_API_KEY: ${{ (github.event_name == 'workflow_dispatch' && !inputs.dry) && secrets.ANTHROPIC_API_KEY || '' }}
+          EVAL_MODEL: ${{ inputs.model }}
+          EVAL_MAX_BUDGET: ${{ inputs.budget || '2' }}
+          DRY: ${{ needs.plan.outputs.dry }}
+          INSTALLER: ${{ runner.temp }}/installer/Butler-Setup.exe
+        run: |
+          flags="--keep"
+          if [ "$DRY" = true ]; then flags="$flags --dry"
+          elif [ -z "$ANTHROPIC_API_KEY" ]; then echo "No ANTHROPIC_API_KEY secret: skipping." >> "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          [ "${{ matrix.system }}" = windows ] && flags="$flags --installer $INSTALLER"
+          # shellcheck disable=SC2086
+          python -X utf8 tests/evals/run_evals.py $flags "${{ matrix.scenario }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-transcript-${{ matrix.scenario }}-${{ matrix.platform }}
           path: eval-output/
           if-no-files-found: ignore
-      - name: Open an issue when a scheduled run fails
-        if: failure() && github.event_name == 'schedule'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: .github/scripts/report-failure.sh
+      - name: Butler's logs
+        if: failure()
+        shell: bash
+        run: |
+          for log in "$HOME/Butler/logs/butler.log" "$HOME/Butler/logs/scheduled.log" "$HOME/Butler/logs/install.log"; do
+            [ -f "$log" ] && { echo "== $log"; tail -n 60 "$log"; }
+          done
+          exit 0
