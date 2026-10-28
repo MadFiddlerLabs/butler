@@ -103,7 +103,9 @@ the portal's test client.
   `logs/butler.log`. `/butler-tune` does this systematically.
 - Change behaviour through config first (`settings.yaml`, `category_map.yaml`, the budget
   workbook, `data/household_notes.md`). Change code only for something config can't express.
-- After any change: run the tests and a dry run.
+- After any change: run the config test (`tests.test_config`) and a dry run. The whole test suite is
+  for developing Butler: in a household's install it takes over ten minutes and reports failures
+  that aren't problems.
 
 ## Talking to someone learning with the course
 
