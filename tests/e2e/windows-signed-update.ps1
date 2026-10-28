@@ -70,6 +70,9 @@ if (-not $env:BYB_PASSWORD) {
 if ((Get-LocalGroupMember Administrators).Name -contains "$env:COMPUTERNAME\$user") { Fail "BYB Test is an admin" }
 Copy-Item $Old (Join-Path $work "old.exe") -Force
 Copy-Item $New (Join-Path $work "Butler-Setup-$NewVersion.exe") -Force
+# Where the updater fetches its copy of $OldVersion to go back to, as GitHub Releases would serve it.
+New-Item -ItemType Directory -Force (Join-Path $work "releases\$OldVersion") | Out-Null
+Copy-Item $Old (Join-Path $work "releases\$OldVersion\Butler-Setup.exe") -Force
 icacls $work /grant "${user}:(OI)(CI)M" | Out-Null
 icacls $env:pythonLocation /grant "${user}:(OI)(CI)RX" /T /C /Q | Out-Null
 
@@ -82,14 +85,16 @@ if ((Version) -ne $OldVersion) { Fail "$OldVersion isn't installed (found '$(Ver
 Step "a household's files, and the manifest the website would serve"
 # Written by the account, as its own files. BUTLER_UPDATE_MANIFEST points the tick at this
 # manifest, and BUTLER_API at a port nothing listens on, so no test outcome reaches the website.
-# Both go in the account's own environment, which its scheduled tasks start with.
+# BUTLER_RELEASES_URL serves the copy of the old version kept for rollback.
+# All three go in the account's own environment, which its scheduled tasks start with.
 $notes = "- the Johnsons' plumber is Rui (invented)"
 $setup = @(
     "copy /y `"%USERPROFILE%\Butler\config\settings.example.yaml`" `"%USERPROFILE%\Butler\config\settings.yaml`"",
     "(if not exist `"%USERPROFILE%\Butler\data`" mkdir `"%USERPROFILE%\Butler\data`")",
     "(echo $notes)> `"%USERPROFILE%\Butler\data\household_notes.md`"",
     "setx BUTLER_UPDATE_MANIFEST $work\stable.json",
-    "setx BUTLER_API http://127.0.0.1:9/api"
+    "setx BUTLER_API http://127.0.0.1:9/api",
+    "setx BUTLER_RELEASES_URL $work\releases"
 ) -join " & "
 if ((As-Student "household.txt" $setup) -ne 0) { Fail "the household's files couldn't be written" }
 $household = (Get-FileHash "$b\data\household_notes.md").Hash

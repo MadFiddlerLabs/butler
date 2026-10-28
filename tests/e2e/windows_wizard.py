@@ -26,6 +26,7 @@ import os
 import re
 import shutil
 import sys
+import threading
 import time
 from ctypes import wintypes
 from pathlib import Path
@@ -119,7 +120,10 @@ def smartscreen(hwnd: int) -> None:
 def main(installer: Path, name: str) -> int:
     exe = download(installer, name)
     print(f"downloaded to {exe}, with the Mark of the Web", flush=True)
-    os.startfile(str(exe))      # what a double-click does
+    # What a double-click does. On its own thread: for a file from the internet, Windows asks
+    # "Open File - Security Warning" inside this call and waits there for the answer, which the
+    # loop below gives (the run of 28 Oct 2026 hung here for an hour).
+    threading.Thread(target=os.startfile, args=(str(exe),), daemon=True).start()
     print("opened it, as a double-click does", flush=True)
     deadline = time.monotonic() + 20 * 60
     on_screen: set[str] = set()
