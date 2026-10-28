@@ -49,7 +49,9 @@ ANTHROPIC = "https://api.anthropic.com"
 # cache writes a quarter more.
 FAMILY_PRICES = {"opus": (5.0, 25.0), "sonnet": (2.0, 10.0), "haiku": (1.0, 5.0)}
 TAILNET = "tail4e2a1.ts.net"
-SCOPE_NAMES = {SCOPES[0]: "See your calendars", SCOPES[1]: "Add and change events in your calendars",
+# Google's descriptions of the scopes (its OAuth scopes list), so the persona weighs the lessons against them.
+SCOPE_NAMES = {SCOPES[0]: "See and download any calendar you can access using your Google Calendar",
+               SCOPES[1]: "View and edit events on all your calendars",
                SCOPES[2]: "Create, edit, organise and delete your tasks"}
 
 
