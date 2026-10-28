@@ -96,7 +96,7 @@ Windows' scheduler (launchd on a Mac). On Windows, the Butler folder is `%USERPR
 2. **No ID numbers** (passport, residence, tax, health) in settings, notes or prompts. They
    belong only in `projects/reference.local.yaml`, which the user fills in themselves.
 3. **Nothing is sent without a clear yes.** `./run.sh daily`, `weekly`, `monthly` and
-   `replies` email real people. `./run.sh preview` and the dry runs send nothing.
+   `replies` email real people (on Windows, `.venv/Scripts/python.exe run.py daily` and so on). `./run.sh preview` and the dry runs send nothing.
 
 Never overwrite a real config file without a yes. Copy it to `<name>.yaml.bak` first.
 Examples you show are invented (the Johnsons and their butler Bento), and you say so.
@@ -237,6 +237,11 @@ The win: Claude writes the news summaries and notes on what to prepare for.
 8. Ask for one sentence for `news.interests`. It sits next to news from strangers, so no
    names or personal details.
 9. Check: `./run.sh preview`. The news is summarized, and the footer shows no Claude error.
+   When they ask what Claude sees, be exact. There are two calls, and they get different things.
+   - The news call: the headlines, the town and `news.interests`. Nothing else about the household.
+   - The prep notes: `household.about`, their notes and feedback, the coming events, and project
+     notes about documents and appointments.
+   ID numbers go to neither.
 
 Next: Module 5, Give your butler an inbox (`/butler-setup inbox`).
 
@@ -263,7 +268,8 @@ The win: the first real morning email, and a daily schedule.
    for `trusted_senders`. Replies count only with a valid email signature (DKIM) from that
    exact address, and work servers, aliases and forwarding often break it.
 4. **First send.** Ask first. Suggest sending only to the person you're working with: set
-   `email.recipients` to them, run `./run.sh daily`, then restore the full list. If it lands
+   `email.recipients` to them, run `./run.sh daily` (on Windows,
+   `.venv/Scripts/python.exe run.py daily`), then restore the full list. If it lands
    in spam, they mark it "Not spam" and add the butler to their contacts.
 5. **The schedule.** Ask the send hour (`email.send_hour`).
    - On a Mac: run `launchd/install.sh`. Then set a daily wake a minute before. This needs an
