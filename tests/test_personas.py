@@ -158,7 +158,8 @@ class PersonasTest(unittest.TestCase):
                 os.environ.pop("BYB_ADMIN_REQUESTS", None)
                 admin.request("note", who="itself")
             self.assertEqual(done, [{"who": "itself"}], "an admin run does it itself")
-            with tempfile.TemporaryDirectory() as folder, unittest.mock.patch.dict(os.environ, {"BYB_ADMIN_REQUESTS": folder}):
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder, \
+                    unittest.mock.patch.dict(os.environ, {"BYB_ADMIN_REQUESTS": folder}):  # the server thread may still write
                 threading.Thread(target=admin.serve, args=(Path(folder),), daemon=True).start()
                 admin.request("note", who="for the student")
                 self.assertEqual(done[-1], {"who": "for the student"})
