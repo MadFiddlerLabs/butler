@@ -1,0 +1,50 @@
+name: scratch-standard-user
+on:
+  push:
+    branches: [windows-standard-user]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: windows-11-arm
+    timeout-minutes: 20
+    steps:
+      - name: Probe
+        shell: pwsh
+        run: |
+          [Environment]::OSVersion.Version; $env:PROCESSOR_ARCHITECTURE; whoami; whoami /groups | Select-String -Pattern "Administrators|Mandatory"
+          (Get-Service seclogon).Status
+          query session 2>&1
+          $chars = [char[]]"abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+          $pw = "Aa1!" + -join (1..20 | ForEach-Object { $chars | Get-Random })
+          Write-Host "::add-mask::$pw"
+          $sec = ConvertTo-SecureString $pw -AsPlainText -Force
+          New-LocalUser -Name "BYB Test" -Password $sec -PasswordNeverExpires -AccountNeverExpires | Out-Null
+          Add-LocalGroupMember -Group Users -Member "BYB Test"
+          Get-LocalGroupMember Administrators | Format-Table Name
+          $cred = New-Object PSCredential("$env:COMPUTERNAME\BYB Test", $sec)
+          New-Item -ItemType Directory -Force C:\probe | Out-Null
+          icacls C:\probe /grant "Everyone:(OI)(CI)F" | Out-Null
+          Write-Host "== A: Start-Process -Credential, console app"
+          try {
+            $p = Start-Process cmd.exe -ArgumentList '/c whoami > C:\probe\a.txt & echo %USERPROFILE% >> C:\probe\a.txt' -Credential $cred -LoadUserProfile -Wait -PassThru -WorkingDirectory C:\probe
+            "exit: 0x{0:x}" -f $p.ExitCode
+          } catch { "A failed: $_" }
+          Get-Content -ErrorAction SilentlyContinue C:\probe\a.txt
+          Write-Host "== B: scheduled task as the user, with password"
+          try {
+            $action = New-ScheduledTaskAction -Execute cmd.exe -Argument '/c whoami > C:\probe\b.txt & echo %USERPROFILE% >> C:\probe\b.txt & whoami /groups >> C:\probe\b.txt'
+            Register-ScheduledTask -TaskName probe -Action $action -User "$env:COMPUTERNAME\BYB Test" -Password $pw -RunLevel Limited | Out-Null
+            Start-ScheduledTask probe
+            for ($i = 0; $i -lt 30 -and -not (Test-Path C:\probe\b.txt); $i++) { Start-Sleep 1 }
+            Start-Sleep 3
+            (Get-ScheduledTaskInfo probe) | Format-List LastRunTime, LastTaskResult
+          } catch { "B failed: $_" }
+          Get-Content -ErrorAction SilentlyContinue C:\probe\b.txt
+          Write-Host "== C: Start-Process -Credential, powershell"
+          try {
+            $p = Start-Process powershell.exe -ArgumentList '-NoProfile -Command "whoami | Out-File C:\probe\c.txt"' -Credential $cred -LoadUserProfile -Wait -PassThru -WorkingDirectory C:\probe
+            "exit: 0x{0:x}" -f $p.ExitCode
+          } catch { "C failed: $_" }
+          Get-Content -ErrorAction SilentlyContinue C:\probe\c.txt
+          exit 0
