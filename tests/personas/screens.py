@@ -207,7 +207,7 @@ def window_form(title: str, controls: list[tuple[str, str, bool, bool]]) -> dict
     TNewMemo; a message box's are Button and Static."""
     text, buttons, boxes = [], [], []
     for cls, label, enabled, visible in controls:
-        label = label.replace("&", "").strip()
+        label = re.sub(r"</?a\b[^>]*>", "", label.replace("&", ""), flags=re.I).strip()   # a SysLink's <A> tags
         if not label or not visible:
             continue
         if re.search(r"CheckBox|RadioButton", cls, re.I):

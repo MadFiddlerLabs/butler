@@ -585,7 +585,7 @@ In this session, you will also:
         opener = threading.Thread(target=os.startfile, args=(str(self.downloads),), daemon=True)
         opener.start()   # a security prompt blocks the call that opened the file, so it runs aside
         seen: list[str] = []
-        asked: dict[int, tuple[str, float, int]] = {}
+        asked: dict[int, tuple[str, float, int, dict]] = {}   # window: (what it showed, when, clicks, the answer)
         ran = False
         started = time.monotonic()
         while time.monotonic() - started < 30 * 60:
@@ -601,18 +601,23 @@ In this session, you will also:
                     continue
                 key = json.dumps(shown, sort_keys=True)
                 last = asked.get(hwnd)
-                if last and last[0] == key and (time.monotonic() - last[1] < 30 or last[2] >= 3):
-                    continue    # answered just now, or three times already: a click that never takes
+                if last and last[0] == key:
+                    # Still showing what was answered: the click didn't take yet. After 10 seconds
+                    # it's clicked again another way (windows_screen._click), at most three times.
+                    if last[2] and last[2] < 3 and time.monotonic() - last[1] > 10:
+                        ws.answer(hwnd, title, last[3], attempt=last[2] + 1)
+                        self.say("harness", f"clicked {last[3].get('button')!r} again on {title!r} (way {last[2] + 1})")
+                        asked[hwnd] = (key, time.monotonic(), last[2] + 1, last[3])
+                    continue
                 if waiting_only(shown):
-                    if not last or last[0] != key:
-                        seen.append(f"{title}: {shown['text']}")
-                    asked[hwnd] = (key, float("inf"), 0)
+                    seen.append(f"{title}: {shown['text']}")
+                    asked[hwnd] = (key, time.monotonic(), 0, {})
                     continue
                 choice = self.ask_window(shown)
                 clicked = ws.answer(hwnd, title, choice)
                 seen.append(f"{title}: {shown['text']} [{' | '.join(shown['buttons'])}] You click "
                             f"{choice.get('button')!r}{'' if clicked else ' (there is no such button)'}.")
-                asked[hwnd] = (key, time.monotonic(), (last[2] + 1) if last and last[0] == key else 1)
+                asked[hwnd] = (key, time.monotonic(), 1 if clicked else 3, choice)
             if not opener.is_alive() and not setup and (ran or time.monotonic() - started > 90):
                 break
         else:

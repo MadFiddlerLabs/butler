@@ -97,37 +97,68 @@ def form(hwnd: int, title: str) -> dict:
     """The window as the persona sees it (screens.window_form): its text, buttons and boxes."""
     if any(s in title for s in SMARTSCREEN):
         return _uia_form(hwnd, title)
-    controls = [(_class(c), _text(c), bool(user32.IsWindowEnabled(c)), bool(user32.IsWindowVisible(c)))
+    controls = [(_kind(c), _text(c), bool(user32.IsWindowEnabled(c)), bool(user32.IsWindowVisible(c)))
                 for c in _children(hwnd)]
     return window_form(title, controls)
 
 
-def answer(hwnd: int, title: str, choice: dict) -> bool:
-    """Ticks the boxes the persona ticked and clicks its button. False if there's no such button."""
+def _kind(control: int) -> str:
+    """A control's class, with a plain Win32 "Button" told apart by its style: a check box, a radio
+    button and a group box are all of class Button."""
+    cls = _class(control)
+    if cls == "Button":
+        style = user32.GetWindowLongW(control, -16) & 0xF     # GWL_STYLE, the BS_ type
+        if style in (2, 3, 5, 6):
+            return "CheckBox"
+        if style in (4, 9):
+            return "RadioButton"
+        if style == 7:
+            return "GroupBox"
+    return cls
+
+
+def answer(hwnd: int, title: str, choice: dict, attempt: int = 1) -> bool:
+    """Ticks the boxes the persona ticked and clicks its button. False if there's no such button.
+    A click that didn't take is tried again another way (`attempt` 2 and 3)."""
     if any(s in title for s in SMARTSCREEN):
         return _uia_press(hwnd, choice.get("button", ""))
-    controls = [(c, _class(c), _text(c).replace("&", "").strip().lower()) for c in _children(hwnd)]
+    controls = [(c, _kind(c), _text(c).replace("&", "").strip().lower()) for c in _children(hwnd)]
     wanted = {t.strip().lower() for t in choice.get("ticked") or []}
-    for c, cls, label in controls:
-        if label in wanted and ("CheckBox" in cls or "RadioButton" in cls):
+    for c, kind, label in controls:
+        if label in wanted and ("CheckBox" in kind or "RadioButton" in kind):
             checked = ctypes.c_size_t()
             user32.SendMessageTimeoutW(c, BM_GETCHECK, 0, 0, SMTO_ABORTIFHUNG, 2000, ctypes.byref(checked))
             if not checked.value:
-                _click(c)
+                _click(hwnd, c, attempt)
     button = (choice.get("button") or "").replace("&", "").strip().lower()
-    for c, cls, label in controls:
-        if ("Button" in cls and "CheckBox" not in cls and "RadioButton" not in cls and label == button
+    for c, kind, label in controls:
+        if ("Button" in kind and "CheckBox" not in kind and "RadioButton" not in kind and label == button
                 and user32.IsWindowEnabled(c) and user32.IsWindowVisible(c)):
-            _click(c)
+            _click(hwnd, c, attempt)
             return True
     return False
 
 
-def _click(control: int) -> None:
-    """What a mouse click on a button tells its window: WM_COMMAND with BN_CLICKED. Posted, so a
-    dialog that opens from it can't block the harness."""
-    control_id = user32.GetDlgCtrlID(control)
-    user32.PostMessageW(user32.GetParent(control), WM_COMMAND, (BN_CLICKED << 16) | (control_id & 0xFFFF), control)
+class RECT(ctypes.Structure):
+    _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long), ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
+
+
+def _click(window: int, control: int, attempt: int) -> None:
+    """A mouse click on a control, as messages, so nothing needs the window in front: first the
+    button down and up a real click sends (what pywinauto does); then BM_CLICK; then the
+    WM_COMMAND a click ends in, to the window itself. All posted, so a dialog that opens from the
+    click can't block the harness."""
+    if attempt <= 1:
+        rect = RECT()
+        user32.GetClientRect(control, ctypes.byref(rect))
+        where = ((rect.bottom // 2) << 16) | (rect.right // 2 & 0xFFFF)
+        user32.PostMessageW(control, 0x0201, 0x0001, where)   # WM_LBUTTONDOWN, MK_LBUTTON
+        user32.PostMessageW(control, 0x0202, 0, where)        # WM_LBUTTONUP
+    elif attempt == 2:
+        user32.PostMessageW(control, 0x00F5, 0, 0)            # BM_CLICK
+    else:
+        control_id = user32.GetDlgCtrlID(control)
+        user32.PostMessageW(window, WM_COMMAND, (BN_CLICKED << 16) | (control_id & 0xFFFF), control)
 
 
 def _uia(hwnd):
