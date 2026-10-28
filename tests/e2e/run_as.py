@@ -82,7 +82,8 @@ def main() -> int:
     words = a.command[1:] if a.command[:1] == ["--"] else a.command
     out = Path(a.out)
     out.unlink(missing_ok=True)
-    command = f'{" ".join(words)} > "{out}" 2>&1'
+    # In brackets, so `a & b` sends both to the file, not only b.
+    command = f'({" ".join(words)}) > "{out}" 2>&1'
     code = run_as(a.user, os.environ[a.password_env], command, a.cwd or str(out.parent), a.timeout)
     if out.exists():
         sys.stdout.write(out.read_text(encoding="utf-8", errors="replace"))
