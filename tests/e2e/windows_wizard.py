@@ -40,6 +40,8 @@ SMARTSCREEN = ("Windows protected your PC", "Microsoft Defender SmartScreen", "W
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+user32.SendMessageTimeoutW.argtypes = (wintypes.HWND, wintypes.UINT, wintypes.WPARAM, ctypes.c_wchar_p,
+                                       wintypes.UINT, wintypes.UINT, ctypes.POINTER(ctypes.c_size_t))
 
 
 def windows() -> list[tuple[int, str, int]]:
@@ -58,6 +60,27 @@ def windows() -> list[tuple[int, str, int]]:
         return True
     user32.EnumWindows(WNDENUMPROC(each), 0)
     return found
+
+
+def box_text(hwnd: int) -> list[str]:
+    """A message box's text, read from each control with WM_GETTEXT (GetWindowText doesn't read
+    another process's controls). Read again for a few seconds: a box just opened can be empty."""
+    WM_GETTEXT, SMTO_ABORTIFHUNG = 0x000D, 0x0002
+    for _ in range(10):
+        texts = []
+
+        def each(child, _):
+            buffer = ctypes.create_unicode_buffer(4096)
+            result = ctypes.c_size_t()
+            if user32.SendMessageTimeoutW(child, WM_GETTEXT, 4096, buffer, SMTO_ABORTIFHUNG, 1000,
+                                          ctypes.byref(result)) and buffer.value.strip():
+                texts.append(buffer.value.strip())
+            return True
+        user32.EnumChildWindows(hwnd, WNDENUMPROC(each), 0)
+        if texts:
+            return texts
+        time.sleep(0.5)
+    return []
 
 
 def download(installer: Path, name: str) -> Path:
@@ -159,7 +182,7 @@ def main(installer: Path, name: str) -> int:
                             break
                 elif title in ("Setup", "Butler", "Error"):
                     # A message box from Setup: an error, or "couldn't get its Python".
-                    print(f"message box {title!r}: {labels(win32_window(hwnd))}", flush=True)
+                    print(f"message box {title!r}: {box_text(hwnd)}", flush=True)
                     return 1
             except Exception as e:  # noqa: BLE001 - the window went while we looked; look again
                 print(f"  ({title!r}: {type(e).__name__}: {e})", flush=True)
