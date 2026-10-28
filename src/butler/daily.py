@@ -74,7 +74,7 @@ def build(settings: dict, day: date, use_llm: bool, preview_projects: bool = Fal
         log.info("news: %d candidate stories", len(stories))
         if use_llm and stories:
             try:
-                news = llm.pick_news(settings, stories, day)
+                news = _fill_empty_regions(settings, stories, llm.pick_news(settings, stories, day), day)
             except Exception as e:
                 log.exception("news selection failed")
                 problems.append(f"news shown unedited ({_short(e)})")
@@ -228,6 +228,24 @@ def _last_brief_time(day: date, zone) -> datetime:
     if earlier:
         return datetime.fromtimestamp(earlier[-1].stat().st_mtime, zone)
     return datetime.combine(day - timedelta(days=1), time(7), zone)
+
+
+def _fill_empty_regions(settings: dict, stories, news: list[dict], day) -> list[dict]:
+    """Claude sometimes picks nothing for a region, or picks refs that match no story, and the
+    region vanished from the brief (a persona's Europe and World, 28 Oct 2026). A region with new
+    stories but no pick shows its feed's own first headlines instead, as when Claude is down.
+    Stories already in the brief or sent recently stay out, so an empty region can stay empty."""
+    covered = {c["story"].region for c in news}
+    shown = {c["story"].link for c in news if c["story"].link}
+    sent = {r["link"] for r in llm.recent_news(day)}
+    rest = [s for s in stories if s.region not in covered and not (s.link and (s.link in shown or s.link in sent))]
+    extra = _raw_headlines(settings, rest)
+    if not extra:
+        return news
+    log.info("news: Claude picked nothing for %s; showing the feeds' own headlines",
+             ", ".join(sorted({c["story"].region for c in extra})))
+    order = [r["key"] for r in settings["news"]["regions"]]
+    return sorted(news + extra, key=lambda c: order.index(c["story"].region) if c["story"].region in order else len(order))
 
 
 def _raw_headlines(settings: dict, stories) -> list[dict]:
