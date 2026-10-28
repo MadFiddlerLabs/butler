@@ -87,7 +87,9 @@ jobs:
           b="$HOME/Butler"
           # Each check says what failed, with what it found (#37: this step failed now and then
           # without saying which check).
-          check() { local what="$1"; shift; "$@" || { echo "::error::upgrade: $what"; ps -axo pid,command | grep -E "Butler|Terminal|first-run|bootstrap" | grep -v grep; for f in config/settings.yaml data/household_notes.md .butler-name; do echo "--- $f"; cat "$b/$f" 2>&1; done; tail -n 20 "$b/logs/install.log" "$b/logs/setup.log" 2>&1; exit 1; }; }
+          # Under bash -e, a grep that finds nothing would end the step before the files print, so
+          # every diagnostic line ends in || true.
+          check() { local what="$1"; shift; "$@" || { echo "::error::upgrade: $what"; { ps -axo pid,ppid,etime,command | grep -E "Butler|Terminal|first-run|bootstrap|butler" | grep -v grep; } || true; for f in config/settings.yaml data/household_notes.md .butler-name; do echo "--- $f"; cat "$b/$f" 2>&1 || true; done; echo "--- .butler-name before the upgrade: $before"; tail -n 20 "$b/logs/install.log" "$b/logs/setup.log" 2>&1 || true; exit 1; }; }
           # Nothing the step before started may still be writing in the Butler folder.
           pkill -x Terminal || true
           pkill -f "$b/scripts/" || true
@@ -95,6 +97,7 @@ jobs:
           printf 'name: Bento\n' > "$b/config/settings.yaml"
           mkdir -p "$b/data" && echo "- a note" > "$b/data/household_notes.md"
           cp "$RUNNER_TEMP/Bento (1).pkg" "$RUNNER_TEMP/Jeeves.pkg"
+          before="$(cat "$b/.butler-name" 2>&1 || true)"
           installer -pkg "$RUNNER_TEMP/Jeeves.pkg" -target CurrentUserHomeDirectory
           check "settings.yaml changed" test "$(cat "$b/config/settings.yaml")" = "name: Bento"
           check "household_notes.md changed" test "$(cat "$b/data/household_notes.md")" = "- a note"
