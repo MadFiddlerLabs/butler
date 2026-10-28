@@ -55,10 +55,19 @@ def _note(root: Path, line: str) -> None:
         f.write(f"{datetime.now(timezone.utc):%Y-%m-%dT%H:%M:%SZ} {version} {line}\n")
 
 
+def console_command(butler: Path, args: list[str]) -> str:
+    """The command line for the new window: cmd /k runs `butler <args>` and stays open. cmd keeps
+    a line's own quotes only in simple cases, so the whole line goes in one more pair, which cmd
+    takes off: a home folder can have spaces, & or brackets in it."""
+    return f'cmd.exe /k "{subprocess.list2cmdline([str(butler), *args])}"'
+
+
 def open_console(root: Path, args: list[str]) -> None:
-    """A new console window running `butler <args>`, as Terminal opens a .command on a Mac."""
-    butler = root / "bin" / "butler.cmd"
-    subprocess.Popen(["cmd.exe", "/c", "start", "Butler", "cmd.exe", "/k", str(butler), *args], cwd=root)
+    """A new console window running `butler <args>`, as Terminal opens a .command on a Mac. Opened
+    directly, not through `start`: `start` read an unquoted title as the program, and ran
+    butler.cmd with "cmd.exe" as its command (owner's test PC, 28 Oct 2026)."""
+    subprocess.Popen(console_command(root / "bin" / "butler.cmd", args), cwd=root,
+                     creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
 
 
 def run(root: Path, installer: str, silent: bool) -> str:

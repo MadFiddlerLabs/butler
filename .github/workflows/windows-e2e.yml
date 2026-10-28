@@ -122,6 +122,28 @@ jobs:
           if ((Get-Content -Raw "$b\logs\install.log") -notmatch "installed \(fresh\), silently") { throw "install.log doesn't say what happened" }
           if ([Environment]::GetEnvironmentVariable("Path", "User") -notlike "*$b\bin*") { throw "Butler's bin isn't on the PATH" }
           if (-not (Test-Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Butler.lnk")) { throw "no Start menu shortcut" }
+      - name: The window a household's install opens runs the first run
+        # The silent install above opens no window, and the unit tests stand in for it. This runs
+        # the step the installer runs after a household's (not silent) install, and checks the
+        # window it opens is running `butler setup` and has started it (owner's test PC,
+        # 28 Oct 2026: it ran "butler cmd.exe"). Then it closes that window and undoes the start.
+        shell: pwsh
+        run: |
+          $b = "$env:USERPROFILE\Butler"
+          & "$b\.venv\Scripts\python.exe" -X utf8 "$b\run.py" installed --installer "$env:RUNNER_TEMP\Bento.exe"
+          Get-Content "$b\logs\install.log" -Tail 1
+          $deadline = (Get-Date).AddSeconds(60)
+          do {
+            Start-Sleep -Seconds 1
+            $setup = Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" | Where-Object { $_.CommandLine -match 'run\.py" cli setup\s*$' }
+          } until (($setup -and (Test-Path "$b\data\first-run-started")) -or (Get-Date) -gt $deadline)
+          Get-CimInstance Win32_Process -Filter "Name = 'python.exe' or Name = 'cmd.exe'" | Format-Table ProcessId, CommandLine -AutoSize -Wrap
+          if (-not $setup) { throw "the window isn't running butler setup" }
+          if (-not (Test-Path "$b\data\first-run-started")) { throw "butler setup didn't start the first run within 60 seconds" }
+          $window = Get-CimInstance Win32_Process -Filter "ProcessId = $($setup[0].ParentProcessId)"
+          while ($window -and $window.Name -ne "cmd.exe") { $window = Get-CimInstance Win32_Process -Filter "ProcessId = $($window.ParentProcessId)" }
+          if ($window) { taskkill /T /F /PID $window.ProcessId | Out-Null }
+          Remove-Item "$b\data\first-run-started"
       - name: The first preview, from the installed copy
         shell: pwsh
         env:
