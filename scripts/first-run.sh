@@ -211,7 +211,11 @@ else
     if valid_name "$answer"; then name="$answer"; else say "That one won't work. Try another."; fi
   done
 fi
-printf '%s\n' "$name" > "$home/.butler-name"
+# Written whole or not at all, and only when it changed: `>` empties the file before it writes,
+# and a window closed in between left no name at all (#37).
+if [ "$(tr -d '\n' < "$home/.butler-name" 2>/dev/null || true)" != "$name" ]; then
+  printf '%s\n' "$name" > "$home/.butler-name.new" && mv -f "$home/.butler-name.new" "$home/.butler-name"
+fi
 say
 if [ -n "$resuming" ]; then
   say "Let's pick up where we left off. I'll skip whatever is done already."
