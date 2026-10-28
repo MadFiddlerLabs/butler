@@ -105,6 +105,7 @@ class PersonasTest(unittest.TestCase):
     def test_screens_read_as_plain_text(self):
         self.assertEqual(plain("\x1b[1mBold\x1b[0m\r\nnext\r"), "Bold\nnext\n")
         self.assertEqual(screens.page_text("<style>x{}</style><h1>Good morning</h1><p>Rain\n at 9</p>"), "Good morning Rain at 9")
+        self.assertEqual(screens.page_text("<p>Ukraine&#x27;s &quot;truce&quot; &amp; more</p>"), 'Ukraine\'s "truce" & more')
 
     def test_trusting_the_folder_is_kept_where_claude_code_reads_it(self):
         """Round 4 (28 Oct): Butler's allow list (butler #74) never applied, because an SDK session
