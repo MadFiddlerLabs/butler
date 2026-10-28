@@ -13,7 +13,7 @@ jobs:
           pw="$(openssl rand -base64 18)"
           sudo sysadminctl -addUser bybtest -fullName "BYB Test" -password "$pw" -home "/Users/byb test" >/dev/null 2>&1
           sudo createhomedir -c -u bybtest
-          set -x
+          set -x; set +e
           u=$(id -u bybtest)
           h="/Users/byb test"
           sudo -u bybtest mkdir -p "$h/Library/LaunchAgents"
@@ -24,7 +24,7 @@ jobs:
             '<key>RunAtLoad</key><true/>' \
             '<key>StandardOutPath</key><string>/Users/byb test/probe.out</string></dict></plist>' > /tmp/probe.plist
           sudo -u bybtest cp /tmp/probe.plist "$h/Library/LaunchAgents/com.example.probe.plist"
-          ls -la "$h/Library/LaunchAgents"
+          sudo ls -la "$h/Library/LaunchAgents"
           p="$h/Library/LaunchAgents/com.example.probe.plist"
           sudo -u bybtest launchctl bootstrap user/$u "$p"; echo "exit $?"
           sleep 2; sudo cat "$h/probe.out"
