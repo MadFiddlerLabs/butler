@@ -106,6 +106,22 @@ class PersonasTest(unittest.TestCase):
         self.assertEqual(plain("\x1b[1mBold\x1b[0m\r\nnext\r"), "Bold\nnext\n")
         self.assertEqual(screens.page_text("<style>x{}</style><h1>Good morning</h1><p>Rain\n at 9</p>"), "Good morning Rain at 9")
 
+    def test_trusting_the_folder_is_kept_where_claude_code_reads_it(self):
+        """Round 4 (28 Oct): Butler's allow list (butler #74) never applied, because an SDK session
+        ignores a folder's allow rules until the folder is trusted. The persona's Yes now records it."""
+        import json
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / ".claude.json"
+            config.write_text(json.dumps({"numStartups": 3, "projects": {"/elsewhere": {"x": 1}}}))
+            screens.trust_folder(Path(tmp) / "Butler", config)
+            data = json.loads(config.read_text())
+            self.assertTrue(data["projects"][str(Path(tmp) / "Butler")]["hasTrustDialogAccepted"])
+            self.assertEqual((data["numStartups"], data["projects"]["/elsewhere"]), (3, {"x": 1}))
+            fresh = Path(tmp) / "none.json"
+            screens.trust_folder("C:\\Users\\runner\\Butler", fresh)
+            self.assertTrue(json.loads(fresh.read_text())["projects"]["C:\\Users\\runner\\Butler"]["hasTrustDialogAccepted"])
+
 
 class WorkflowsParseTest(unittest.TestCase):
     def test_every_workflow_is_valid_yaml(self):

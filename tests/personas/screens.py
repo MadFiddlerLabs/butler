@@ -1,7 +1,10 @@
 """What the persona harness reads off a screen, without the paid libraries, so the free suite can
 check it against Butler (tests/test_personas.py)."""
+import json
+import os
 import re
 import unicodedata
+from pathlib import Path
 
 # `butler claude` with BUTLER_CLAUDE_DRY_RUN prints what it would run (src/butler/cli.py,
 # open_claude); the harness opens that Claude Code session for the persona instead.
@@ -74,3 +77,21 @@ def trim(messages: list) -> bool:
         if not b["content"].endswith(TRIMMED) and len(b["content"]) > 300 + len(TRIMMED):
             b["content"] = b["content"][:300] + TRIMMED
     return True
+
+
+def trust_folder(folder, config: Path | None = None) -> None:
+    """Record that the persona trusted `folder`, where interactive Claude Code keeps it (~/.claude.json,
+    or $CLAUDE_CONFIG_DIR/.claude.json). An SDK session never shows the trust question, and until a
+    folder is trusted it ignores the folder's own allow rules (code.claude.com/docs/en/permissions,
+    "What runs before you trust a folder"). A student who chose Yes gets them, so the persona must too."""
+    if config is None:
+        base = os.environ.get("CLAUDE_CONFIG_DIR")
+        config = Path(base) / ".claude.json" if base else Path.home() / ".claude.json"
+    try:
+        data = json.loads(config.read_text())
+    except (OSError, ValueError):
+        data = {}
+    projects = data.setdefault("projects", {})
+    for key in {str(folder), Path(folder).as_posix()}:   # Windows keys may use either slash
+        projects.setdefault(key, {})["hasTrustDialogAccepted"] = True
+    config.write_text(json.dumps(data, indent=2))
