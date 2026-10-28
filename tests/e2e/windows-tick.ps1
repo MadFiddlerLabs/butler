@@ -6,7 +6,8 @@
 # account runs through run_as.py, which Task Scheduler doesn't count as logged on. So the account
 # asks Task Scheduler to run the tick (it accepts, and the task stays "has not run", 267011), and
 # then runs the task's own registered action itself, as that account: the same program,
-# arguments and folder Task Scheduler would start. Prints which happened.
+# arguments and folder Task Scheduler would start. Prints which happened. Task Scheduler's own
+# launch of the tick is covered by windows-e2e's e2e job, as the runner's (logged-on) account.
 #
 #   pwsh tests\e2e\windows-tick.ps1 -User "BYB Test" -Out C:\byb\tick.txt     (BYB_PASSWORD set)
 param(
@@ -20,8 +21,12 @@ $runAs = Join-Path $PSScriptRoot "run_as.py"
 $principal = $task.Task.Principals.Principal
 $exec = $task.Task.Actions.Exec
 Write-Host "the tick task: runs as $($principal.UserId), $($principal.LogonType), $($principal.RunLevel): $($exec.Command) $($exec.Arguments)"
-if ($principal.UserId -notlike "*\$User" -and $principal.UserId -ne $User) { Write-Host "FAIL: the tick runs as $($principal.UserId), not $User"; exit 1 }
-if ($principal.RunLevel -ne "LeastPrivilege") { Write-Host "FAIL: the tick asks for more than a standard account's rights"; exit 1 }
+# Task Scheduler names the account by its SID.
+$sid = (New-Object System.Security.Principal.NTAccount("$env:COMPUTERNAME\$User")).Translate([System.Security.Principal.SecurityIdentifier]).Value
+if ($principal.UserId -ne $sid -and $principal.UserId -notlike "*\$User") { Write-Host "FAIL: the tick runs as $($principal.UserId), not $User ($sid)"; exit 1 }
+if ($principal.LogonType -ne "InteractiveToken") { Write-Host "FAIL: the tick's logon type is $($principal.LogonType), not InteractiveToken"; exit 1 }
+# No RunLevel means the default, LeastPrivilege: a standard account's rights.
+if ($principal.RunLevel -and $principal.RunLevel -ne "LeastPrivilege") { Write-Host "FAIL: the tick asks for $($principal.RunLevel)"; exit 1 }
 
 python $runAs --user $User --password-env BYB_PASSWORD --out "$Out.run" -- 'schtasks /Run /TN "\Butler\tick"' | Out-Host
 if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: $User couldn't ask Task Scheduler to run the tick"; exit 1 }

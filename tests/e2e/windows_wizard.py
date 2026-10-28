@@ -1,6 +1,7 @@
 """The Windows installer as a household meets it (#40): downloaded by a browser, double-clicked,
-and clicked through. Run by windows-e2e.yml's standard-user job, as that account
-(tests/e2e/run_as.py), on the runner's desktop; not part of the suite.
+and clicked through. Run by windows-e2e.yml's standard-user job, as the runner's own account on
+its desktop: a second account has no desktop of its own on a hosted runner, and a double-click
+(ShellExecute) as BYB Test hung with no window. Not part of the suite.
 
   - The download lands in Downloads as a browser names a second copy, "Mr Pickles (1).exe", with
     the Mark of the Web (a Zone.Identifier saying it came from the internet), as Edge and Chrome

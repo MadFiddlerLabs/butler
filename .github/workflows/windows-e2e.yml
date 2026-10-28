@@ -204,10 +204,12 @@ jobs:
   standard-user:
     # The owner's test PC (28 Oct 2026): Windows 11, a standard account with a space in its name,
     # no admin rights, the installer double-clicked from Downloads. On ARM, as theirs is, and on x64.
-    # Everything a student does runs as "BYB Test", a new standard account, through
-    # tests/e2e/run_as.py (its own profile and environment). The runner's admin only makes the
-    # account, hands it the files, and looks: it never does the student's part. The password is
-    # made here, masked, and dies with the runner.
+    # What a student does runs as "BYB Test", a new standard account, through tests/e2e/run_as.py
+    # (its own profile and environment), with two exceptions a hosted runner forces, each labelled
+    # below: the wizard's pages are clicked as the runner's account (BYB Test has no desktop of its
+    # own), and the tick runs as BYB Test but isn't launched by Task Scheduler (BYB Test is never
+    # logged on; tests/e2e/windows-tick.ps1). The password is made here, masked, and dies with
+    # the runner.
     needs: installer
     name: standard-user (${{ matrix.os }})
     strategy:
@@ -252,35 +254,41 @@ jobs:
           if ($who -notmatch "C:\\Users\\BYB Test") { throw "not BYB Test's own profile" }
           if ($who -match "S-1-5-32-544") { throw "BYB Test has the Administrators group" }
           if ($who -notmatch "Medium Mandatory Level") { throw "not a standard (medium) process" }
-      - name: BYB Test downloads "Mr Pickles (1).exe", double-clicks it and clicks through the wizard
+      - name: BYB Test installs from its download, "Mr Pickles (1).exe", and the installer's window opens
+        # As BYB Test: the download (with the Mark of the Web), the install, and then the step the
+        # installer runs after copying when it isn't silent, which opens the first run's window.
+        # The wizard's pages are clicked in the next step, as the runner's account: a second account
+        # gets no desktop of its own on a hosted runner, and opening a file there (ShellExecute) as
+        # BYB Test hung with no window at all.
         shell: pwsh
         run: |
-          python tests\e2e\run_as.py --user $env:BYB_USER --password-env BYB_PASSWORD --out C:\byb\wizard.txt --timeout 1500 -- "`"$env:pythonLocation\python.exe`" -X utf8 C:\byb\tests\e2e\windows_wizard.py C:\byb\Butler-Setup.exe"
-          if ($LASTEXITCODE -ne 0) { throw "the wizard didn't finish ($LASTEXITCODE)" }
+          $exe = "C:\byb\Mr Pickles (1).exe"
+          Copy-Item C:\byb\Butler-Setup.exe $exe
+          Set-Content -Path $exe -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3`r`nHostUrl=https://buildyourbutler.com/files/Butler-latest.exe"
+          python tests\e2e\run_as.py --user $env:BYB_USER --password-env BYB_PASSWORD --out C:\byb\install-out.txt --timeout 900 -- '"C:\byb\Mr Pickles (1).exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=C:\byb\install.txt'
+          if ($LASTEXITCODE -ne 0) { Get-Content -ErrorAction SilentlyContinue C:\byb\install.txt -Tail 40; throw "the installer exited $LASTEXITCODE" }
           $b = "C:\Users\$env:BYB_USER\Butler"
           if (-not (Test-Path "$b\.venv\Scripts\python.exe")) { throw "no Python in $b\.venv" }
           if ((Get-Content -Raw "$b\.butler-name").Trim() -ne "Mr Pickles") { throw "not named from the download's filename: $(Get-Content -Raw "$b\.butler-name")" }
-          Get-Content "$b\logs\install.log"
-          if ((Get-Content -Raw "$b\logs\install.log") -notmatch "installed \(fresh\): opened a console with butler setup") { throw "the wizard's install didn't open the first run" }
-      - name: The window the wizard opened runs the first run, as BYB Test
+          python tests\e2e\run_as.py --user $env:BYB_USER --password-env BYB_PASSWORD --out C:\byb\installed.txt --timeout 120 -- '"%USERPROFILE%\Butler\.venv\Scripts\python.exe" -X utf8 "%USERPROFILE%\Butler\run.py" installed --installer "C:\byb\Mr Pickles (1).exe"'
+          if ($LASTEXITCODE -ne 0) { throw "the step after installing exited $LASTEXITCODE" }
+          if ((Get-Content -Raw "$b\logs\install.log") -notmatch "installed \(fresh\): opened a console with butler setup") { throw "the install didn't open the first run" }
+          pwsh tests\e2e\windows-first-window.ps1 -Butler $b -User $env:BYB_USER
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: The real wizard, double-clicked and clicked through (as the runner's account)
+        # tests/e2e/windows_wizard.py: "Mr Pickles (1).exe" with the Mark of the Web, opened as a
+        # double-click opens it, every page clicked. No /VERYSILENT. As the runner's own account,
+        # into its own profile: the one part of this job that isn't BYB Test (see the step above).
         shell: pwsh
         run: |
-          $b = "C:\Users\$env:BYB_USER\Butler"
-          $deadline = (Get-Date).AddSeconds(60)
-          do {
-            Start-Sleep -Seconds 1
-            $setup = Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" | Where-Object { $_.CommandLine -match 'run\.py" cli setup\s*$' }
-          } until (($setup -and (Test-Path "$b\data\first-run-started")) -or (Get-Date) -gt $deadline)
-          Get-CimInstance Win32_Process -Filter "Name = 'python.exe' or Name = 'cmd.exe'" | ForEach-Object {
-            [pscustomobject]@{ Id = $_.ProcessId; User = (Invoke-CimMethod -InputObject $_ -MethodName GetOwner).User; CommandLine = $_.CommandLine }
-          } | Format-Table -AutoSize -Wrap
-          if (-not $setup) { throw "the window isn't running butler setup" }
-          if ((Invoke-CimMethod -InputObject $setup[0] -MethodName GetOwner).User -ne $env:BYB_USER) { throw "butler setup isn't running as BYB Test" }
-          if (-not (Test-Path "$b\data\first-run-started")) { throw "butler setup didn't start the first run within 60 seconds" }
-          $window = Get-CimInstance Win32_Process -Filter "ProcessId = $($setup[0].ParentProcessId)"
-          while ($window -and $window.Name -ne "cmd.exe") { $window = Get-CimInstance Win32_Process -Filter "ProcessId = $($window.ParentProcessId)" }
-          if ($window) { taskkill /T /F /PID $window.ProcessId | Out-Null }
-          Remove-Item "$b\data\first-run-started"
+          python -X utf8 tests\e2e\windows_wizard.py C:\byb\Butler-Setup.exe
+          if ($LASTEXITCODE -ne 0) { throw "the wizard didn't finish" }
+          $b = "$env:USERPROFILE\Butler"
+          if ((Get-Content -Raw "$b\.butler-name").Trim() -ne "Mr Pickles") { throw "not named from the download's filename: $(Get-Content -Raw "$b\.butler-name")" }
+          Get-Content "$b\logs\install.log"
+          if ((Get-Content -Raw "$b\logs\install.log") -notmatch "installed \(fresh\): opened a console with butler setup") { throw "the wizard's install didn't open the first run" }
+          pwsh tests\e2e\windows-first-window.ps1 -Butler $b -User $env:USERNAME
+          if ($LASTEXITCODE -ne 0) { exit 1 }
       - name: Butler's packages are built for this machine (win_arm64 wheels on ARM)
         shell: pwsh
         run: |
