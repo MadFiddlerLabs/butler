@@ -193,9 +193,11 @@ class Outside:
         is the newest version, so no real release replaces the test build."""
         version = (self.butler / ".butler-version").read_text().strip() if (self.butler / ".butler-version").exists() else "0"
         (FAKES / "manifest.json").write_text(json.dumps({"version": version, "windows": {"url": "file:///none"}}))
+        # The test build (unsigned) has no prebuilt helper, as a release has. Without the stub,
+        # Claude builds the real one, which waits for a permission window the runner never shows.
         helper = self.butler / "bin" / "butler-ek"
-        if not WINDOWS and helper.exists():
-            helper.unlink()
+        if not WINDOWS:
+            helper.unlink(missing_ok=True)
             self._wrapper(helper, "butler_ek.py")
 
     def hook(self) -> bool:
@@ -310,7 +312,7 @@ class Outside:
             if not amount:
                 return "Claude Console > Settings > Limits: the box for a monthly limit is empty. Type an amount."
             self.state["console_limit"] = float(amount[0])
-            return (f"Claude Console (console.anthropic.com, signed in with your Claude account) > Settings > Limits: your "
+            return (f"Claude Console (platform.claude.com, signed in with your Claude account) > Settings > Limits: your "
                     f"monthly spend limit is now ${amount[0]}. You'll get an email if it's reached.")
         if action == "console_create_key":
             key = "sk-ant-api03-" + _code(40, string.ascii_letters + string.digits + "-_") + "AA"

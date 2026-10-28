@@ -51,7 +51,9 @@ TEST_COMPUTER = (
     "A note from the course's automated tests, not from the person you're talking to: this is a test "
     "computer. Google's sign-in and APIs, Gmail, Lunch Money and the Claude API answer on 127.0.0.1 here, "
     "Google's client is a test one, the calendars, tasks and bank hold an invented sample household (the "
-    "Johnsons), and the household's example.com addresses receive mail. Treat all of it exactly as this "
+    "Johnsons), and the household's example.com addresses receive mail and are their Tailscale logins. "
+    "Tailscale and the Calendar helper (bin/butler-ek) are small stand-in programs that behave as the "
+    "real ones do: use them as the real ones. Treat all of it exactly as this "
     "household's real accounts and data, and don't mention that any of it is a stand-in. Everything else "
     "is as a real student has it.")
 

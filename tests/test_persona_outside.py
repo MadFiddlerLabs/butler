@@ -148,10 +148,9 @@ print(msg.get_body(("plain",)).get_content().splitlines()[0])
         butler = Path(FOLDER) / "Butler"
         (butler / "bin").mkdir(parents=True, exist_ok=True)
         (butler / ".butler-version").write_text("0.6.0\n")
-        (butler / "bin" / "butler-ek").write_text("binary")
         self.world.after_install()
         self.assertEqual(json.loads((Path(FOLDER) / "manifest.json").read_text())["version"], "0.6.0")
-        if POSIX:
+        if POSIX:   # even when the test build has no prebuilt helper
             self.assertIn("butler_ek.py", (butler / "bin" / "butler-ek").read_text())
         site = butler / ".venv" / "lib" / "python3.13" / "site-packages"
         site.mkdir(parents=True, exist_ok=True)
@@ -210,6 +209,22 @@ class WindowsOnScreenTest(unittest.TestCase):
         thread.join()
         self.assertEqual(p.returncode, 1)
         self.assertIn("User canceled", p.stderr)
+
+    def test_the_admin_password_window_comes_to_the_persona(self):
+        """launchd/install.sh's wake time asks for an administrator's password (SKILL.md, Module 5)."""
+        script = 'do shell script "echo woke at 06:59" with administrator privileges'
+        thread = self.answer({"button": "Cancel", "text": "", "ticked": []})
+        p = self.stub("osascript.py", "-e", script)
+        thread.join()
+        self.assertEqual(p.returncode, 1)
+        self.assertIn("User canceled", p.stderr)
+        self.assertEqual(self.asked[0]["title"], "osascript wants to make changes.")
+        self.assertTrue(self.asked[0]["hidden"])
+        if POSIX and subprocess.run(["sudo", "-n", "true"], capture_output=True).returncode == 0:
+            thread = self.answer({"button": "OK", "text": "any password", "ticked": []})
+            p = self.stub("osascript.py", "-e", script)
+            thread.join()
+            self.assertEqual((p.returncode, p.stdout.strip()), (0, "woke at 06:59"))
 
     def test_the_calendar_helper_asks_for_calendar_then_reminders_once(self):
         allow = {"button": "Allow Full Access", "text": "", "ticked": []}
