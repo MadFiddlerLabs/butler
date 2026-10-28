@@ -136,7 +136,8 @@ terminal. It doesn't apply to developers.
   - A dry run: a practice run that sends nothing.
   - Terminal: the window where you type commands.
   - An API key: a password that lets your butler use Claude, billed by what it uses.
-  - A folder: what Finder shows; `~/Butler` is the Butler folder in your home folder.
+  - A folder: what Finder (on Windows, File Explorer) shows; `~/Butler` is the Butler folder in
+    your home folder.
 - Use short sentences. Show no tables unless they ask for one.
 - The student decides what Butler gets. Any module can be skipped. When they say "I'd rather
   not share that", accept it, leave that part empty and move on. Don't ask again.
