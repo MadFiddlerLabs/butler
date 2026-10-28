@@ -2,7 +2,8 @@
 # bootstrap.ps1 brings the pinned uv, its Python and the locked packages; the first preview
 # builds a brief that sends nothing; and the Task Scheduler tasks install, run and come out.
 # A second job builds the installer and installs, upgrades and uninstalls it. A third updates an
-# installed Butler over the air, with signed test installers (tests/e2e/update.ps1).
+# installed Butler over the air, with signed test installers (tests/e2e/update.ps1). A fourth
+# installs as a new standard account on Windows 11 on ARM, as on the owner's test PC.
 # No secrets: the brief leaves out the parts Claude writes, as it does before a key is stored.
 name: windows-e2e
 
@@ -109,6 +110,12 @@ jobs:
           (Get-Item "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe").VersionInfo.ProductVersion
       - name: Build the installer
         run: powershell -ExecutionPolicy Bypass -File packaging\windows\build-installer.ps1 -Version v0.0.1-ci
+      - name: Keep the installer for the standard-user job
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: dist/Butler-Setup.exe
+          retention-days: 1
       - name: Install it as Bento, as a household would (silently here)
         shell: pwsh
         run: |
@@ -191,6 +198,100 @@ jobs:
           if (Test-Path "$b\run.py") { throw "Butler's own files are still there" }
           if ((Get-Content -Raw "$b\config\settings.yaml").Trim() -ne "name: Bento") { throw "the household's settings went" }
           if ((Get-Content -Raw "$b\data\household_notes.md").Trim() -ne "- a note") { throw "the household's notes went" }
+
+  standard-user:
+    # The owner's test PC (28 Oct 2026): Windows 11 on ARM, a standard account with a space in
+    # its name, no admin rights. The installer job above runs as the runner's admin; this installs
+    # the same installer as "BYB Test", a new standard account, and opens the window a household's
+    # install opens, as that account. tests/e2e/run_as.py runs each step as the account, with its
+    # own profile and environment. The password is made here, masked, and dies with the runner.
+    needs: installer
+    runs-on: windows-11-arm
+    timeout-minutes: 30
+    env:
+      BYB_USER: BYB Test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-installer
+          path: C:\byb
+      - name: A standard account, "BYB Test"
+        shell: pwsh
+        run: |
+          $chars = [char[]]"abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+          $pw = "Aa1!" + -join (1..24 | ForEach-Object { $chars | Get-Random })
+          Write-Host "::add-mask::$pw"
+          "BYB_PASSWORD=$pw" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          New-LocalUser -Name $env:BYB_USER -Password (ConvertTo-SecureString $pw -AsPlainText -Force) -PasswordNeverExpires -AccountNeverExpires | Out-Null
+          Add-LocalGroupMember -Group Users -Member $env:BYB_USER
+          if ((Get-LocalGroupMember Administrators).Name -contains "$env:COMPUTERNAME\$env:BYB_USER") { throw "BYB Test is an admin" }
+          Rename-Item C:\byb\Butler-Setup.exe Bento.exe
+          Copy-Item -Recurse tests C:\byb\tests
+          # The account reads the installer, the test scripts and this Python, and writes its output here.
+          icacls C:\byb /grant "${env:BYB_USER}:(OI)(CI)M" | Out-Null
+          icacls $env:pythonLocation /grant "${env:BYB_USER}:(OI)(CI)RX" /T /C /Q | Out-Null
+          python -m pip install --disable-pip-version-check pywinpty==3.0.5
+          [Environment]::OSVersion.Version; $env:PROCESSOR_ARCHITECTURE
+      - name: It really is the account, without admin rights
+        shell: pwsh
+        run: |
+          python tests\e2e\run_as.py --user $env:BYB_USER --password-env BYB_PASSWORD --out C:\byb\whoami.txt -- 'whoami & echo %USERPROFILE% & whoami /groups'
+          $who = Get-Content -Raw C:\byb\whoami.txt
+          if ($who -notmatch "\\byb test\s") { throw "not running as BYB Test" }
+          if ($who -notmatch "C:\\Users\\BYB Test") { throw "not BYB Test's own profile" }
+          if ($who -match "S-1-5-32-544") { throw "BYB Test has the Administrators group" }
+          if ($who -notmatch "Medium Mandatory Level") { throw "not a standard (medium) process" }
+      - name: BYB Test installs Butler
+        shell: pwsh
+        run: |
+          python tests\e2e\run_as.py --user $env:BYB_USER --password-env BYB_PASSWORD --out C:\byb\install-out.txt --timeout 900 -- 'C:\byb\Bento.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=C:\byb\install.txt'
+          $code = $LASTEXITCODE
+          $b = "C:\Users\$env:BYB_USER\Butler"
+          if ($code -ne 0) { Get-Content -ErrorAction SilentlyContinue C:\byb\install.txt -Tail 40; throw "the installer exited $code" }
+          if (-not (Test-Path "$b\.venv\Scripts\python.exe")) { throw "no Python in $b\.venv" }
+          if ((Get-Content -Raw "$b\.butler-name").Trim() -ne "Bento") { throw "not named from the installer's filename" }
+          if ((Get-Content -Raw "$b\logs\install.log") -notmatch "installed \(fresh\), silently") { throw "install.log doesn't say what happened" }
+      - name: The window BYB Test's install opens runs the first run
+        # As after a double-click: the installer's step after copying, not silent.
+        shell: pwsh
+        run: |
+          $b = "C:\Users\$env:BYB_USER\Butler"
+          python tests\e2e\run_as.py --user $env:BYB_USER --password-env BYB_PASSWORD --out C:\byb\installed.txt --timeout 120 -- '"%USERPROFILE%\Butler\.venv\Scripts\python.exe" -X utf8 "%USERPROFILE%\Butler\run.py" installed --installer C:\byb\Bento.exe'
+          if ($LASTEXITCODE -ne 0) { throw "the step after installing exited $LASTEXITCODE" }
+          Get-Content "$b\logs\install.log" -Tail 1
+          $deadline = (Get-Date).AddSeconds(60)
+          do {
+            Start-Sleep -Seconds 1
+            $setup = Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" | Where-Object { $_.CommandLine -match 'run\.py" cli setup\s*$' }
+          } until (($setup -and (Test-Path "$b\data\first-run-started")) -or (Get-Date) -gt $deadline)
+          Get-CimInstance Win32_Process -Filter "Name = 'python.exe' or Name = 'cmd.exe'" | ForEach-Object {
+            [pscustomobject]@{ Id = $_.ProcessId; User = (Invoke-CimMethod -InputObject $_ -MethodName GetOwner).User; CommandLine = $_.CommandLine }
+          } | Format-Table -AutoSize -Wrap
+          if (-not $setup) { throw "the window isn't running butler setup" }
+          if ((Invoke-CimMethod -InputObject $setup[0] -MethodName GetOwner).User -ne $env:BYB_USER) { throw "butler setup isn't running as BYB Test" }
+          if (-not (Test-Path "$b\data\first-run-started")) { throw "butler setup didn't start the first run within 60 seconds" }
+          $window = Get-CimInstance Win32_Process -Filter "ProcessId = $($setup[0].ParentProcessId)"
+          while ($window -and $window.Name -ne "cmd.exe") { $window = Get-CimInstance Win32_Process -Filter "ProcessId = $($window.ParentProcessId)" }
+          if ($window) { taskkill /T /F /PID $window.ProcessId | Out-Null }
+          Remove-Item "$b\data\first-run-started"
+      - name: BYB Test types into a real console
+        # tests/e2e/windows_console.py, as the account: `butler` from a new window, a key typed
+        # hidden into BYB Test's Credential Manager, and `butler setup`'s questions.
+        shell: pwsh
+        run: |
+          python tests\e2e\run_as.py --user $env:BYB_USER --password-env BYB_PASSWORD --out C:\byb\console.txt --timeout 900 -- "`"$env:pythonLocation\python.exe`" -X utf8 C:\byb\tests\e2e\windows_console.py `"%USERPROFILE%\Butler`""
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: BYB Test's logs
+        if: always()
+        shell: pwsh
+        run: |
+          foreach ($log in "install.log", "bootstrap.log", "setup.log") {
+            Write-Host "== $log"; Get-Content -ErrorAction SilentlyContinue "C:\Users\$env:BYB_USER\Butler\logs\$log" -Tail 60
+          }
 
   updates:
     # Over the air, as tests/e2e/update.sh does on a Mac: an update, two rollbacks and three
