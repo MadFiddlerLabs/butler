@@ -165,6 +165,22 @@ class ChecksTest(unittest.TestCase):
         self.s.module_zero()
         self.assertNotIn("install", self.s.passed())
 
+    def test_the_news_a_new_household_starts_with_is_not_its_own(self):
+        """The first run keeps some of the example's regions (setup_settings.starting_regions): the
+        world, and Europe for a European town. That isn't Module 2 (a persona test's butler said
+        Module 2 was done after Module 0)."""
+        import yaml
+        from butler.setup_settings import starting_regions
+        example = yaml.safe_load((REPO / "config" / "settings.example.yaml").read_text())["news"]["regions"]
+        self.s.module_zero()
+        for country in ("PT", "US", None):
+            with self.subTest(country):
+                self.s.settings(news={"regions": starting_regions(example, country)})
+                self.assertNotIn("install", self.s.passed())
+        self.s.settings(news={"regions": starting_regions(example, "PT") + [
+            {"key": "local", "label": "Lisbon", "feeds": [{"name": "The Lisbon Post (invented)", "url": "https://example.com/rss"}]}]})
+        self.assertIn("install", self.s.passed(), "their local paper added to the starting regions")
+
     def test_install_needs_the_household_own_news(self):
         self.s.module_zero()
         self.s.settings(news={"regions": [{"key": "local", "label": "Lisbon",

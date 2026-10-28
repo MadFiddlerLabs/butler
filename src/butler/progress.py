@@ -88,9 +88,12 @@ def _install(f: Folder) -> bool:
     run never touches news, so this can't pass on Module 0 alone), and a brief."""
     s = f.settings()
     regions = s.get("news", {}).get("regions")
+    # Their own: a region or feed the example doesn't have. A new household starts with some of the
+    # example's regions (setup_settings.starting_regions), so "not the example" isn't enough.
+    example = f.example_news() or []
+    own = bool(regions) and any(r not in example for r in regions)
     return (s.get("name") not in (None, "", "Butler") and bool(s.get("household", {}).get("adults"))
-            and bool(s.get("weather")) and bool(regions) and regions != f.example_news()
-            and f.has("out/preview/brief-*.html"))
+            and bool(s.get("weather")) and own and f.has("out/preview/brief-*.html"))
 
 
 def _calendar(f: Folder) -> bool:
