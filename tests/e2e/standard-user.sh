@@ -148,7 +148,7 @@ printf '#!/bin/bash\nif [ "${2:-}" = "gui/%s" ]; then echo "$*" >> "%s/launchctl
   "$uid" "$shared" | sudo tee "$shared/shim/launchctl" >/dev/null
 sudo touch "$shared/launchctl-gui.txt"
 sudo chmod 666 "$shared/launchctl-gui.txt"
-sudo chmod -R a+rX "$shared/shim"
+sudo chmod 755 "$shared/shim" "$shared/shim/launchctl"
 in_butler "PATH=\"$shared/shim:\$PATH\" launchd/install.sh" || fail "launchd/install.sh failed as the student"
 labels="com.buildyourbutler.butler com.buildyourbutler.morning com.buildyourbutler.portal"
 before="$(lines)"
