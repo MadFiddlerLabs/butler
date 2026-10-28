@@ -457,6 +457,37 @@ class PostinstallTest(unittest.TestCase):
         self.assertIn("bin/butler", (REPO / "scripts" / "butler.command").read_text())
 
 
+class LaunchdInstallTest(unittest.TestCase):
+    """launchd/install.sh, the schedule's install (/butler-setup inbox), with `launchctl` recorded and
+    a stand-in for Butler's Python that answers the send hours."""
+
+    def test_a_new_account_without_launch_agents_and_a_space_in_its_home(self):
+        """Found by tests/e2e/standard-user.sh: a Mac account that has never had a launch agent has
+        no ~/Library/LaunchAgents, and install.sh wrote into it without making it."""
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        home = tmp / "byb test"
+        root = home / "Butler"
+        shutil.copytree(REPO / "launchd", root / "launchd")
+        (root / ".venv" / "bin").mkdir(parents=True)
+        (root / ".venv" / "bin" / "python").write_text("#!/bin/bash\necho 7 17\n")
+        fakebin = tmp / "fakebin"
+        fakebin.mkdir()
+        (fakebin / "launchctl").write_text(f'#!/bin/bash\necho "$*" >> "{tmp}/launchctl.txt"\n')
+        for f in (root / ".venv" / "bin" / "python", fakebin / "launchctl"):
+            f.chmod(0o755)
+        proc = subprocess.run(["bash", str(root / "launchd" / "install.sh")], capture_output=True, text=True,
+                              env={**os.environ, "HOME": str(home), "PATH": f"{fakebin}:/usr/bin:/bin"})
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        agents = home / "Library" / "LaunchAgents"
+        for label in ("butler", "morning", "portal"):
+            plist = (agents / f"com.buildyourbutler.{label}.plist").read_text()
+            self.assertIn(f"<string>{root}/run.sh</string>", plist)
+            self.assertNotIn("__", plist)
+            self.assertIn(f"bootstrap gui/{os.getuid()} {agents}/com.buildyourbutler.{label}.plist",
+                          (tmp / "launchctl.txt").read_text())
+
+
 class DoneScreenTest(unittest.TestCase):
     """The installer's last screen, for someone who has never used Terminal."""
 
