@@ -13,50 +13,49 @@ jobs:
           pw="$(openssl rand -base64 18)"
           sudo sysadminctl -addUser bybtest -fullName "BYB Test" -password "$pw" -home "/Users/byb test" >/dev/null 2>&1
           sudo createhomedir -c -u bybtest
-          pw2="$(openssl rand -base64 18)"
-          sudo sysadminctl -addUser plain -fullName "Plain" -password "$pw2" -home "/Users/plain" >/dev/null 2>&1
-          sudo createhomedir -c -u plain
+          sudo sysadminctl -addUser admintwo -fullName "Admin Two" -password "$pw" -home "/Users/admintwo" -admin >/dev/null 2>&1
+          sudo createhomedir -c -u admintwo
           set -x; set +e
-          u=$(id -u bybtest)
+          u=$(id -u bybtest); a=$(id -u admintwo)
           h="/Users/byb test"
           packaging/macos/build-pkg.sh --version v0.0.1 --out /tmp/pk | tail -1
-          sudo mkdir -p /Users/Shared/byb && sudo cp /tmp/pk/*.pkg "/Users/Shared/byb/Bento.pkg" && sudo chmod -R a+rX /Users/Shared/byb
-          mark() { sudo log show --last 1m --predicate 'process == "installd" OR process == "installer" OR process == "system_installd" OR process == "package_script_service"' --style compact 2>/dev/null | grep -iE "error|fail|denied|permission|move" | tail -40; sudo tail -n 60 /var/log/install.log; }
-          echo "=== 1. standard, space in home"
-          sudo -u bybtest -H installer -verboseR -pkg /Users/Shared/byb/Bento.pkg -target CurrentUserHomeDirectory; echo "installer exit $?"
-          mark
-          echo "=== 2. standard, plain home"
-          sudo -u plain -H installer -pkg /Users/Shared/byb/Bento.pkg -target CurrentUserHomeDirectory; echo "installer exit $?"
-          sudo tail -n 30 /var/log/install.log
-          echo "=== 3. standard, -target home path"
-          sudo -u bybtest -H installer -pkg /Users/Shared/byb/Bento.pkg -target "$h"; echo "installer exit $?"
-          sudo tail -n 15 /var/log/install.log
-          echo "=== 4. as root for the student's home (Installer.app's way?)"
-          sudo installer -pkg /Users/Shared/byb/Bento.pkg -target CurrentUserHomeDirectory; echo "installer exit $?"
-          ls -la ~/Butler | head -3; sudo tail -n 15 /var/log/install.log
-          echo "=== 5. bybtest as admin"
-          sudo dseditgroup -o edit -a bybtest -t user admin
-          sudo -u bybtest -H installer -pkg /Users/Shared/byb/Bento.pkg -target CurrentUserHomeDirectory; echo "installer exit $?"
-          sudo ls -la "$h/Butler" | head -5
-          sudo tail -n 30 /var/log/install.log
-          sudo dseditgroup -o edit -d bybtest -t user admin
-          echo "=== 6. launchd in user domain with Background session type"
-          sudo -u bybtest mkdir -p "$h/Library/LaunchAgents"
-          printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' \
-            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
-            '<plist version="1.0"><dict><key>Label</key><string>com.example.probe</string>' \
-            '<key>LimitLoadToSessionType</key><string>Background</string>' \
-            '<key>ProgramArguments</key><array><string>/bin/sh</string><string>-c</string><string>id; echo HOME=$HOME; date; security list-keychains; /usr/sbin/installer -pkg /Users/Shared/byb/Bento.pkg -target CurrentUserHomeDirectory; echo installer-in-launchd $?</string></array>' \
-            '<key>RunAtLoad</key><true/>' \
-            '<key>StandardOutPath</key><string>/Users/Shared/byb/probe.out</string><key>StandardErrorPath</key><string>/Users/Shared/byb/probe.out</string></dict></plist>' > /tmp/probe.plist
-          sudo chmod 777 /Users/Shared/byb
-          p="$h/Library/LaunchAgents/com.example.probe.plist"
-          sudo -u bybtest cp /tmp/probe.plist "$p"
-          sudo -u bybtest launchctl bootstrap user/$u "$p"; echo "exit $?"
-          sleep 20; cat /Users/Shared/byb/probe.out
-          sudo -u bybtest launchctl print user/$u/com.example.probe | grep -E "state|last exit|runs"
-          echo "=== 7. Terminal sessions"
-          ps -axo user,pid,command | grep -i terminal | grep -v grep
-          sudo -u bybtest -i bash -c 'open -a Terminal /usr/bin/true; echo "open exit $?"'
-          sleep 3; ps -axo user,pid,command | grep -i "terminal\|/usr/bin/true" | grep -v grep
-          stat -f %Su /dev/console
+          sudo mkdir -p /Users/Shared/byb && sudo cp /tmp/pk/*.pkg "/Users/Shared/byb/Bento.pkg" && sudo chmod -R a+rwX /Users/Shared/byb && sudo chmod 777 /Users/Shared/byb
+          il() { sudo grep -E "installd: uid|Adding client|Install Failed|Error relinking|Permission denied|Shoving|Install Succeeded|Running install actions|Finalize|PKInstallErrorDomain" /var/log/install.log | tail -n "${1:-12}" | cut -c1-260; }
+          job() {  # job <user> <uid> <label>: installer from a launchd job in the user's background domain
+            local home; home="$(dscl . -read /Users/$1 NFSHomeDirectory | sed 's/^NFSHomeDirectory: //')"
+            sudo -u $1 mkdir -p "$home/Library/LaunchAgents"
+            printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' \
+              '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+              "<plist version=\"1.0\"><dict><key>Label</key><string>$3</string>" \
+              '<key>LimitLoadToSessionType</key><string>Background</string>' \
+              '<key>ProgramArguments</key><array><string>/bin/sh</string><string>-c</string><string>/usr/sbin/installer -pkg /Users/Shared/byb/Bento.pkg -target CurrentUserHomeDirectory; echo installer-in-launchd $?</string></array>' \
+              '<key>RunAtLoad</key><true/>' \
+              "<key>StandardOutPath</key><string>/Users/Shared/byb/$3.out</string><key>StandardErrorPath</key><string>/Users/Shared/byb/$3.out</string></dict></plist>" > /tmp/$3.plist
+            sudo -u $1 cp /tmp/$3.plist "$home/Library/LaunchAgents/$3.plist"
+            sudo -u $1 launchctl bootstrap user/$2 "$home/Library/LaunchAgents/$3.plist"; echo "bootstrap exit $?"
+            for i in $(seq 60); do grep -q installer-in-launchd /Users/Shared/byb/$3.out 2>/dev/null && break; sleep 1; done
+            cat /Users/Shared/byb/$3.out
+            sudo ls "$home/Butler" 2>&1 | head -3
+          }
+          echo "=== a. standard user, launchd background job"
+          job bybtest $u probe.a; il 14
+          echo "=== b. standard user, launchctl asuser + sudo"
+          sudo launchctl asuser $u sudo -u bybtest installer -pkg /Users/Shared/byb/Bento.pkg -target CurrentUserHomeDirectory; echo "exit $?"
+          il 10; sudo ls "$h/Butler" 2>&1 | head -3
+          echo "=== c. second admin, launchd background job"
+          job admintwo $a probe.c; il 14
+          echo "=== d. second admin, asuser + sudo"
+          sudo launchctl asuser $a sudo -u admintwo installer -pkg /Users/Shared/byb/Bento.pkg -target CurrentUserHomeDirectory; echo "exit $?"
+          il 10
+          echo "=== e. runner, launchd gui job (control)"
+          job runner $(id -u) probe.e 2>&1 | head -3
+          echo "=== f. installd processes"
+          ps -axo user,pid,command | grep -i installd | grep -v grep
+          echo "=== g. bybtest: pkg with ownership recommended"
+          sed 's/--ownership preserve/--ownership recommended/' packaging/macos/build-pkg.sh > /tmp/build-rec.sh; chmod +x /tmp/build-rec.sh
+          cp /tmp/build-rec.sh packaging/macos/build-rec.sh
+          packaging/macos/build-rec.sh --version v0.0.1 --out /tmp/pkr | tail -1
+          pkgutil --payload-files /tmp/pkr/*.pkg 2>/dev/null | head -3
+          echo "=== h. sudo -u runner -i (fresh login namespace?) for bybtest"
+          sudo -u bybtest -i installer -pkg /Users/Shared/byb/Bento.pkg -target CurrentUserHomeDirectory; echo "exit $?"
+          il 6
