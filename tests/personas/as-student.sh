@@ -43,7 +43,6 @@ sudo -u "$student" -H bash -xc 'mkdir -p "$HOME/Library/Keychains"
   security create-keychain -p persona "$k"
   security list-keychains -d user -s "$k"
   security default-keychain -d user -s "$k"
-  security login-keychain -d user -s "$k" || true
   security set-keychain-settings "$k"
   security unlock-keychain -p persona "$k"
   security add-generic-password -U -s byb-persona-check -a butler -w ok "$k" &&
@@ -61,6 +60,18 @@ rsync -a --exclude .git --exclude .venv --exclude dist "$repo/" "$shared/engine/
 uv="$(butler_uv "$shared/bin")"
 UV_PYTHON_INSTALL_DIR="$shared/python" "$uv" venv --quiet --python 3.13 --managed-python "$shared/venv"
 "$uv" pip install --quiet --python "$shared/venv/bin/python" anthropic==2.3.0 claude-agent-sdk==0.2.174 pyyaml tzdata==2026.5
+# The package and the lessons the arguments name, copied here: the runner's checkout is closed to others.
+args=()
+while [ $# -gt 0 ]; do
+  if { [ "$1" = "--installer" ] || [ "$1" = "--lessons" ]; } && [ $# -ge 2 ]; then
+    cp "$2" "$shared/"
+    args+=("$1" "$shared/$(basename "$2")")
+    shift 2
+  else
+    args+=("$1")
+    shift
+  fi
+done
 sudo chmod -R a+rX "$shared"
 sudo chmod 1777 "$shared/admin"
 sudo chown "$student" "$shared/out" "$shared/secret"
@@ -71,6 +82,7 @@ if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
 fi
 
 step "the admin step the course has (Tailscale's install), for the length of the run"
+# shellcheck disable=SC2024  # the log is the runner's, written as the runner: only the step runs as root
 sudo "$shared/venv/bin/python" "$shared/engine/tests/personas/admin.py" serve "$shared/admin" > "$shared/admin.log" 2>&1 &
 admin_pid=$!
 trap 'sudo kill "$admin_pid" 2>/dev/null || true' EXIT
@@ -83,7 +95,7 @@ code=0
 sudo -u "$student" -H env -i HOME="$home" USER="$student" LOGNAME="$student" SHELL=/bin/zsh \
   PATH=/usr/bin:/bin:/usr/sbin:/sbin TERM=xterm-256color LANG=en_US.UTF-8 CI=1 BYB_ADMIN_REQUESTS="$shared/admin" \
   /bin/bash -c 'security unlock-keychain -p persona "$HOME/Library/Keychains/login.keychain-db"; exec "$@"' bash \
-  "$shared/venv/bin/python" -X utf8 "$shared/engine/tests/personas/run_persona.py" "$@" \
+  "$shared/venv/bin/python" -X utf8 "$shared/engine/tests/personas/run_persona.py" "${args[@]}" \
   --key-file "$shared/secret/key" --out "$shared/out" || code=$?
 sudo rm -f "$shared/secret/key"
 
