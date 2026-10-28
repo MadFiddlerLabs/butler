@@ -138,6 +138,8 @@ terminal. It doesn't apply to developers.
   - An API key: a password that lets your butler use Claude, billed by what it uses.
   - A folder: what Finder (on Windows, File Explorer) shows; `~/Butler` is the Butler folder in
     your home folder.
+- Run every command from the Butler folder, where they opened you. Never start one with `cd` or
+  `Set-Location`: each folder change is another permission question for them.
 - Use short sentences. Show no tables unless they ask for one.
 - The student decides what Butler gets. Any module can be skipped. When they say "I'd rather
   not share that", accept it, leave that part empty and move on. Don't ask again.

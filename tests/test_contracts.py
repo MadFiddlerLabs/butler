@@ -300,6 +300,21 @@ class CourseContractTest(unittest.TestCase):
             self.assertTrue(m, rule)
         self.assertEqual(len(allow), 24)
 
+    def test_commands_run_where_claude_code_opened_without_changing_folders(self):
+        """Persona round 5 (28 Oct): on Windows, Claude began nearly every command with
+        `Set-Location <the Butler folder>;`, about 40 permission questions, each a compound command
+        no allow rule matches. Every skill and CLAUDE.md say not to, and no command they give
+        changes folders."""
+        student = (REPO / "CLAUDE.md").read_text().split("## Talking to someone learning")[1].split("\n## ")[0]
+        for name, text in [*SKILLS.items(), ("CLAUDE.md, students", student)]:
+            flat = " ".join(text.split())
+            self.assertIn("`Set-Location`", flat, name)
+            self.assertRegex(flat, r"[Nn]ever (change folders first|start one with `cd`)", name)
+        for name, text in SKILLS.items():
+            for block in _blocks(text):
+                for line in block.splitlines():
+                    self.assertNotRegex(line.strip(), r"^(cd|Set-Location)\b", f"{name}: {line.strip()}")
+
     def test_no_skill_runs_the_whole_test_suite_in_a_household(self):
         """A persona (28 Oct) watched Claude start the whole suite at Module 7 and keep mentioning it:
         it takes over ten minutes and, without requirements-dev.txt, fails where nothing is wrong.
