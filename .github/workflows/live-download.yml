@@ -192,9 +192,15 @@ jobs:
           [ "$name" = "$NAME" ] || { echo "::error::.butler-name is '$name', not '$NAME' from the file's name"; exit 1; }
           cat "$b/logs/install.log"
           # A new Terminal window: a login shell reads ~/.zprofile, where the package put Butler's bin.
-          out="$(env -i HOME="$HOME" USER="$USER" TERM=xterm-256color PATH=/usr/bin:/bin:/usr/sbin:/sbin zsh -l -c 'butler help')"
+          # Before the first run brings Python, `butler` answers only `setup` (bin/butler), so this
+          # checks it's found and points the student there, as macos-e2e does.
+          new_window() { env -i HOME="$HOME" USER="$USER" TERM=xterm-256color PATH=/usr/bin:/bin:/usr/sbin:/sbin zsh -l -c "$1"; }
+          found="$(new_window 'command -v butler')"
+          echo "a new window finds: $found"
+          [ "$found" = "$b/bin/butler" ] || { echo "::error::a new Terminal window doesn't find butler in $b/bin"; exit 1; }
+          out="$(new_window 'butler status' 2>&1 || true)"
           echo "$out"
-          echo "$out" | grep -q "The butler command" || { echo "::error::butler help didn't run in a new Terminal window"; exit 1; }
+          echo "$out" | grep -q "butler setup" || { echo "::error::butler status in a new Terminal window doesn't point to butler setup"; exit 1; }
       - name: Students get the newest release
         if: always()
         env:
