@@ -224,8 +224,13 @@ else
 fi
 
 # Python installs while the student checks their email.
-bootstrap_cmd="${BUTLER_BOOTSTRAP:-$home/scripts/bootstrap.sh}"
-( cd "$home" && bash -c "$bootstrap_cmd" ) >>"$log" 2>&1 &
+# Started by its path as one word, so a home folder with a space in it works; BUTLER_BOOTSTRAP
+# (tests) is a command line.
+if [ -n "${BUTLER_BOOTSTRAP:-}" ]; then
+  ( cd "$home" && bash -c "$BUTLER_BOOTSTRAP" ) >>"$log" 2>&1 &
+else
+  ( cd "$home" && bash "$home/scripts/bootstrap.sh" ) >>"$log" 2>&1 &
+fi
 bootstrap_pid=$!
 
 # ---------- 2. email ----------

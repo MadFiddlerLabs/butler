@@ -109,7 +109,10 @@ jobs:
           test ! -e "$HOME/Applications/Butler.app"
           codesign --verify --strict /Applications/Butler.app
       - name: The daily schedule in the logged-in account's GUI domain (the runner's, an admin)
-        run: tests/e2e/schedule-gui.sh
+        run: |
+          # The settings Module 2 writes (the upgrade step left only a name), then the jobs.
+          (cd "$HOME/Butler" && .venv/bin/python "$GITHUB_WORKSPACE/tests/e2e/install_step_settings.py")
+          tests/e2e/schedule-gui.sh
 
   student:
     # A student's own account: standard (not an admin), with a space in its home folder's path.

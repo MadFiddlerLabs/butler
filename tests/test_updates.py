@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
+import yaml
+
 from butler import account, migrations, system, update_report, updates
 from fakes.account_api import FakeAccountAPI
 
@@ -596,6 +598,20 @@ class TickTest(Sandbox):
         with mock.patch.object(updates, "fetch_manifest") as fetch:
             updates.tick({"updates": "off"}, datetime(2026, 10, 12, 3, 0))
         fetch.assert_not_called()
+
+    def test_off_typed_in_the_settings_file_never_checks_either(self):
+        """Found by tests/e2e/update.sh: YAML reads a bare `updates: off` as false, which isn't
+        "off", so a household that turned updates off by hand (docs/UPDATES.md) still got them."""
+        for line in ("updates: off", "updates: Off", "updates: no", "updates: false"):
+            settings = yaml.safe_load(line)
+            with self.subTest(line=line), mock.patch.object(updates, "fetch_manifest") as fetch:
+                updates.tick(settings, datetime(2026, 10, 12, 3, 0))
+                fetch.assert_not_called()
+                self.assertEqual(updates.decide(settings, {"version": "v0.2.0"}, "v0.1.0", "x").action, "none")
+        for line in ("updates: on", "updates: yes", "updates: true"):
+            with self.subTest(line=line):
+                self.assertEqual(updates.decide(yaml.safe_load(line), {"version": "v0.2.0"}, "v0.1.0", "x").action,
+                                 "install", "on means the default, auto")
 
     def test_nothing_waiting(self):
         self.assertIn("no update waiting", updates.approve())

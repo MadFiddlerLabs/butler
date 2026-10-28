@@ -283,7 +283,7 @@ class PostinstallTest(unittest.TestCase):
         me = subprocess.run(["id", "-un"], capture_output=True, text=True).stdout.strip()
         scripts = {
             # Root, as Installer may run it; the student is at the screen.
-            "id": f'#!/bin/bash\n[ "$*" = "-u" ] && {{ echo 0; exit 0; }}\n[ "$*" = "-un" ] && {{ echo root; exit 0; }}\n'
+            "id": '#!/bin/bash\n[ "$*" = "-u" ] && { echo 0; exit 0; }\n[ "$*" = "-un" ] && { echo root; exit 0; }\n'
                   'exec /usr/bin/id "$@"\n',
             "dscl": f'#!/bin/bash\nprintf "NFSHomeDirectory:\\n {home}\\n"\n',
             "chown": "#!/bin/bash\nexit 0\n",

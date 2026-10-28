@@ -137,7 +137,9 @@ def main() -> None:
         w.expect("Your email ›")
         w.type("skip")                               # signing in needs an inbox: tests/test_first_run.py
         w.expect("Sign in later with: butler setup")
-        w.expect("Bento is ready.", limit=900)       # Python, through the pinned uv
+        # Python, through the pinned uv
+        if w.expect("Bento is ready.", "Something went wrong getting ready", limit=900) != "Bento is ready.":
+            fail("Python didn't get ready (logs/setup.log says why)")
         w.expect("Paste here ›")
         w.type('butler town "Lisbon"')
         w.expect("Got it: Lisbon")
