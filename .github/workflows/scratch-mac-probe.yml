@@ -4,51 +4,46 @@ on:
     branches: [e2e/mac-standard-user]
 jobs:
   probe:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, macos-15-intel, macos-13]
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - name: probe
         run: |
-          set -x
-          sw_vers; uname -m; id
           pw="$(openssl rand -base64 18)"
-          sudo sysadminctl -addUser bybtest -fullName "BYB Test" -password "$pw" -home "/Users/byb test" 2>&1 || true
-          id bybtest || true
-          ls -la /Users/ || true
-          dscl . -read /Users/bybtest NFSHomeDirectory UniqueID PrimaryGroupID UserShell || true
-          dseditgroup -o checkmember -m bybtest admin || true
-          [ -d "/Users/byb test" ] || sudo createhomedir -c -u bybtest || true
-          ls -la "/Users/byb test" || true
+          sudo sysadminctl -addUser bybtest -fullName "BYB Test" -password "$pw" -home "/Users/byb test" >/dev/null 2>&1
+          sudo createhomedir -c -u bybtest
+          set -x
           u=$(id -u bybtest)
-          sudo -u bybtest -i bash -c 'echo HOME=$HOME; pwd; id; echo SHELL=$SHELL' || true
-          launchctl print gui/$u 2>&1 | head -5 || true
-          sudo launchctl print user/$u 2>&1 | head -5 || true
-          sudo -u bybtest launchctl print user/$u 2>&1 | head -5 || true
+          h="/Users/byb test"
+          sudo -u bybtest mkdir -p "$h/Library/LaunchAgents"
           printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' \
             '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
             '<plist version="1.0"><dict><key>Label</key><string>com.example.probe</string>' \
-            '<key>ProgramArguments</key><array><string>/bin/sh</string><string>-c</string><string>id; echo HOME=$HOME; date</string></array>' \
-            '<key>StandardOutPath</key><string>/tmp/probe.out</string></dict></plist>' > /tmp/probe.plist
-          chmod 644 /tmp/probe.plist; plutil -lint /tmp/probe.plist
-          sudo -u bybtest launchctl bootstrap gui/$u /tmp/probe.plist 2>&1 || true
-          sudo -u bybtest launchctl bootstrap user/$u /tmp/probe.plist 2>&1 || true
-          sleep 2; cat /tmp/probe.out || true
-          sudo -u bybtest launchctl kickstart -p user/$u/com.example.probe 2>&1 || true
-          sleep 2; cat /tmp/probe.out || true
-          sudo -u bybtest launchctl print user/$u/com.example.probe 2>&1 | grep -E "state|last exit|runs" || true
-          sudo -u bybtest launchctl bootout user/$u/com.example.probe 2>&1 || true
-          sudo rm -f /tmp/probe.out
-          sudo launchctl bootstrap user/$u /tmp/probe.plist 2>&1 || true
-          sudo launchctl kickstart -p user/$u/com.example.probe 2>&1 || true
-          sleep 2; cat /tmp/probe.out || true
-          sudo launchctl asuser $u sudo -u bybtest launchctl bootstrap gui/$u /tmp/probe.plist 2>&1 || true
-          sudo -u bybtest security list-keychains 2>&1 || true
-          sudo -u bybtest -i bash -c 'curl -fsSL https://claude.ai/install.sh | bash' 2>&1 | tail -20 || true
-          sudo -u bybtest -i bash -c 'ls -la ~/.local/bin; ~/.local/bin/claude --version' 2>&1 || true
-          sudo -u bybtest -i bash -c 'open -a Terminal /usr/bin/true' 2>&1 || true
-          sudo launchctl asuser $u sudo -u bybtest open -a Terminal /usr/bin/true 2>&1 || true
+            '<key>ProgramArguments</key><array><string>/bin/sh</string><string>-c</string><string>id; echo HOME=$HOME; date; security list-keychains</string></array>' \
+            '<key>RunAtLoad</key><true/>' \
+            '<key>StandardOutPath</key><string>/Users/byb test/probe.out</string></dict></plist>' > /tmp/probe.plist
+          sudo -u bybtest cp /tmp/probe.plist "$h/Library/LaunchAgents/com.example.probe.plist"
+          ls -la "$h/Library/LaunchAgents"
+          p="$h/Library/LaunchAgents/com.example.probe.plist"
+          sudo -u bybtest launchctl bootstrap user/$u "$p"; echo "exit $?"
+          sleep 2; sudo cat "$h/probe.out"
+          sudo launchctl bootstrap user/$u "$p"; echo "exit $?"
+          sleep 2; sudo cat "$h/probe.out"
+          sudo -u bybtest launchctl kickstart -p user/$u/com.example.probe; echo "exit $?"
+          sleep 2; sudo cat "$h/probe.out"
+          sudo -u bybtest launchctl print user/$u/com.example.probe | grep -E "state|last exit|runs|domain"
+          sudo launchctl asuser $u sudo -u bybtest launchctl bootstrap user/$u "$p"; echo "exit $?"
+          # the runner's gui domain
+          mkdir -p ~/Library/LaunchAgents; sed 's#/Users/byb test/probe.out#/tmp/runner-probe.out#' /tmp/probe.plist > ~/Library/LaunchAgents/com.example.probe.plist
+          launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.example.probe.plist; echo "exit $?"
+          sleep 2; cat /tmp/runner-probe.out
+          # open as the student
+          sudo -u bybtest -i bash -c 'open -a Terminal /usr/bin/true; echo "open exit $?"'
+          sleep 3; ps -axo user,pid,command | grep -i terminal | grep -v grep
+          # installer as the student
+          packaging/macos/build-pkg.sh --version v0.0.1 --out /tmp/pk | tail -1
+          sudo mkdir -p /Users/Shared/byb && sudo cp /tmp/pk/*.pkg "/Users/Shared/byb/Bento.pkg" && sudo chmod -R a+rX /Users/Shared/byb
+          sudo -u bybtest -H installer -pkg /Users/Shared/byb/Bento.pkg -target CurrentUserHomeDirectory; echo "installer exit $?"
+          sudo ls -la "$h/Butler" | head; sudo cat "$h/Butler/logs/install.log"
+          sudo find "$h/Butler" ! -user bybtest | head
