@@ -41,7 +41,7 @@ sys.path.insert(0, str(REPO / "tests"))
 import events  # noqa: E402
 from fakes.account_api import FakeAccountAPI  # noqa: E402
 from outside import Outside  # noqa: E402
-from screens import DRY_CLAUDE, page_text, side_question, site_name, trim  # noqa: E402
+from screens import DRY_CLAUDE, page_text, side_question, site_name, trim, trust_folder  # noqa: E402
 from terminal import Terminal  # noqa: E402
 
 PERSONA_MODEL = "claude-sonnet-5-5"
@@ -490,6 +490,7 @@ In this session, you will also:
                 self.claude_pending, self.trusted = False, False
                 return "(Claude Code exits. The Terminal prompt is back.)"
             self.trusted = True
+            trust_folder(BUTLER)
             message = ""
         if self.claude_pending and not self.claude:
             options = ClaudeAgentOptions(
