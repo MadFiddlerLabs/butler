@@ -7,11 +7,6 @@ import re
 import unicodedata
 from pathlib import Path
 
-# `butler claude` with BUTLER_CLAUDE_DRY_RUN prints what it would run (src/butler/cli.py,
-# open_claude); the harness opens that Claude Code session for the persona instead.
-# The window's prompt comes straight after it, so it ends at the line's end, not the screen's.
-DRY_CLAUDE = re.compile(r'\(dry run\) would run: (\S+) --permission-mode (\S+) "(.*)" in (\S+)[ \t]*\r?\n', re.S)
-
 # The homepage's name box (website src/lib/butler-name.ts, src/scripts/download-hook.ts): it takes
 # at most 24 characters, says this under a name that breaks the rules, and then downloads Butler.
 MAX_NAME = 24
@@ -97,3 +92,143 @@ def trust_folder(folder, config: Path | None = None) -> None:
     for key in {str(folder), Path(folder).as_posix()}:   # Windows keys may use either slash
         projects.setdefault(key, {})["hasTrustDialogAccepted"] = True
     config.write_text(json.dumps(data, indent=2))
+
+
+# ---------- the real `butler claude` ----------
+# The lines Butler prints as it starts Claude Code (cli.open_claude). The harness cuts the window
+# there: what follows is Claude Code's own first screen, which the Agent SDK session takes over.
+# tests/test_personas.py checks them against cli.py, so change both together.
+CLAUDE_OPENING = re.compile(
+    r"If\s+it\s+asks\s+you\s+to\s+sign\s+in,\s+follow\s+the\s+link\s+it\s+shows\.[^\n]*\n"
+    r"(?:[ \t]*It\s+(?:starts\s+with\s+Module\s+1:\s+Meet\s+Claude\s+Code|picks\s+up\s+where\s+you\s+left\s+off\s+in\s+the\s+course)\.[^\n]*\n)?")
+_CLAUDE_EXE = re.compile(r"(^|[\\/])claude(\.exe)?$", re.I)
+
+
+def butler_claude(argv: list[str]) -> dict | None:
+    """{"exe", "mode", "prompt"} when argv is the Claude Code `butler claude` started (the binary,
+    --permission-mode and the opening prompt), else None: the Agent SDK's own sessions run the same
+    binary with other arguments."""
+    if len(argv) != 4 or not _CLAUDE_EXE.search(argv[0]) or argv[1] != "--permission-mode":
+        return None
+    return {"exe": argv[0], "mode": argv[2], "prompt": argv[3]}
+
+
+def mac_claude(ps_args: str) -> dict | None:
+    """The same, from a Mac's `ps -o args=` line, which joins the arguments with spaces: the home
+    folder may have one ("/Users/byb test"), and the prompt has many."""
+    if "--output-format" in ps_args:
+        return None
+    m = re.match(r"^(?P<exe>.*?[\\/]claude) --permission-mode (?P<mode>\S+) (?P<prompt>.+)$", ps_args.strip(), re.S)
+    return {"exe": m["exe"], "mode": m["mode"], "prompt": m["prompt"]} if m else None
+
+
+def split_windows(line: str) -> list[str]:
+    """A Windows command line split as CommandLineToArgvW splits it (subprocess.list2cmdline builds
+    them): 2n backslashes before a quote are n backslashes and the quote counts; 2n+1 are n and a
+    literal quote; "" inside quotes is a quote."""
+    args, current, quoted, started, i = [], [], False, False, 0
+    while i < len(line):
+        c = line[i]
+        if c == "\\":
+            n = len(line[i:]) - len(line[i:].lstrip("\\"))
+            i += n
+            if line[i:i + 1] == '"':
+                current.append("\\" * (n // 2))
+                if n % 2:
+                    current.append('"')
+                    i += 1
+            else:
+                current.append("\\" * n)
+            started = True
+            continue
+        if c == '"':
+            if quoted and line[i + 1:i + 2] == '"':
+                current.append('"')
+                i += 1
+            else:
+                quoted = not quoted
+            started = True
+        elif c in " \t" and not quoted:
+            if started:
+                args.append("".join(current))
+                current, started = [], False
+        else:
+            current.append(c)
+            started = True
+        i += 1
+    if started:
+        args.append("".join(current))
+    return args
+
+
+def terminal_types(path: str) -> str:
+    """What Terminal types into a new window's login shell to run a .command file: the path, each
+    special character escaped with a backslash, then "; exit;"."""
+    return re.sub(r"([^\w/.\-+@%:,])", r"\\\1", path) + " ; exit;"
+
+
+def install_log_opened(log: str) -> tuple[bool, str] | None:
+    """(Terminal opened, the .command) from the package's postinstall line in logs/install.log:
+    what the installer opened, or tried to open, at the end of the install. None if it didn't try."""
+    found = re.findall(r"installed \(\w+\): (opened|could not open) Terminal with (\S+\.command)", log)
+    return (found[-1][0] == "opened", found[-1][1]) if found else None
+
+
+# A console's keys as WriteConsoleInputW takes them: (virtual key, character) for a named key,
+# (None, character) for any other character, and "ctrl_c", which a console turns into a signal.
+VK = {"\r": (0x0D, "\r"), "\n": (0x0D, "\r"), "\t": (0x09, "\t"), "\x7f": (0x08, "\b"), "\b": (0x08, "\b"),
+      "\x1b[A": (0x26, "\0"), "\x1b[B": (0x28, "\0"), "\x1b[C": (0x27, "\0"), "\x1b[D": (0x25, "\0"),
+      "\x1b": (0x1B, "\x1b")}
+
+
+def console_keys(text: str) -> list:
+    """The harness's keys (run_persona.KEYS) and typed text, one entry per key press."""
+    out, i = [], 0
+    while i < len(text):
+        if text[i] == "\x03":
+            out.append("ctrl_c")
+            i += 1
+            continue
+        seq = next((s for s in VK if text.startswith(s, i) and len(s) > 1), None) or (text[i] if text[i] in VK else None)
+        if seq:
+            out.append(VK[seq])
+            i += len(seq)
+        else:
+            out.append((None, text[i]))
+            i += 1
+    return out
+
+
+# ---------- windows on screen (Windows) ----------
+def window_form(title: str, controls: list[tuple[str, str, bool, bool]]) -> dict:
+    """A window as the persona sees it, from its controls: (class name, text, enabled, visible).
+    Buttons are what can be clicked; check boxes and radio buttons can be ticked; the rest is text.
+    Inno Setup's controls are TNewButton, TNewCheckBox, TNewRadioButton, TNewStaticText and
+    TNewMemo; a message box's are Button and Static."""
+    text, buttons, boxes = [], [], []
+    for cls, label, enabled, visible in controls:
+        label = label.replace("&", "").strip()
+        if not label or not visible:
+            continue
+        if re.search(r"CheckBox|RadioButton", cls, re.I):
+            boxes.append(label)
+        elif re.search(r"Button", cls, re.I):
+            if enabled and label not in buttons:
+                buttons.append(label)
+        elif label not in text and label != title:
+            text.append(label)
+    return {"title": title, "text": "\n  ".join(text), "buttons": buttons, "boxes": boxes}
+
+
+def waiting_only(form: dict) -> bool:
+    """A page with nothing to do but wait (Installing..., with only Cancel): not a question."""
+    return not form["buttons"] or form["buttons"] == ["Cancel"]
+
+
+# The rehearsal's student clicks the way forward, as most people do.
+FORWARD = ("Run anyway", "Run", "More info", "Install", "Next", "Finish", "Yes", "OK", "Allow", "Continue")
+
+
+def forward(form: dict) -> dict:
+    button = next((b for want in FORWARD for b in form.get("buttons", []) if b.lower() == want.lower()), "")
+    return {"button": button or (form.get("buttons") or [""])[0], "text": "", "ticked": []}

@@ -7,23 +7,43 @@ sign-in link, look at the brief in the browser. It makes the run's drawn choices
 Past Module 2, outside.py stands in for the services a student signs up for (Claude Console,
 Gmail, Lunch Money, Tailscale), and the windows that open on screen come to the persona.
 
+The student's path, as a student takes it (28 Oct 2026; the owner's test PC found two bugs the
+old shortcuts hid):
+- The run is a standard account with a space in its name ("BYB Test"), not the runner's admin:
+  personas.yml makes it and starts the harness as it (tests/personas/as-student.sh and .ps1).
+- The installer opens the way a double-click opens it, and the persona works in the window the
+  installer itself opens. Windows: the download carries the Mark of the Web, os.startfile opens
+  it, the persona answers each window (a security prompt, the wizard's pages) as it appears, and
+  the console the installer opened is read and typed into where it is (windows_screen.py). Mac:
+  see install_mac for what a hosted runner can't do, and the closest real path it takes instead.
+- `butler claude` runs for real: Anthropic's installer, then Claude Code, started by Butler. The
+  harness then takes that Claude Code over through the Agent SDK, with the same binary, mode and
+  opening prompt, so the persona can answer its questions (and the run can count its cost).
+What still differs from a real student is listed in run.json's `differences`, and in the
+transcript as it happens.
+
 Paid (the Claude API) and CI only (.github/workflows/personas.yml): it installs into this
 machine's real home folder and signs in, so it must never run on a computer someone uses.
+`--rehearse` is free: a scripted student, no Claude API at all, takes the same path from the
+download into Claude Code (and the schedule), and the run fails if any of it breaks.
 
     python tests/personas/run_persona.py --persona grandfather --platform mac --seed 3 \
-        --lessons lessons-mac.json --installer dist/Butler-unsigned.pkg --budget 6 --out out/
+        --lessons lessons-mac.json --installer dist/Butler-unsigned.pkg --budget 6 --key-file key --out out/
 
 Writes out/run.json (findings, checks, cost) and out/transcript.md.
 """
 import argparse
 import asyncio
+import getpass
 import json
 import os
+import platform
 import random
 import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -40,8 +60,9 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(REPO / "tests"))
 import events  # noqa: E402
 from fakes.account_api import FakeAccountAPI  # noqa: E402
-from outside import Outside  # noqa: E402
-from screens import DRY_CLAUDE, page_text, side_question, site_name, trim, trust_folder  # noqa: E402
+from outside import Outside, at_screen, is_admin  # noqa: E402
+from screens import (CLAUDE_OPENING, butler_claude, forward, install_log_opened, mac_claude, page_text,  # noqa: E402
+                     side_question, site_name, split_windows, terminal_types, trim, trust_folder, waiting_only)
 from terminal import Terminal  # noqa: E402
 
 PERSONA_MODEL = "claude-sonnet-5-5"
@@ -151,7 +172,20 @@ class Run:
         self.at = -1
         self.installer, self.budget, self.out = Path(args.installer), args.budget, Path(args.out)
         self.out.mkdir(parents=True, exist_ok=True)
-        self.client = anthropic.AsyncAnthropic()
+        self.rehearse, self.computer = args.rehearse, args.computer or args.platform
+        # The run's key, read once and kept out of the environment: every window and program the
+        # student opens inherits it, and a student has no ANTHROPIC_API_KEY.
+        self.api_key = read_key(args.key_file)
+        if not self.api_key and not self.rehearse:
+            sys.exit("A paid run needs the Claude API key (--key-file or ANTHROPIC_API_KEY); --rehearse needs none.")
+        self.client = None if self.rehearse else anthropic.AsyncAnthropic(api_key=self.api_key)
+        self.loop: asyncio.AbstractEventLoop | None = None
+        self.differences: list[str] = []   # where this run's path isn't a real student's, and why
+        self.claude_exe: str | None = None  # the Claude Code `butler claude` installed and started
+        self.claude_window: int | None = None
+        self.claude_installed_before = bool(shutil.which("claude")) or (HOME / ".local" / "bin" / ("claude.exe" if WINDOWS else "claude")).exists()
+        self.rehearsal: dict = {}
+        self.done = False
         self.cost = {"persona": 0.0, "claude_code": 0.0}
         self.log: list[str] = []
         self.notes: list[dict] = []
@@ -162,15 +196,24 @@ class Run:
         self.briefs_seen: set[str] = set()
         self.outcome = {"outcome": "budget", "why": "spent the run's budget"}
         self.api = FakeAccountAPI().start()
-        self.outside = Outside(self.persona["name"], self.email, lambda: self.spent() < self.budget - 0.1, BUTLER)
+        self.outside = Outside(self.persona["name"], self.email, lambda: self.spent() < self.budget - 0.1, BUTLER,
+                               api_key=self.api_key)
         self.events_seen: set[str] = set()
         self.pending: list[str] = []   # windows and pages that came up during the last action
-        self.env = {**os.environ, "BUTLER_API": self.api.url + "/api", "BUTLER_CLAUDE_DRY_RUN": "1",
+        # No BUTLER_CLAUDE_DRY_RUN: `butler claude` installs and starts the real Claude Code.
+        self.env = {**os.environ, "BUTLER_API": self.api.url + "/api",
                     "BUTLER_NO_OPEN": "1", "BUTLER_POLL_SECONDS": "2", "BUTLER_COLUMNS": "1000"}
-        if not WINDOWS:   # a Mac's login shell is zsh; the runner's account says bash
+        if not WINDOWS:   # a Mac's login shell is zsh
             self.env["SHELL"] = "/bin/zsh"
         self.env = self.outside.path(self.env)
-        os.environ["PATH"] = self.env["PATH"]     # Claude Code's commands find the stubs too
+        # Everything this process starts gets it too (the installer, and the window it opens), as
+        # Explorer or Finder would hand on the student's own.
+        os.environ.clear()
+        os.environ.update(self.env)
+        self.account = {"user": getpass.getuser(), "home": str(HOME), "admin": is_admin(),
+                        "machine": platform.machine(), "os": platform.platform()}
+        if not WINDOWS:
+            self.account["at_screen"] = at_screen()
         self.claude_pending, self.claude_mode, self.claude_prompt = False, "default", ""
         self.claude_model = args.claude_model or None
         self.trusted = False
@@ -233,6 +276,8 @@ In this session, you will also:
         return self.budget - max(0.75, 0.1 * self.budget) - self.spent()
 
     async def ask(self, messages: list, tools: list, max_tokens: int = 4000, effort: str = "medium"):
+        if self.client is None:
+            raise RuntimeError("a rehearsal asks no persona")
         if self.spent() >= self.budget - 0.1:
             raise RuntimeError("the run's budget is spent")
         response = await self.client.messages.create(
@@ -322,11 +367,17 @@ In this session, you will also:
             window = self.open_window()
             if action == "new_window":
                 return f"(window {window} opened)\n" + self.windows[window].read()
+        if (window == self.claude_window and (self.claude or self.claude_pending) and action != "close"
+                and 0 <= window < len(self.windows)):
+            return ("Claude Code is open in this window: type to it with the claude_code tool (/exit closes it), "
+                    "or open a new window.")
         if not 0 <= window < len(self.windows) or not self.windows[window].open:
             return f"There's no open window {window}. Open windows: {[i for i, w in enumerate(self.windows) if w.open]}"
         w = self.windows[window]
         if action == "close":
             w.close()
+            if window == self.claude_window:
+                self.claude_window = None
             return "(window closed)"
         if action == "type":
             w.type(text)
@@ -336,15 +387,59 @@ In this session, you will also:
         if action == "look":
             w.wait_new(limit=30.0)   # at once if something's there already
         screen = w.read(quiet=3.0 if action != "look" else 5.0, limit=300.0)
-        return self.after_screen(screen)
+        return self.after_screen(screen, window)
 
-    def after_screen(self, screen: str) -> str:
-        """Butler's dry-run line for Claude Code becomes Claude Code opening, and a brief that would
-        open in the browser does."""
-        m = DRY_CLAUDE.search(screen)
-        if m:
-            self.claude_mode, self.claude_prompt = m[2], m[3]
-            self.claude_pending = True
+    def spot_claude(self, wait: float) -> dict | None:
+        """The Claude Code `butler claude` just started, found by its command line: {exe, mode,
+        prompt, pid}. Waits up to `wait` seconds (Anthropic's installer may still be running)."""
+        deadline = time.monotonic() + wait
+        while True:
+            if WINDOWS:
+                import windows_screen as ws
+                found = [{**info, "pid": p["pid"]} for p in ws.processes("claude.exe")
+                         if (info := butler_claude(split_windows(p["command"])))]
+            else:
+                listed = subprocess.run(["ps", "-U", str(os.getuid()), "-ww", "-o", "pid=,args="],
+                                        capture_output=True, text=True).stdout
+                found = [{**info, "pid": int(pid)} for pid, _, args in (line.strip().partition(" ") for line in listed.splitlines())
+                         if pid.isdigit() and (info := mac_claude(args))]
+            if found or time.monotonic() > deadline:
+                return found[-1] if found else None
+            time.sleep(1)
+
+    def take_over_claude(self, window: int) -> bool:
+        """Claude Code started for real in `window`: the harness takes it over. It notes the binary,
+        mode and prompt Butler gave it, closes that interactive session (nobody can sign in to it on
+        a runner), and opens the same Claude Code through the Agent SDK when the persona types to it."""
+        found = self.spot_claude(wait=120)
+        if not found:
+            return False
+        self.claude_exe, self.claude_mode, self.claude_prompt = found["exe"], found["mode"], found["prompt"]
+        self.say("harness", f"`butler claude` started {found['exe']} --permission-mode {found['mode']} (pid "
+                            f"{found['pid']}); the harness takes it over through the Agent SDK, with the same binary, "
+                            "mode and opening prompt")
+        if WINDOWS:
+            import windows_screen as ws
+            ws.kill(found["pid"])
+        else:
+            try:
+                os.kill(found["pid"], 15)
+            except ProcessLookupError:
+                pass
+        time.sleep(2)
+        self.windows[window].read(quiet=1.0, limit=10.0)   # its first screen, already shown as the trust question
+        self.claude_pending, self.claude_window = True, window
+        return True
+
+    def after_screen(self, screen: str, window: int | None = None) -> str:
+        """Butler opening Claude Code becomes Claude Code opening in the window, and a brief that
+        would open in the browser does."""
+        m = CLAUDE_OPENING.search(screen)
+        if m and window is not None and not self.claude and not self.claude_pending:
+            if not self.take_over_claude(window):
+                self.notes.append({"kind": "broken", "lesson": self.current()["id"],
+                                   "text": "(harness) Butler said Claude Code was opening, but none started within 2 minutes"})
+                return screen
             if self.trusted is True:   # this folder was trusted already
                 opened = "\n[Claude Code opens in this window. Type to it with the claude_code tool.]\n"
             else:
@@ -353,7 +448,7 @@ In this session, you will also:
                           " Claude Code may read, write, or execute files contained in this directory. This can pose "
                           "security risks, so only use files from trusted sources.\n\n ❯ 1. Yes, proceed\n   2. No, exit\n\n"
                           "(Answer with the claude_code tool: 1 or 2.)\n")
-            screen = screen[: m.start()] + opened
+            screen = screen[: m.end()] + opened
         for brief in sorted((BUTLER / "out" / "preview").glob("brief-*.html")) if (BUTLER / "out" / "preview").exists() else []:
             if brief.name not in self.briefs_seen:
                 self.briefs_seen.add(brief.name)
@@ -378,6 +473,13 @@ In this session, you will also:
             downloads.mkdir(exist_ok=True)
             self.downloads = downloads / f"{name}{self.installer.suffix}"
             shutil.copyfile(self.installer, self.downloads)
+            # As a browser leaves a download: marked as from the internet, so the computer checks it.
+            if WINDOWS:
+                import windows_screen as ws
+                ws.mark_of_the_web(self.downloads, "https://buildyourbutler.com/")
+            else:
+                subprocess.run(["xattr", "-w", "com.apple.quarantine", f"0083;{int(time.time()):x};Safari;",
+                                str(self.downloads)], capture_output=True)
             shown = f"The box shows: {typed[:24]!r}. " if typed else "The name box is empty. "
             return (shown + (f"Under it, in red: \"{said}\" " if said else "")
                     + f"You click Download. The browser downloads {self.downloads.name} into your Downloads folder.")
@@ -429,11 +531,12 @@ In this session, you will also:
             if not (BUTLER / "bin").exists():
                 return "There's no Butler app yet." if not WINDOWS else "Start menu: no app called Butler."
             if WINDOWS:
-                argv = ["cmd.exe", "/d", "/k", str(BUTLER / "bin" / "butler.cmd"), "resume"]
-            else:
-                argv = ["/bin/zsh", "-l", "-c", f'"{BUTLER}/bin/butler" resume; exec /bin/zsh -l']
-            window = self.open_window(argv)
-            return f"A new window opens (window {window}):\n" + self.windows[window].read(quiet=4.0, limit=300.0)
+                return self.start_menu_butler()
+            # The Butler app opens Terminal on `butler resume`. Terminal can't open for an account
+            # that isn't at the screen, so the harness opens the window the app would.
+            window = self.open_window(["/bin/zsh", "-l", "-c", f'"{BUTLER}/bin/butler" resume; exec /bin/zsh -l'])
+            return f"A new window opens (window {window}):\n" + self.after_screen(
+                self.windows[window].read(quiet=4.0, limit=300.0), window)
         if action == "open_web_page":
             address = (typed or what).strip()
             if not re.match(r"^(https://)?(www\.)?buildyourbutler\.com(/[\w/#.-]*)?$", address):
@@ -457,28 +560,162 @@ In this session, you will also:
         return "Nothing you can see happens. (This test can't do that on screen: describe what you'd expect, then carry on.)"
 
     def install(self) -> str:
-        """The installer, as a person runs it: on a Mac, Installer, then postinstall opens the
-        first run in Terminal; on Windows, the setup wizard, then the first run's window."""
-        if WINDOWS:
-            p = subprocess.run([str(self.downloads), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"], capture_output=True)
-            if p.returncode != 0:
-                return f"The installer says it couldn't finish (exit {p.returncode})."
-            self.outside.after_install()
-            first = self.open_window(["cmd.exe", "/d", "/k", str(BUTLER / "bin" / "butler.cmd"), "setup"])
-            return (f"Windows asks nothing (the test signs nothing; a real download may show SmartScreen first). The "
-                    f"installer shows Ready to Install; you click Install, it says \"Getting Butler's own Python. This "
-                    f"takes a minute or two.\", then Finish. A window titled Butler opens (window {first}):\n"
-                    + self.windows[first].read(quiet=5.0, limit=600.0))
+        """The installer, opened as a person opens it, and the window it opens at the end."""
+        return self.install_windows() if WINDOWS else self.install_mac()
+
+    def ask_window(self, form: dict) -> dict:
+        """A window on screen, answered by the persona (or by the rehearsal's student, who clicks
+        the way forward), from a thread while the persona's on_screen call is still running."""
+        if self.rehearse:
+            return forward(form)
+        return asyncio.run_coroutine_threadsafe(self.window(self.describe(form), form), self.loop).result(timeout=900)
+
+    def install_windows(self) -> str:
+        """A double-click on the download (ShellExecute, so Windows' checks on a download from the
+        internet run), then each window the installer shows, answered by the persona as it comes:
+        a security prompt, the wizard's pages, any message box. Then the console the installer
+        opens at the end, found by its command line and worked in where it is."""
+        import windows_screen as ws
+        before = {p["pid"] for p in ws.processes("cmd.exe")}
+        opener = threading.Thread(target=os.startfile, args=(str(self.downloads),), daemon=True)
+        opener.start()   # a security prompt blocks the call that opened the file, so it runs aside
+        seen: list[str] = []
+        asked: dict[int, tuple[str, float, int]] = {}
+        ran = False
+        started = time.monotonic()
+        while time.monotonic() - started < 30 * 60:
+            time.sleep(1)
+            setup = ws.setup_pids(self.downloads)
+            ran = ran or bool(setup)
+            for hwnd, title, pid in ws.top_windows():
+                if pid not in setup | {os.getpid()} and not any(s in title for s in ws.SMARTSCREEN):
+                    continue
+                try:
+                    shown = ws.form(hwnd, title)
+                except Exception:  # noqa: BLE001 - the window went while it was read
+                    continue
+                key = json.dumps(shown, sort_keys=True)
+                last = asked.get(hwnd)
+                if last and last[0] == key and (time.monotonic() - last[1] < 30 or last[2] >= 3):
+                    continue    # answered just now, or three times already: a click that never takes
+                if waiting_only(shown):
+                    if not last or last[0] != key:
+                        seen.append(f"{title}: {shown['text']}")
+                    asked[hwnd] = (key, float("inf"), 0)
+                    continue
+                choice = self.ask_window(shown)
+                clicked = ws.answer(hwnd, title, choice)
+                seen.append(f"{title}: {shown['text']} [{' | '.join(shown['buttons'])}] You click "
+                            f"{choice.get('button')!r}{'' if clicked else ' (there is no such button)'}.")
+                asked[hwnd] = (key, time.monotonic(), (last[2] + 1) if last and last[0] == key else 1)
+            if not opener.is_alive() and not setup and (ran or time.monotonic() - started > 90):
+                break
+        else:
+            self.notes.append({"kind": "broken", "lesson": self.current()["id"],
+                               "text": "(harness) the installer was still running after 30 minutes"})
+            self.say("harness", "the installer's windows:\n" + "\n".join(seen))
+            return "You double-click the download.\n" + "\n".join(seen) + "\nThe installer is still working after 30 minutes."
+        self.say("harness", "the installer's windows, as the persona saw and answered them:\n" + "\n".join(seen))
+        told = f"You double-click {self.downloads.name} in your Downloads folder.\n" + "\n".join(seen)
+        if not ran:
+            return told + "\nNothing installs."
+        self.outside.after_install()
+        console = None
+        for _ in range(90):
+            new = [p for p in ws.processes("cmd.exe") if p["pid"] not in before and "butler.cmd" in p["command"].lower()]
+            if new:
+                console = new[-1]
+                break
+            time.sleep(1)
+        log_file = BUTLER / "logs" / "install.log"
+        log = log_file.read_text(encoding="utf-8", errors="replace") if log_file.exists() else ""
+        if not console:
+            self.notes.append({"kind": "broken", "lesson": self.current()["id"],
+                               "text": "(harness) the installer finished, but no Butler window opened. install.log: " + log[-400:]})
+            return told + "\nThe installer closes. No other window opens."
+        self.say("harness", f"the window the installer opened runs: {console['command']}")
+        window = ws.ConsoleWindow(console["pid"])
+        self.windows.append(window)
+        index = len(self.windows) - 1
+        return told + f"\nA window opens (window {index}):\n" + self.after_screen(window.read(quiet=5.0, limit=600.0), index)
+
+    def start_menu_butler(self) -> str:
+        """Start, Butler: the shortcut the installer made, opened as a click opens it, and the
+        console it opens."""
+        import windows_screen as ws
+        link = (Path(os.environ.get("APPDATA") or HOME / "AppData" / "Roaming") / "Microsoft" / "Windows" / "Start Menu"
+                / "Programs" / "Butler.lnk")
+        if not link.exists():
+            return "Start menu: no app called Butler."
+        before = {p["pid"] for p in ws.processes("cmd.exe")}
+        os.startfile(str(link))
+        for _ in range(30):
+            new = [p for p in ws.processes("cmd.exe") if p["pid"] not in before and "butler.cmd" in p["command"].lower()]
+            if new:
+                window = ws.ConsoleWindow(new[-1]["pid"])
+                self.windows.append(window)
+                index = len(self.windows) - 1
+                return f"A new window opens (window {index}):\n" + self.after_screen(window.read(quiet=4.0, limit=300.0), index)
+            time.sleep(1)
+        self.notes.append({"kind": "broken", "lesson": self.current()["id"], "text": "(harness) Start, Butler opened no window"})
+        return "You click Butler in the Start menu. Nothing opens."
+
+    def install_mac(self) -> str:
+        """The package as Installer runs it, and the window its postinstall opens.
+
+        A hosted Mac's only screen session is the runner's admin's, so for the student's account
+        (standard, not at the screen) two things can't happen as on a student's Mac (tests/e2e/
+        standard-user.sh found both): Installer can't install into the account's home, since a
+        home-folder install needs a per-user installd that runs only in a screen session; and
+        Terminal can't open for the account. The closest real path: Installer is tried first, as
+        the account (it fails, and the run says so); then the account copies the package's
+        payload into its home and runs the package's own postinstall, as Installer does. The
+        postinstall decides what Terminal should open and logs it; the harness opens exactly that
+        .command in a login shell, typed the way Terminal types it."""
         p = subprocess.run(["installer", "-pkg", str(self.downloads), "-target", "CurrentUserHomeDirectory"],
                            capture_output=True, text=True)
-        if p.returncode != 0:
-            return f"Installer says: The installation failed. ({p.stderr.strip()[-300:]})"
+        if p.returncode == 0:
+            self.difference("Installer ran from the command line (the `installer` command), not Installer.app's "
+                            "windows, so the postinstall opened no Terminal; the harness opened what it would have")
+        else:
+            said = (p.stderr or p.stdout).strip()[-160:]
+            self.difference("Installer can't run for an account with no screen session (a hosted runner's only one is its "
+                            f"admin's: \"{said}\"). The student's account copied the package's payload into its home and ran "
+                            "the package's own postinstall, as Installer does")
+            expanded = events.FAKES / "package"
+            shutil.rmtree(expanded, ignore_errors=True)
+            subprocess.run(["pkgutil", "--expand-full", str(self.downloads), str(expanded)], check=True, capture_output=True)
+            component = next(expanded.glob("*.pkg/Payload")).parent
+            subprocess.run(["ditto", str(component / "Payload"), str(HOME)], check=True)
+            post = subprocess.run(["./postinstall", str(self.downloads), str(HOME)], cwd=component / "Scripts",
+                                  env={k: v for k, v in os.environ.items() if k != "COMMAND_LINE_INSTALL"},
+                                  capture_output=True, text=True)
+            if post.returncode != 0:
+                return f"Installer says: The installation failed. ({(post.stderr or post.stdout).strip()[-300:]})"
         self.outside.after_install()
-        opens = subprocess.run(["bash", "-c", f'. "{BUTLER}/scripts/lib/install.sh"; install_opens "$(install_state "{BUTLER}")"'],
-                               capture_output=True, text=True).stdout.strip() or "first-run.command"
-        first = self.open_window(["/bin/bash", str(BUTLER / "scripts" / opens)])
-        return (f"Installer: Continue, Continue, Install for me only, Install. \"The installation was completed "
-                f"successfully.\" A Terminal window opens (window {first}):\n" + self.windows[first].read(quiet=5.0, limit=600.0))
+        log_file = BUTLER / "logs" / "install.log"
+        opened = install_log_opened(log_file.read_text(errors="replace") if log_file.exists() else "")
+        if opened and opened[0]:
+            raise RuntimeError("the postinstall opened a real Terminal window, which the harness can't read: run the "
+                               "persona as an account that isn't at the screen (personas.yml does)")
+        if opened:
+            command = opened[1]
+            self.difference(f"Terminal couldn't open for the account (install.log: \"could not open Terminal with "
+                            f"{command}\"); the harness opened {command} in a login shell, typed as Terminal types it")
+        else:
+            command = subprocess.run(["bash", "-c", f'. "{BUTLER}/scripts/lib/install.sh"; install_opens "$(install_state "{BUTLER}")"'],
+                                     capture_output=True, text=True).stdout.strip() or "first-run.command"
+        first = self.open_window(["/bin/zsh", "-l"])
+        self.windows[first].type(terminal_types(str(BUTLER / "scripts" / command)))
+        return (f"You double-click {self.downloads.name}. Installer: Continue, Continue, Install for me only, Install. "
+                f"\"The installation was completed successfully.\" A Terminal window opens (window {first}):\n"
+                + self.after_screen(self.windows[first].read(quiet=5.0, limit=600.0), first))
+
+    def difference(self, what: str) -> None:
+        """Somewhere this run's path isn't a real student's: kept in run.json, and said as it happens."""
+        if what not in self.differences:
+            self.differences.append(what)
+            self.say("harness", f"differs from a real student: {what}")
 
     # ---------- Claude Code ----------
     async def claude_say(self, message: str, messages: list) -> str:
@@ -487,22 +724,32 @@ In this session, you will also:
                 return ("Claude Code is still asking: Do you trust the files in this folder?  ❯ 1. Yes, proceed   2. No, "
                         "exit\n(Nothing else can be typed until you answer.)")
             if message.strip().lower() in ("2", "no", "no, exit", "esc"):
-                self.claude_pending, self.trusted = False, False
+                self.claude_pending, self.trusted, self.claude_window = False, False, None
                 return "(Claude Code exits. The Terminal prompt is back.)"
             self.trusted = True
             trust_folder(BUTLER)
             message = ""
         if self.claude_pending and not self.claude:
+            # The Claude Code `butler claude` installed and started, with its mode. A student signs
+            # in with their Claude plan; the run uses its API key, given only to this session.
+            env = {k: v for k, v in self.env.items() if k.startswith("BUTLER_")}
+            if self.api_key:
+                env["ANTHROPIC_API_KEY"] = self.api_key
             options = ClaudeAgentOptions(
-                cwd=str(BUTLER), permission_mode=self.claude_mode, can_use_tool=self.permission(messages),
-                setting_sources=["project"], env={k: v for k, v in self.env.items() if k.startswith("BUTLER_")},
+                cli_path=self.claude_exe, cwd=str(BUTLER), permission_mode=self.claude_mode,
+                can_use_tool=self.permission(messages), setting_sources=["project"], env=env,
                 # A margin: Claude Code's last reply lands after its own check.
                 max_budget_usd=max(0.3, self.budget - self.spent() - 0.25), model=self.claude_model,
                 system_prompt={"type": "preset", "preset": "claude_code", "append": TEST_COMPUTER})
             self.claude = ClaudeSDKClient(options=options)
             await self.claude.connect()
-            (BUTLER / "data").mkdir(exist_ok=True)
-            (BUTLER / "data" / "claude-welcomed").touch()
+            if self.rehearse:   # free: the session is open on the real binary; nothing is asked of it
+                info = await self.claude.get_server_info() or {}
+                self.rehearsal["sdk_session"] = {"cli": self.claude_exe, "mode": self.claude_mode,
+                                                 "commands": len(info.get("commands", [])),
+                                                 "butler_setup": any(c.get("name") == "butler-setup" for c in info.get("commands", []))}
+                self.claude_pending = False
+                return f"(rehearsal: Claude Code is open through the Agent SDK: {self.rehearsal['sdk_session']})"
             opening = await self.claude_turn(self.claude_prompt)
             self.claude_pending = False
             if message.strip() in ("", "(look)"):
@@ -516,6 +763,9 @@ In this session, you will also:
             await self.claude.disconnect()
             self.claude_closed = self.cost["claude_code"]
             self.claude, self.claude_pending = None, False   # a folder is trusted once, as Claude Code keeps it
+            window, self.claude_window = self.claude_window, None
+            if window is not None and window < len(self.windows) and not self.windows[window].open:
+                return "(Claude Code closes, and with it what the window was running: it says [Process completed].)"
             return "(Claude Code closes. The Terminal prompt is back.)"
         return opening + await self.claude_turn(message)
 
@@ -601,7 +851,9 @@ In this session, you will also:
                     self.say("harness", f"window failed: {type(e).__name__}: {e}")
                     events.reply(name, {"button": "", "text": "", "ticked": []})
 
-    async def window(self, question: str) -> dict:
+    async def window(self, question: str, form: dict | None = None) -> dict:
+        if self.rehearse:     # the rehearsal's student clicks the way forward, and asks no one
+            return forward(form or {})
         snapshot = side_question(self.messages, question)
         try:
             response = await self.ask(snapshot, [WINDOW_TOOL], max_tokens=1500, effort="low")
@@ -614,13 +866,13 @@ In this session, you will also:
         if event["kind"] == "browser":
             screen, form = self.outside.browser(event["url"])
             if form:
-                answer = await self.window(self.describe(form, screen))
+                answer = await self.window(self.describe(form, screen), form)
                 result = await asyncio.to_thread(self.outside.google_answer, event["url"], answer)
                 screen += f"\nYou ticked {answer.get('ticked') or 'nothing'} and clicked {answer.get('button')!r}. {result}"
             events.reply(name, {})
             self.pending.append(screen)
         else:
-            answer = await self.window(self.describe(event))
+            answer = await self.window(self.describe(event), event)
             events.reply(name, answer)
             typed = " typed into the box and" if event.get("box") and answer.get("text") else ""
             self.pending.append(f"A window appeared: {event.get('title') or event.get('text')}. You{typed} clicked "
@@ -673,14 +925,149 @@ In this session, you will also:
             "replies_read": len(json.loads((events.FAKES / "imap-seen.json").read_text())) if (events.FAKES / "imap-seen.json").exists() else 0,
             "butler_claude_calls": self.outside.relay.calls,
             "google_connected": bool(self.outside.google.access),
+            # Claude Code came from `butler claude` itself (Anthropic's installer), not the harness.
+            "claude_code_installed_by_butler": not self.claude_installed_before and bool(self.claude_exe)
+                                               and Path(self.claude_exe).exists(),
+            "claude_code_cli": self.claude_exe,
+            "stand_in_ticks": self.stand_in_ticks,
         }
 
+    # ---------- Windows: the schedule ----------
+    stand_in_ticks = 0
+
+    def stand_in_scheduler(self) -> None:
+        """Butler's Windows tasks run only while the student is logged on at the screen. A hosted
+        runner can't log a second account on, so Task Scheduler takes the request to run them and
+        never does (267011, "has not yet run"). While that's so, the harness runs the tick task's
+        own action (its program, arguments and folder) as the account every five minutes, as
+        tests/e2e/windows-tick.ps1 does. If Task Scheduler runs it itself, this does nothing."""
+        import windows_screen as ws
+        last_ran = 0.0
+        while not self.done:
+            time.sleep(30)
+            try:
+                info = ws.task_info("\\Butler\\tick")
+                if not info or info.get("state") == "Running" or time.time() - last_ran < 5 * 60:
+                    continue
+                if info.get("result") != 267011 and time.time() - (info.get("last") or 0) < 10 * 60:
+                    continue    # Task Scheduler runs it
+                self.difference("Task Scheduler doesn't start the account's tasks (they run only while it's logged on at "
+                                "the screen, and a hosted runner can't log a second account on): the harness runs the tick "
+                                "task's own action as the account every five minutes instead")
+                last_ran = time.time()
+                subprocess.run([info["command"], *split_windows(info.get("arguments") or "")],
+                               cwd=info.get("folder") or str(BUTLER), capture_output=True, timeout=1800,
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                self.stand_in_ticks += 1
+            except Exception as e:  # noqa: BLE001 - a stand-in that fails is said, not fatal
+                self.say("harness", f"the stand-in for Task Scheduler failed: {type(e).__name__}: {e}")
+
+    # ---------- the free rehearsal ----------
+    PROMPTS = (("Name ›", ""), ("Press Enter to agree, or type no to stop ›", ""),
+               ("Type a number, or press Enter to skip ›", ""), ("Your email ›", "{email}"),
+               ("Weekly lesson email? Type yes, or press Enter for no ›", ""),
+               ("Is that right? Press Enter, or paste the line again ›", ""), ("Paste here ›", "{lesson}"),
+               ("Install Claude Code now? Press Enter for yes, or type no:", ""),
+               ("Type 1 or 2, or press Enter for Ask first:", ""))
+
+    async def act(self, name: str, **args) -> str:
+        self.say(f"rehearsal → {name}", "```json\n" + json.dumps(args, ensure_ascii=False) + "\n```")
+        out = await self.do(name, args, self.messages)
+        if self.pending:
+            out += "\n\n" + "\n\n".join(self.pending)
+            self.pending.clear()
+        self.say(f"screen ({name})", f"```\n{out[-6000:]}\n```")
+        return out
+
+    async def rehearse_run(self) -> None:
+        """A scripted student, no Claude API: downloads Butler as "Mr Pickles", opens it, answers the
+        installer's windows the way forward, does the first run in the window the installer
+        opened (signed in through the fake account API), types `butler claude`, lets Anthropic's
+        installer put Claude Code in, trusts the folder, and opens the Agent SDK session on that
+        binary without asking it anything. Then the daily schedule, from a new window."""
+        r = self.rehearsal
+        await self.act("on_screen", action="download_butler", what="", text="Mr Pickles")
+        screen = await self.act("on_screen", action="open_download", what="", text="")
+        r["installer_window"] = bool(self.windows)
+        if not self.windows:
+            return
+        window = len(self.windows) - 1
+        lessons = ['butler town "Lisbon"', "butler adults Sam Alex", "butler brief", "butler claude"]
+        clicked, deadline = False, time.monotonic() + 45 * 60
+        while not self.claude_pending and time.monotonic() < deadline and self.windows[window].open:
+            if "Waiting for your click" in screen and not clicked:
+                await self.act("on_screen", action="click_email_link", what="the link in the email", text="")
+                await self.act("on_screen", action="click_on_page", what="Yes, sign me in", text="Yes, sign me in")
+                clicked = True
+            lines = [line.strip() for line in screen.splitlines() if line.strip()]
+            reply = next((a for p, a in self.PROMPTS if lines and lines[-1].endswith(p)), None)
+            if reply is None:
+                screen = await self.act("terminal", action="look", text="", window=window)
+                continue
+            if reply == "{lesson}":
+                if not lessons:
+                    break
+                reply = lessons.pop(0)
+            screen = await self.act("terminal", action="type", text=reply.replace("{email}", self.email), window=window)
+        r["claude_started_by_butler"] = bool(self.claude_pending)
+        if self.claude_pending:
+            await self.act("claude_code", message="1")
+            await self.act("claude_code", message="/exit")
+        await self.rehearse_schedule()
+
+    async def rehearse_schedule(self) -> None:
+        """The daily schedule as the course has Claude set it up, typed into a new window: it
+        installs as the account, the tick runs, `butler status` counts it, and it comes out."""
+        log = BUTLER / "logs" / "butler.log"
+        lines = lambda: len(log.read_text(errors="replace").splitlines()) if log.exists() else 0  # noqa: E731
+        await self.act("terminal", action="new_window", text="", window=0)
+        w = len(self.windows) - 1
+        before = lines()
+        if WINDOWS:
+            python, run = BUTLER / ".venv" / "Scripts" / "python.exe", BUTLER / "run.py"
+            install, uninstall = f'& "{python}" -X utf8 "{run}" schedule install', f'& "{python}" -X utf8 "{run}" schedule uninstall'
+        else:
+            install, uninstall = f'"{BUTLER}/launchd/install.sh"', f'"{BUTLER}/launchd/uninstall.sh"'
+        await self.act("terminal", action="type", text=install, window=w)
+        deadline = time.monotonic() + 12 * 60
+        while lines() <= before and time.monotonic() < deadline:
+            await asyncio.sleep(10)
+        self.rehearsal["tick_ran"] = lines() > before
+        status = await self.act("terminal", action="type", text="butler status", window=w)
+        self.rehearsal["status_counts_schedule"] = bool(re.search(r"Done:\s+The daily schedule", status))
+        await self.act("terminal", action="type", text=uninstall, window=w)
+
+    def rehearsal_failures(self, checks: dict) -> list[str]:
+        """What the rehearsal must show, or the job fails."""
+        r = self.rehearsal
+        want = {
+            "installed": checks["installed"],
+            "named from the download (Mr Pickles)": checks["named"] == "Mr Pickles",
+            "the installer opened the window the first run ran in": r.get("installer_window"),
+            "signed in through the first run": checks["signed_in"],
+            "the Terms recorded": checks["terms_agreed"],
+            "a first brief": checks["first_brief"],
+            "Butler started Claude Code (data/claude-welcomed)": checks["claude_code_opened"],
+            "Claude Code installed by Anthropic's installer, through butler claude": checks["claude_code_installed_by_butler"],
+            "the Agent SDK opened that Claude Code": bool(r.get("sdk_session")),
+            "a standard account, not an admin": not self.account["admin"],
+            "a space in the account's home folder": " " in self.account["home"],
+            "the schedule's tick ran as the account": r.get("tick_ran"),
+            "butler status counts the schedule": r.get("status_counts_schedule"),
+            "no Python tracebacks on screen": checks["tracebacks"] == 0,
+        }
+        return [what for what, ok in want.items() if not ok]
+
     async def main(self) -> int:
+        self.loop = asyncio.get_running_loop()
         started = time.monotonic()
         self.messages = [{"role": "user", "content": "(starting)"}]
+        self.say("harness", f"account: {json.dumps(self.account)}")
         watcher = asyncio.create_task(self.watch())
+        if WINDOWS:
+            threading.Thread(target=self.stand_in_scheduler, daemon=True).start()
         try:
-            await self.persona_loop()
+            await (self.rehearse_run() if self.rehearse else self.persona_loop())
         except Exception as e:  # noqa: BLE001 - the run so far is still worth its report
             self.outcome = {"outcome": "harness_error", "why": f"{type(e).__name__}: {e}"}
             self.say("harness", f"stopped: {type(e).__name__}: {e}")
@@ -690,38 +1077,62 @@ In this session, you will also:
                     await self.claude.disconnect()
                 except Exception:  # noqa: BLE001
                     pass
+        self.done = True
         watcher.cancel()
-        try:
-            report = await self.report()
-        except Exception as e:  # noqa: BLE001 - the run is saved whatever happens here
-            report = {"findings": [], "how_it_felt": f"(report failed: {e})"}
-        result = {"persona": self.key, "name": self.persona["name"], "platform": self.platform, "seed": self.seed,
-                  "cards": self.cards, "outcome": self.outcome, "reached": self.current()["id"],
+        if self.rehearse:
+            report = {"findings": [], "how_it_felt": "(a rehearsal: a scripted student, no persona)"}
+        else:
+            try:
+                report = await self.report()
+            except Exception as e:  # noqa: BLE001 - the run is saved whatever happens here
+                report = {"findings": [], "how_it_felt": f"(report failed: {e})"}
+        checks = self.checks()
+        failures = self.rehearsal_failures(checks) if self.rehearse else []
+        if self.rehearse:
+            self.outcome = {"outcome": "rehearsed" if not failures else "rehearsal_failed",
+                            "why": "; ".join(failures) or "every step of the student's path worked"}
+        result = {"persona": self.key, "name": self.persona["name"], "platform": self.platform, "computer": self.computer,
+                  "seed": self.seed, "cards": self.cards, "outcome": self.outcome, "reached": self.current()["id"],
                   "lessons_total": len(self.lessons), "lessons_read": min(self.at + 1, len(self.lessons)), "notes": self.notes,
-                  "report": report, "checks": self.checks(),
+                  "report": report, "checks": checks, "account": self.account, "differences": self.differences,
+                  "rehearsal": self.rehearsal if self.rehearse else None,
                   "cost_usd": {k: round(v, 3) for k, v in {**self.cost, "butler_claude": self.outside.relay.cost,
                                                            "total": self.spent()}.items()},
                   "minutes": round((time.monotonic() - started) / 60, 1)}
         (self.out / "run.json").write_text(json.dumps(result, indent=2, ensure_ascii=False))
         (self.out / "transcript.md").write_text(
-            f"# {self.persona['name']} ({self.key}) on {self.platform}, run {self.seed}\n\nChoices: {self.cards}\n\n"
+            f"# {self.persona['name']} ({self.key}) on {self.computer}, run {self.seed}\n\nChoices: {self.cards}\n\n"
             + "\n".join(self.log), encoding="utf-8")
         for w in self.windows:
             w.close()
         self.api.stop()
         self.outside.stop()
-        print(json.dumps({k: result[k] for k in ("persona", "platform", "seed", "outcome", "reached", "cost_usd")}))
-        return 0
+        print(json.dumps({k: result[k] for k in ("persona", "computer", "seed", "outcome", "reached", "cost_usd")}))
+        return 1 if failures else 0
+
+
+def read_key(path: str | None) -> str:
+    """The run's Claude API key: from a file only the run's account can read (deleted once read), or
+    ANTHROPIC_API_KEY. Taken out of the environment either way."""
+    key = os.environ.pop("ANTHROPIC_API_KEY", "")
+    if path and Path(path).exists():
+        key = Path(path).read_text().strip() or key
+        Path(path).unlink()
+    return key
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--persona", required=True)
     parser.add_argument("--platform", choices=["mac", "windows"], required=True)
+    parser.add_argument("--computer", default="", help="The runner, for the report: mac, windows or windows-arm")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--lessons", required=True)
     parser.add_argument("--installer", required=True)
     parser.add_argument("--budget", type=float, default=6.0)
+    parser.add_argument("--key-file", default="", help="A file holding the Claude API key, deleted once read")
+    parser.add_argument("--rehearse", action="store_true",
+                        help="Free: a scripted student takes the path into Claude Code and the schedule; no Claude API")
     parser.add_argument("--claude-model", default="sonnet",
                         help="Claude Code's model, as a Pro-plan student gets it; empty for Claude Code's own default")
     parser.add_argument("--out", required=True)
