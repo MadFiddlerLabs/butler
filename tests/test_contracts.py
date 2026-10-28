@@ -320,6 +320,15 @@ class CourseContractTest(unittest.TestCase):
                 for line in block.splitlines():
                     self.assertNotRegex(line.strip(), r"^(cd|Set-Location)\b", f"{name}: {line.strip()}")
 
+    def test_progress_and_feedback_are_checked_not_guessed(self):
+        """Persona rounds 4 to 6: Claude told students a module was skipped, then "not ticked yet",
+        with no check; and /butler-tune looked for feedback sent a minute before, which Butler
+        reads only every five minutes."""
+        setup = " ".join(SKILLS["butler-setup"].split())
+        self.assertIn("Never say a module is done, not done, ticked or skipped from this conversation alone", setup)
+        self.assertIn("Run `bin/butler progress` first", setup)
+        self.assertIn("Butler reads replies every five minutes", " ".join(SKILLS["butler-tune"].split()))
+
     def test_no_skill_runs_the_whole_test_suite_in_a_household(self):
         """A persona (28 Oct) watched Claude start the whole suite at Module 7 and keep mentioning it:
         it takes over ten minutes and, without requirements-dev.txt, fails where nothing is wrong.
