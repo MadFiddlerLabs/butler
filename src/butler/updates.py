@@ -173,9 +173,20 @@ class Decision:
     entry: dict | None = None
 
 
+def update_mode(settings: dict) -> str:
+    """The household's `updates` setting: auto, notify or off. YAML reads a bare `off` or `no` as
+    false (and `on` as true), so those count as the words someone typed."""
+    mode = settings.get("updates", "auto")
+    if mode is False:
+        return "off"
+    if mode is True or mode is None:
+        return "auto"
+    return str(mode).strip().lower()
+
+
 def decide(settings: dict, manifest: dict, installed: str, ident: str) -> Decision:
     """What to do about the manifest, under the household's `updates` setting."""
-    mode = settings.get("updates", "auto")
+    mode = update_mode(settings)
     if mode == "off":
         return Decision("none", "updates are off")
     manifest = for_this_computer(manifest)
@@ -458,12 +469,17 @@ def _report(settings: dict | None, previous: str, new: str, outcome: str, reason
 
 def _roll_back(rollback_pkg: Path, previous: str) -> dict:
     """Reinstalls the kept package and runs its own checks. Never raises: a way back that fails
-    is reported, not lost."""
+    is reported, not lost. When Installer can't reinstall it but the old version is still what's
+    on disk (Installer never ran, or stopped before changing anything), the old version's own
+    checks decide: a household whose Butler still works isn't told to reinstall it."""
     try:
         install_package(rollback_pkg)
         back = post_install(previous)
     except UpdateError as e:
         back = {"ok": False, "problem": str(e)}
+        if installed_version() == previous:
+            checked = post_install(previous)
+            back = checked if checked.get("ok") else {"ok": False, "problem": f"{e}; then {checked.get('problem')}"}
     restored = installed_version()
     ok = bool(back.get("ok")) and restored == previous
     out = {"restored": restored, "restored_ok": ok}
@@ -519,7 +535,7 @@ def tick(settings: dict, now: datetime) -> None:
     if waiting and state.get("approved") == waiting.get("version"):
         _apply_logged(waiting, now)
         return
-    if settings.get("updates", "auto") == "off":
+    if update_mode(settings) == "off":
         return
     due = _check_day(now, int(settings.get("update_hour", 3)))
     if state.get("checked", "") >= due:

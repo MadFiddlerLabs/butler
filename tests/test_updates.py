@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
+import yaml
+
 from butler import account, migrations, system, update_report, updates
 from fakes.account_api import FakeAccountAPI
 
@@ -347,6 +349,30 @@ class ApplyTest(ApplySandbox):
                      "settings, data, projects and budget stay"):
             self.assertIn(part, text)
 
+    def test_an_installer_that_never_starts_leaves_the_old_version_working_and_says_so_calmly(self):
+        """Found by tests/e2e/standard-user.sh: Installer couldn't run at all (there, no installd for
+        an account without a screen session), so the reinstall failed too, and the household was
+        told Butler "may not run until it's reinstalled" while the old version sat untouched and
+        working. The old version's own checks decide."""
+        self.broken_installs.update({b"version one", b"version two"})
+        with mock.patch.object(updates, "post_install", return_value={"ok": True}) as post:
+            result = updates.apply(self.entry)
+        self.assertEqual(updates.installed_version(), "v0.1.0")
+        self.assertEqual((result["status"], result["restored"], result["restored_ok"]), ("rolled_back", "v0.1.0", True))
+        self.assertIn("disk is full", result["problem"])
+        post.assert_called_once_with("v0.1.0")
+        self.assertEqual(self.mailed, [], "nothing to fix, so no email")
+        self.assertIn("went back to v0.1.0", updates.brief_lines("Bento")[0])
+
+    def test_an_old_version_that_fails_its_checks_after_a_failed_reinstall_is_not_ok(self):
+        self.broken_installs.update({b"version one", b"version two"})
+        with mock.patch.object(updates, "post_install", return_value={"ok": False, "problem": "old is broken"}):
+            result = updates.apply(self.entry)
+        self.assertFalse(result["restored_ok"])
+        self.assertIn("disk is full", result["rollback_problem"])
+        self.assertIn("old is broken", result["rollback_problem"])
+        self.assertEqual(len(self.mailed), 1)
+
     def test_a_way_back_whose_own_check_fails_is_not_ok(self):
         answers = iter([{"ok": False, "problem": "new is broken"}, {"ok": False, "problem": "old is broken too"}])
         with mock.patch.object(updates, "post_install", side_effect=lambda prev: next(answers)):
@@ -572,6 +598,20 @@ class TickTest(Sandbox):
         with mock.patch.object(updates, "fetch_manifest") as fetch:
             updates.tick({"updates": "off"}, datetime(2026, 10, 12, 3, 0))
         fetch.assert_not_called()
+
+    def test_off_typed_in_the_settings_file_never_checks_either(self):
+        """Found by tests/e2e/update.sh: YAML reads a bare `updates: off` as false, which isn't
+        "off", so a household that turned updates off by hand (docs/UPDATES.md) still got them."""
+        for line in ("updates: off", "updates: Off", "updates: no", "updates: false"):
+            settings = yaml.safe_load(line)
+            with self.subTest(line=line), mock.patch.object(updates, "fetch_manifest") as fetch:
+                updates.tick(settings, datetime(2026, 10, 12, 3, 0))
+                fetch.assert_not_called()
+                self.assertEqual(updates.decide(settings, {"version": "v0.2.0"}, "v0.1.0", "x").action, "none")
+        for line in ("updates: on", "updates: yes", "updates: true"):
+            with self.subTest(line=line):
+                self.assertEqual(updates.decide(yaml.safe_load(line), {"version": "v0.2.0"}, "v0.1.0", "x").action,
+                                 "install", "on means the default, auto")
 
     def test_nothing_waiting(self):
         self.assertIn("no update waiting", updates.approve())
