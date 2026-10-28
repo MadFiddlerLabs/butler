@@ -243,12 +243,17 @@ class WindowsOnScreenTest(unittest.TestCase):
             self.assertIn("--title milk", self.world.app("Reminders"))
         self.assertFalse((HERE / "fakes" / "ek-calls.jsonl").exists(), "nothing left in the repo")
 
-    def test_a_refused_calendar_fails_like_the_real_helper(self):
+    def test_a_refused_calendar_fails_like_the_real_helper_until_system_settings_allows_it(self):
         thread = self.answer({"button": "Don't Allow", "text": "", "ticked": []})
         p = self.stub("butler_ek.py", "calendars")
         thread.join()
         self.assertEqual(p.returncode, 1)
         self.assertIn("no Calendar access", p.stderr)
+        if POSIX:   # the lesson's fix box: System Settings > Privacy & Security
+            said = self.world.privacy("Calendars and Reminders on")
+            self.assertIn("Calendar: butler-ek on; Reminders: butler-ek on", said)
+            self.answer().join()
+            self.assertEqual(self.stub("butler_ek.py", "calendars").returncode, 0)
 
     def test_tailscale_serve_needs_https_first(self):
         self.assertEqual(self.stub("tailscale.py", "status").returncode, 1, "not installed yet")

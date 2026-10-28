@@ -51,10 +51,10 @@ def side_question(messages: list, question: str) -> list:
 
 # The persona's conversation is trimmed once its screens pass this many characters: older screens
 # keep their first lines. Rarely, so the prompt cache is rebuilt only then: round 3 spent $5-6 a
-# persona rereading old screens. The recent messages are never trimmed (at most 8 screens of
-# 12,000 characters, so they alone can't set it off every turn).
-SCREENS_KEPT = 200_000
-RECENT = 16
+# persona rereading old screens. The recent messages are never trimmed (at most 6 screens of
+# 8,000 characters, so they alone can't set it off every turn).
+SCREENS_KEPT = 120_000
+RECENT = 12
 TRIMMED = "\n… (an earlier screen, trimmed)"
 
 
