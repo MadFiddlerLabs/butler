@@ -359,8 +359,8 @@ jobs:
             Write-Host "== $log"; Get-Content -ErrorAction SilentlyContinue "C:\Users\$env:BYB_USER\Butler\logs\$log" -Tail 60
           }
           foreach ($out in Get-ChildItem C:\byb\*.txt) { Write-Host "== $($out.Name)"; Get-Content $out -Tail 80 }
-      - name: Screenshots of anything the wizard got stuck on
-        if: failure()
+      - name: Screenshots of the installing page, and of anything the wizard got stuck on
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: wizard-screens-${{ matrix.os }}

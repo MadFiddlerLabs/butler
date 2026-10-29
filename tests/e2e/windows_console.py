@@ -138,6 +138,9 @@ def main(butler: Path) -> None:
                              f"sys.exit(0 if system.get_secret('butler-anthropic') == {TEST_KEY!r} else 1)"],
                             cwd=butler, env={**os.environ, "PYTHONPATH": str(butler / "src")})
     check("the key is in Credential Manager, as typed", stored.returncode == 0)
+    # Back as a first day has it: with this stand-in key, the scheduled tick's morning brief (due
+    # when CI runs after the brief's time) called Claude and logged a 401 (29 Oct 2026).
+    check("the stand-in key comes out again", bool(ctypes.WinDLL("advapi32").CredDeleteW("butler-anthropic", 1, 0)))
 
     # The first run's questions, answered at the keyboard: no to the Terms stops it.
     console = Console(cmd, home, env)
