@@ -340,6 +340,10 @@ jobs:
             schtasks /Query /TN "\Butler\$name" | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "no \Butler\$name task" }
           }
+          # Nothing listens there: the tick's update check may run against the live manifest, and
+          # an outcome from a CI build must never reach the website (update_report.py).
+          python tests\e2e\run_as.py --user $env:BYB_USER --password-env BYB_PASSWORD --out C:\byb\setx.txt -- 'setx BUTLER_API "http://127.0.0.1:9/api"'
+          if ($LASTEXITCODE -ne 0) { throw "BUTLER_API couldn't be set for BYB Test" }
           $before = if (Test-Path "$b\logs\butler.log") { (Get-Content "$b\logs\butler.log").Count } else { 0 }
           pwsh tests\e2e\windows-tick.ps1 -User $env:BYB_USER -Out C:\byb\tick.txt
           if ($LASTEXITCODE -ne 0) { throw "the tick, as BYB Test, exited $LASTEXITCODE" }
