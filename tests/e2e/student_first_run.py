@@ -128,6 +128,9 @@ def main() -> None:
         w.expect("Hello! I'm Bento, your new butler.", limit=60)
         w.expect("Name ›")
         w.type("")                                   # keep the name from the package
+        w.expect("Module 0's video, Your first two minutes, is here:")   # BUTLER_NO_OPEN: shown, not opened
+        w.expect("Press Enter when you're ready ›")
+        w.type("")
         w.expect("By continuing, you agree to the Terms")
         w.expect("Press Enter to agree")
         w.type("")
@@ -153,6 +156,9 @@ def main() -> None:
         w.expect("Your brief is ready:", limit=300)
         w.expect("Paste here ›")
         w.type("butler claude")
+        w.expect("Module 1's video, Meet Claude Code, is here:")
+        w.expect("Press Enter when you're ready ›")
+        w.type("")
         # Not installed yet for this account: the real installer, in this window.
         w.expect("Install Claude Code now?")
         w.type("")

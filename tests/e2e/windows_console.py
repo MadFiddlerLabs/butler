@@ -151,6 +151,8 @@ def main(butler: Path) -> None:
         console.wait_for(f"Hello! I'm {name}, your new butler.")
         console.wait_for("Name › ")
         console.type("")
+        console.wait_for("Press Enter when you're ready › ")   # Module 0's video (BUTLER_NO_OPEN: shown)
+        console.type("")
         console.wait_for("Press Enter to agree, or type no to stop › ", seconds=180)
         console.type("no")
         console.wait_for("Nothing has been sent anywhere.")
