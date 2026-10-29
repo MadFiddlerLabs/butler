@@ -28,6 +28,7 @@ vitals() {
   } >> "$folder/vitals.log" 2>&1
 }
 
+# shellcheck disable=SC2024  # the copies are the runner's, written as the runner: only the reads need root
 snapshot() {
   sudo -n cp "$shared/out/live.md" "$folder/snapshot/" 2>/dev/null
   sudo -n cp "$shared/admin.log" "$folder/snapshot/" 2>/dev/null
