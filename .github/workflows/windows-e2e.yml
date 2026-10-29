@@ -2,8 +2,10 @@
 # bootstrap.ps1 brings the pinned uv, its Python and the locked packages; the first preview
 # builds a brief that sends nothing; and the Task Scheduler tasks install, run and come out.
 # A second job builds the installer and installs, upgrades and uninstalls it. A third updates an
-# installed Butler over the air, with signed test installers (tests/e2e/update.ps1). A fourth
-# installs as a new standard account on Windows 11 on ARM, as on the owner's test PC.
+# installed Butler over the air, with signed test installers (tests/e2e/update.ps1). Two more
+# do what a student does, as a new standard account, on ARM and x64: download, wizard, first
+# run, `butler claude`, the schedule (standard-user), and an update through the tick
+# (standard-user-update).
 # No secrets: the brief leaves out the parts Claude writes, as it does before a key is stored.
 name: windows-e2e
 
@@ -200,14 +202,22 @@ jobs:
           if ((Get-Content -Raw "$b\data\household_notes.md").Trim() -ne "- a note") { throw "the household's notes went" }
 
   standard-user:
-    # The owner's test PC (28 Oct 2026): Windows 11 on ARM, a standard account with a space in
-    # its name, no admin rights. The installer job above runs as the runner's admin; this installs
-    # the same installer as "BYB Test", a new standard account, and opens the window a household's
-    # install opens, as that account. tests/e2e/run_as.py runs each step as the account, with its
-    # own profile and environment. The password is made here, masked, and dies with the runner.
+    # The owner's test PC (28 Oct 2026): Windows 11, a standard account with a space in its name,
+    # no admin rights, the installer double-clicked from Downloads. On ARM, as theirs is, and on x64.
+    # What a student does runs as "BYB Test", a new standard account, through tests/e2e/run_as.py
+    # (its own profile and environment), with two exceptions a hosted runner forces, each labelled
+    # below: the wizard's pages are clicked as the runner's account (BYB Test has no desktop of its
+    # own), and the tick runs as BYB Test but isn't launched by Task Scheduler (BYB Test is never
+    # logged on; tests/e2e/windows-tick.ps1). The password is made here, masked, and dies with
+    # the runner.
     needs: installer
-    runs-on: windows-11-arm
-    timeout-minutes: 30
+    name: standard-user (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-11-arm, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     env:
       BYB_USER: BYB Test
     steps:
@@ -229,12 +239,11 @@ jobs:
           New-LocalUser -Name $env:BYB_USER -Password (ConvertTo-SecureString $pw -AsPlainText -Force) -PasswordNeverExpires -AccountNeverExpires | Out-Null
           Add-LocalGroupMember -Group Users -Member $env:BYB_USER
           if ((Get-LocalGroupMember Administrators).Name -contains "$env:COMPUTERNAME\$env:BYB_USER") { throw "BYB Test is an admin" }
-          Rename-Item C:\byb\Butler-Setup.exe Bento.exe
           Copy-Item -Recurse tests C:\byb\tests
           # The account reads the installer, the test scripts and this Python, and writes its output here.
           icacls C:\byb /grant "${env:BYB_USER}:(OI)(CI)M" | Out-Null
+          python -m pip install --disable-pip-version-check pywinpty==3.0.5 pywinauto==0.6.9 pillow==11.3.0
           icacls $env:pythonLocation /grant "${env:BYB_USER}:(OI)(CI)RX" /T /C /Q | Out-Null
-          python -m pip install --disable-pip-version-check pywinpty==3.0.5
           [Environment]::OSVersion.Version; $env:PROCESSOR_ARCHITECTURE
       - name: It really is the account, without admin rights
         shell: pwsh
@@ -245,39 +254,58 @@ jobs:
           if ($who -notmatch "C:\\Users\\BYB Test") { throw "not BYB Test's own profile" }
           if ($who -match "S-1-5-32-544") { throw "BYB Test has the Administrators group" }
           if ($who -notmatch "Medium Mandatory Level") { throw "not a standard (medium) process" }
-      - name: BYB Test installs Butler
+      - name: BYB Test installs from its download, "Mr Pickles (1).exe", and the installer's window opens
+        # As BYB Test: the download (with the Mark of the Web), the install, and then the step the
+        # installer runs after copying when it isn't silent, which opens the first run's window.
+        # The wizard's pages are clicked in the next step, as the runner's account: a second account
+        # gets no desktop of its own on a hosted runner, and opening a file there (ShellExecute) as
+        # BYB Test hung with no window at all.
         shell: pwsh
         run: |
-          python tests\e2e\run_as.py --user $env:BYB_USER --password-env BYB_PASSWORD --out C:\byb\install-out.txt --timeout 900 -- 'C:\byb\Bento.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=C:\byb\install.txt'
-          $code = $LASTEXITCODE
+          $exe = "C:\byb\Mr Pickles (1).exe"
+          Copy-Item C:\byb\Butler-Setup.exe $exe
+          Set-Content -Path $exe -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3`r`nHostUrl=https://buildyourbutler.com/files/Butler-latest.exe"
+          python tests\e2e\run_as.py --user $env:BYB_USER --password-env BYB_PASSWORD --out C:\byb\install-out.txt --timeout 900 -- '"C:\byb\Mr Pickles (1).exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=C:\byb\install.txt'
+          if ($LASTEXITCODE -ne 0) { Get-Content -ErrorAction SilentlyContinue C:\byb\install.txt -Tail 40; throw "the installer exited $LASTEXITCODE" }
           $b = "C:\Users\$env:BYB_USER\Butler"
-          if ($code -ne 0) { Get-Content -ErrorAction SilentlyContinue C:\byb\install.txt -Tail 40; throw "the installer exited $code" }
           if (-not (Test-Path "$b\.venv\Scripts\python.exe")) { throw "no Python in $b\.venv" }
-          if ((Get-Content -Raw "$b\.butler-name").Trim() -ne "Bento") { throw "not named from the installer's filename" }
-          if ((Get-Content -Raw "$b\logs\install.log") -notmatch "installed \(fresh\), silently") { throw "install.log doesn't say what happened" }
-      - name: The window BYB Test's install opens runs the first run
-        # As after a double-click: the installer's step after copying, not silent.
+          if ((Get-Content -Raw "$b\.butler-name").Trim() -ne "Mr Pickles") { throw "not named from the download's filename: $(Get-Content -Raw "$b\.butler-name")" }
+          python tests\e2e\run_as.py --user $env:BYB_USER --password-env BYB_PASSWORD --out C:\byb\installed.txt --timeout 120 -- '"%USERPROFILE%\Butler\.venv\Scripts\python.exe" -X utf8 "%USERPROFILE%\Butler\run.py" installed --installer "C:\byb\Mr Pickles (1).exe"'
+          if ($LASTEXITCODE -ne 0) { throw "the step after installing exited $LASTEXITCODE" }
+          if ((Get-Content -Raw "$b\logs\install.log") -notmatch "installed \(fresh\): opened a console with butler setup") { throw "the install didn't open the first run" }
+          pwsh tests\e2e\windows-first-window.ps1 -Butler $b -User $env:BYB_USER
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: The real wizard, double-clicked and clicked through (as the runner's account)
+        # tests/e2e/windows_wizard.py: "Mr Pickles (1).exe" with the Mark of the Web, opened as a
+        # double-click opens it, every page clicked. No /VERYSILENT. As the runner's own account,
+        # into its own profile: the one part of this job that isn't BYB Test (see the step above).
+        # x64 only: the ARM runner's screen sits on Windows' first-start privacy page, so no click
+        # reaches a window there (screenshot, 28 Oct 2026). ARM still installs as BYB Test above.
+        if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
+          python -X utf8 tests\e2e\windows_wizard.py C:\byb\Butler-Setup.exe
+          if ($LASTEXITCODE -ne 0) { throw "the wizard didn't finish" }
+          $b = "$env:USERPROFILE\Butler"
+          if ((Get-Content -Raw "$b\.butler-name").Trim() -ne "Mr Pickles") { throw "not named from the download's filename: $(Get-Content -Raw "$b\.butler-name")" }
+          Get-Content "$b\logs\install.log"
+          if ((Get-Content -Raw "$b\logs\install.log") -notmatch "installed \(fresh\): opened a console with butler setup") { throw "the wizard's install didn't open the first run" }
+          pwsh tests\e2e\windows-first-window.ps1 -Butler $b -User $env:USERNAME
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Butler's packages are built for this machine (win_arm64 wheels on ARM)
+        shell: pwsh
+        run: |
+          python tests\e2e\run_as.py --user $env:BYB_USER --password-env BYB_PASSWORD --out C:\byb\arch.txt -- '"%USERPROFILE%\Butler\.venv\Scripts\python.exe" -c "import platform, sysconfig; print(platform.machine(), sysconfig.get_platform())"'
           $b = "C:\Users\$env:BYB_USER\Butler"
-          python tests\e2e\run_as.py --user $env:BYB_USER --password-env BYB_PASSWORD --out C:\byb\installed.txt --timeout 120 -- '"%USERPROFILE%\Butler\.venv\Scripts\python.exe" -X utf8 "%USERPROFILE%\Butler\run.py" installed --installer C:\byb\Bento.exe'
-          if ($LASTEXITCODE -ne 0) { throw "the step after installing exited $LASTEXITCODE" }
-          Get-Content "$b\logs\install.log" -Tail 1
-          $deadline = (Get-Date).AddSeconds(60)
-          do {
-            Start-Sleep -Seconds 1
-            $setup = Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" | Where-Object { $_.CommandLine -match 'run\.py" cli setup\s*$' }
-          } until (($setup -and (Test-Path "$b\data\first-run-started")) -or (Get-Date) -gt $deadline)
-          Get-CimInstance Win32_Process -Filter "Name = 'python.exe' or Name = 'cmd.exe'" | ForEach-Object {
-            [pscustomobject]@{ Id = $_.ProcessId; User = (Invoke-CimMethod -InputObject $_ -MethodName GetOwner).User; CommandLine = $_.CommandLine }
-          } | Format-Table -AutoSize -Wrap
-          if (-not $setup) { throw "the window isn't running butler setup" }
-          if ((Invoke-CimMethod -InputObject $setup[0] -MethodName GetOwner).User -ne $env:BYB_USER) { throw "butler setup isn't running as BYB Test" }
-          if (-not (Test-Path "$b\data\first-run-started")) { throw "butler setup didn't start the first run within 60 seconds" }
-          $window = Get-CimInstance Win32_Process -Filter "ProcessId = $($setup[0].ParentProcessId)"
-          while ($window -and $window.Name -ne "cmd.exe") { $window = Get-CimInstance Win32_Process -Filter "ProcessId = $($window.ParentProcessId)" }
-          if ($window) { taskkill /T /F /PID $window.ProcessId | Out-Null }
-          Remove-Item "$b\data\first-run-started"
+          $venv = "$((Get-Item "$b\.venv").Target)"
+          $pyd = @(Get-ChildItem -Recurse -Filter *.pyd "$venv\Lib\site-packages" | Select-Object -ExpandProperty Name)
+          $arm = @($pyd | Where-Object { $_ -match "win_arm64" }); $x64 = @($pyd | Where-Object { $_ -match "win_amd64" })
+          Write-Host "compiled modules: $($pyd.Count); win_arm64: $($arm.Count); win_amd64: $($x64.Count)"
+          $arch = Get-Content -Raw C:\byb\arch.txt
+          if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") {
+            if ($arch -notmatch "ARM64 win-arm64") { throw "Butler's Python isn't ARM64: $arch" }
+            if ($x64.Count -gt 0 -or $arm.Count -eq 0) { throw "x64 wheels on ARM: $($x64 -join ', ')" }
+          } elseif ($arch -notmatch "AMD64 win-amd64") { throw "Butler's Python isn't x64: $arch" }
       - name: BYB Test types into a real console
         # tests/e2e/windows_console.py, as the account: `butler` from a new window, a key typed
         # hidden into BYB Test's Credential Manager, and `butler setup`'s questions.
@@ -285,13 +313,93 @@ jobs:
         run: |
           python tests\e2e\run_as.py --user $env:BYB_USER --password-env BYB_PASSWORD --out C:\byb\console.txt --timeout 900 -- "`"$env:pythonLocation\python.exe`" -X utf8 C:\byb\tests\e2e\windows_console.py `"%USERPROFILE%\Butler`""
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: A computer without Git, as a household's is
+        # The runner has Git for Windows; a student's computer doesn't. Claude Code is installed
+        # and opened without it. Put back at the end, for the runner's own clean-up.
+        shell: pwsh
+        run: Rename-Item "$env:ProgramFiles\Git" Git.hidden
+      - name: BYB Test runs butler claude for real
+        # Anthropic's installer, then Claude Code's first screen, in the same window. No key, no cost.
+        shell: pwsh
+        run: |
+          python tests\e2e\run_as.py --user $env:BYB_USER --password-env BYB_PASSWORD --out C:\byb\claude.txt --timeout 1200 -- "`"$env:pythonLocation\python.exe`" -X utf8 C:\byb\tests\e2e\windows_claude.py `"%USERPROFILE%\Butler`""
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Git back
+        if: always()
+        shell: pwsh
+        run: if (Test-Path "$env:ProgramFiles\Git.hidden") { Rename-Item "$env:ProgramFiles\Git.hidden" Git }
+      - name: BYB Test installs the schedule, and its tick runs
+        # As /butler-setup inbox has Claude run it: Task Scheduler, no admin rights. Then the tick,
+        # as BYB Test (tests/e2e/windows-tick.ps1 says why the runner starts it by hand).
+        shell: pwsh
+        run: |
+          $b = "C:\Users\$env:BYB_USER\Butler"
+          python tests\e2e\run_as.py --user $env:BYB_USER --password-env BYB_PASSWORD --out C:\byb\schedule.txt --cwd $b -- '.venv\Scripts\python.exe -X utf8 run.py schedule install'
+          if ($LASTEXITCODE -ne 0) { throw "schedule install exited $LASTEXITCODE" }
+          foreach ($name in "tick", "morning", "portal") {
+            schtasks /Query /TN "\Butler\$name" | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "no \Butler\$name task" }
+          }
+          # Nothing listens there: the tick's update check may run against the live manifest, and
+          # an outcome from a CI build must never reach the website (update_report.py).
+          python tests\e2e\run_as.py --user $env:BYB_USER --password-env BYB_PASSWORD --out C:\byb\setx.txt -- 'setx BUTLER_API "http://127.0.0.1:9/api"'
+          if ($LASTEXITCODE -ne 0) { throw "BUTLER_API couldn't be set for BYB Test" }
+          $before = if (Test-Path "$b\logs\butler.log") { (Get-Content "$b\logs\butler.log").Count } else { 0 }
+          pwsh tests\e2e\windows-tick.ps1 -User $env:BYB_USER -Out C:\byb\tick.txt
+          if ($LASTEXITCODE -ne 0) { throw "the tick, as BYB Test, exited $LASTEXITCODE" }
+          $lines = @(Get-Content "$b\logs\butler.log")
+          if ($lines.Count -le $before) { throw "the tick wrote nothing to butler.log" }
+          $lines[$before..($lines.Count - 1)] | Out-Host
+          if ($lines[$before..($lines.Count - 1)] -cmatch "Traceback| ERROR ") { throw "the tick logged an error" }   # -cmatch: "HTTP Error 404" in a WARNING is no error
       - name: BYB Test's logs
         if: always()
         shell: pwsh
         run: |
-          foreach ($log in "install.log", "bootstrap.log", "setup.log") {
+          foreach ($log in "install.log", "bootstrap.log", "setup.log", "scheduled.log", "butler.log") {
             Write-Host "== $log"; Get-Content -ErrorAction SilentlyContinue "C:\Users\$env:BYB_USER\Butler\logs\$log" -Tail 60
           }
+          foreach ($out in Get-ChildItem C:\byb\*.txt) { Write-Host "== $($out.Name)"; Get-Content $out -Tail 80 }
+      - name: Screenshots of anything the wizard got stuck on
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wizard-screens-${{ matrix.os }}
+          path: C:\byb\*.png
+          if-no-files-found: ignore
+
+  standard-user-update:
+    # An update as a household's computer gets it: "BYB Test", a standard account, installs
+    # v0.0.1, and its own scheduled tick finds v0.0.2 and installs it (tests/e2e/windows-signed-
+    # update.ps1). The installers are signed by a test certificate in Butler's publisher's name.
+    # Trusting that certificate machine-wide is the one admin step, done here by the runner's
+    # admin: a student never does it, since a real certificate authority is already trusted.
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Inno Setup 6 (the runner image has it; installed only if it doesn't)
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+      - name: v0.0.1 and v0.0.2, signed by a test certificate the machine trusts
+        shell: pwsh
+        run: |
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=Andrew Edmond, O=Andrew Edmond" -CertStoreLocation Cert:\CurrentUser\My -NotAfter (Get-Date).AddDays(2)
+          Export-Certificate -Cert $cert -FilePath "$env:RUNNER_TEMP\test.cer" | Out-Null
+          Import-Certificate -FilePath "$env:RUNNER_TEMP\test.cer" -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
+          Import-Certificate -FilePath "$env:RUNNER_TEMP\test.cer" -CertStoreLocation Cert:\LocalMachine\TrustedPublisher | Out-Null
+          foreach ($v in "v0.0.1", "v0.0.2") {
+            powershell -ExecutionPolicy Bypass -File packaging\windows\build-installer.ps1 -Version $v -Out "$env:RUNNER_TEMP\$v"
+            if ($LASTEXITCODE -ne 0) { throw "building $v failed" }
+            $sig = Set-AuthenticodeSignature -FilePath "$env:RUNNER_TEMP\$v\Butler-Setup.exe" -Certificate $cert -HashAlgorithm SHA256
+            if ($sig.Status -ne "Valid") { throw "signing $v gave $($sig.Status)" }
+          }
+      - name: BYB Test's Butler updates itself, through its scheduled tick
+        shell: pwsh
+        run: pwsh tests\e2e\windows-signed-update.ps1 -Old "$env:RUNNER_TEMP\v0.0.1\Butler-Setup.exe" -OldVersion v0.0.1 -New "$env:RUNNER_TEMP\v0.0.2\Butler-Setup.exe" -NewVersion v0.0.2
 
   updates:
     # Over the air, as tests/e2e/update.sh does on a Mac: an update, two rollbacks and three

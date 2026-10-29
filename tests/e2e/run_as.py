@@ -86,6 +86,8 @@ def main() -> int:
     command = f'({" ".join(words)}) > "{out}" 2>&1'
     code = run_as(a.user, os.environ[a.password_env], command, a.cwd or str(out.parent), a.timeout)
     if out.exists():
+        # The runner's console is cp1252: Claude Code's installer prints "‼" (28 Oct 2026).
+        sys.stdout.reconfigure(errors="replace")
         sys.stdout.write(out.read_text(encoding="utf-8", errors="replace"))
     print(f"[run_as: exit {code}{' (timed out)' if code == 124 else ''}]", flush=True)
     return code
