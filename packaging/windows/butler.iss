@@ -47,7 +47,10 @@ UninstallDisplayName=Butler
 UninstallFilesDir={app}\.uninstall
 
 [Files]
-Source: "{#Source}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "{#Source}\*"; DestDir: "{app}"; Excludes: "\scripts\bootstrap.ps1"; Flags: recursesubdirs createallsubdirs ignoreversion
+; Copied last, and then it runs: Butler's Python (GetPython), before any [Run] step. Setup runs
+; [Run] before CurStepChanged(ssPostInstall), so that was too late (#98's first CI run).
+Source: "{#Source}\scripts\bootstrap.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion; AfterInstall: GetPython
 
 [Icons]
 ; cmd /k keeps the path's own quotes only in simple cases, so the line goes in one more pair, as
@@ -59,8 +62,7 @@ Name: "{userprograms}\Butler"; Filename: "{cmd}"; Parameters: "/k """"{app}\bin\
 Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}\bin"; Check: NeedsAddPath(ExpandConstant('{app}\bin'))
 
 [Run]
-; Butler's Python comes first, from CurStepChanged(ssPostInstall) below, so the wizard can show
-; each step as it happens.
+; Butler's Python is already there: GetPython ran as the last file was copied ([Files]).
 Filename: "{app}\.venv\Scripts\python.exe"; Parameters: "-X utf8 ""{app}\run.py"" installed --installer ""{srcexe}"" --silent"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; Check: WizardSilent and HasPython
 Filename: "{app}\.venv\Scripts\python.exe"; Parameters: "-X utf8 ""{app}\run.py"" installed --installer ""{srcexe}"""; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; Check: (not WizardSilent) and HasPython
 
@@ -108,8 +110,6 @@ end;
 // An install without Python says so and fails (exit code 9), instead of finishing quietly.
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  if CurStep = ssPostInstall then
-    GetPython;
   if (CurStep = ssDone) and not HasPython then
     SuppressibleMsgBox('Butler couldn''t get its Python, so it isn''t ready yet. Check the internet connection and run this installer again. ' +
       'What went wrong is in ' + ExpandConstant('{app}\logs\bootstrap.log') + '.', mbError, MB_OK, IDOK);

@@ -715,7 +715,9 @@ class LockTest(unittest.TestCase):
         self.assertRegex(installer, r"ExecAndLogOutput\([^;]*bootstrap\.ps1[^;]*@BootstrapLine\)")
         self.assertIn("npbstMarquee", installer)
         self.assertIn("logs\\bootstrap.log'), S + #13#10, True)", installer)
-        self.assertRegex(installer, r"CurStep = ssPostInstall then\s+GetPython")
+        self.assertRegex(installer, r'(?m)^Source: "\{#Source\}\\scripts\\bootstrap\.ps1".*AfterInstall: GetPython$',
+                         "after the last file and before [Run], whose steps need the Python")
+        self.assertRegex(installer, r'(?m)^Source: "\{#Source\}\\\*".*Excludes: "\\scripts\\bootstrap\.ps1"')
         self.assertNotIn("bootstrap.ps1", installer.split("[Run]")[1].split("[Code]")[0], "not also from [Run]")
 
     def test_ci_tests_the_locked_packages_and_checks_the_lock(self):
