@@ -350,7 +350,7 @@ jobs:
           $lines = @(Get-Content "$b\logs\butler.log")
           if ($lines.Count -le $before) { throw "the tick wrote nothing to butler.log" }
           $lines[$before..($lines.Count - 1)] | Out-Host
-          if ($lines[$before..($lines.Count - 1)] -match "Traceback|ERROR") { throw "the tick logged an error" }
+          if ($lines[$before..($lines.Count - 1)] -cmatch "Traceback| ERROR ") { throw "the tick logged an error" }   # -cmatch: "HTTP Error 404" in a WARNING is no error
       - name: BYB Test's logs
         if: always()
         shell: pwsh

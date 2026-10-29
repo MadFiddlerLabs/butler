@@ -483,7 +483,7 @@ class LaunchdInstallTest(unittest.TestCase):
         for label in ("butler", "morning", "portal"):
             plist = (agents / f"com.buildyourbutler.{label}.plist").read_text()
             self.assertIn(f"<string>{root}/run.sh</string>", plist)
-            self.assertNotIn("__", plist)
+            self.assertNotRegex(plist, r"__[A-Z_]+__")   # an unfilled placeholder; a temp folder may hold "__"
             self.assertIn(f"bootstrap gui/{os.getuid()} {agents}/com.buildyourbutler.{label}.plist",
                           (tmp / "launchctl.txt").read_text())
 
