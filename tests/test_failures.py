@@ -135,6 +135,74 @@ class NotConnectedYetTest(Case):
         self.assertNotIn("money failed", log)
 
 
+class WrongClaudeKeyTest(Case):
+    """The butler's Claude key is wrong (a typo, or a key since deleted). The brief goes out with the
+    feeds' own headlines, and the log says so in one plain line with the fix, every morning, not a
+    traceback that buries it."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.home = Home()
+        cls.record = cls.home.run("daily", down=("claude-key",))
+
+    def test_the_brief_says_claude_refused_the_key(self):
+        text = self.brief(self.record)["text"]
+        self.assertIn("City extends metro night service", text)
+        problems = self.problems(text)
+        self.assertIn("news shown unedited (Claude didn't accept your butler's API key)", problems)
+        self.assertIn("couldn't flag events to prepare for (Claude didn't accept your butler's API key)", problems)
+
+    def test_the_log_says_so_in_one_line_with_the_fix(self):
+        log = self.home.log()
+        self.assertIn("news selection failed: Claude didn't accept your butler's API key. "
+                      "Store a new one with: butler secret butler-anthropic", log)
+        self.assertIn("prep failed: Claude didn't accept your butler's API key.", log)
+        self.assertNotIn("Traceback", log)
+        self.assertNotIn("invalid x-api-key", log)
+        self.assert_no_secrets()
+
+    def test_butler_doctor_says_what_to_do(self):
+        from butler import doctor
+        (what, fix), = doctor.log_problems(self.home.log().splitlines())
+        self.assertIn("Claude refused your butler's API key", what)
+        self.assertIn("butler-anthropic", fix)
+
+
+class ClaudeTroubleTest(unittest.TestCase):
+    """Each way Claude says no, in the words the brief and the log use. Anything else is a bug."""
+
+    def error(self, cls, message: str, status: int | None = None):
+        """As the SDK raises it (the fakes build theirs the same way), without a real response."""
+        error = cls.__new__(cls)
+        Exception.__init__(error, message)
+        if status:
+            error.status_code = status
+        return error
+
+    def test_each_answer(self):
+        import anthropic
+        from butler import llm
+        cases = [
+            (self.error(anthropic.AuthenticationError, "invalid x-api-key", 401), "Claude didn't accept your butler's API key"),
+            (self.error(anthropic.BadRequestError, "Your credit balance is too low to access the Anthropic API.", 400),
+             "Claude's account is out of credit"),
+            (self.error(anthropic.InternalServerError, "Overloaded", 529), "Claude API error 529"),
+            (self.error(anthropic.APIConnectionError, "Connection error."), "couldn't reach Claude"),
+            (KeyError("stories"), None),
+        ]
+        for e, words in cases:
+            self.assertEqual(llm.trouble(e), words, type(e).__name__)
+
+    def test_a_bug_still_logs_its_traceback(self):
+        from butler import llm
+        with self.assertLogs("butler", "ERROR") as logs:
+            try:
+                {}["stories"]
+            except KeyError as e:
+                llm.log_failure("news selection", e)
+        self.assertIn("Traceback", "\n".join(logs.output))
+
+
 class ClaudeNotConnectedYetTest(Case):
     """Before Module 4 stores the butler's Claude key, the brief lists Claude as not connected yet
     (lesson 4.5 says the note stops listing it), with the feeds' own headlines, and no problem."""

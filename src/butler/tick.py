@@ -8,7 +8,7 @@ import sys
 
 from datetime import date, datetime, timedelta
 
-from . import daily, mailer, monthly, progress, replies, system, updates, weekly
+from . import daily, llm, mailer, monthly, progress, replies, system, updates, weekly
 from .config import ROOT, NotSetUp, brand, load_settings, tz
 from .fmt import strftime
 
@@ -33,8 +33,8 @@ def main() -> None:
         replies.process(load_settings())
     except NotSetUp as e:
         log.info("replies: %s", e)       # Gmail isn't connected yet: normal during setup, every 5 minutes
-    except Exception:
-        log.exception("replies failed")  # never let replies block the brief
+    except Exception as e:
+        llm.log_failure("replies", e)  # never let replies block the brief
     try:
         settings = load_settings()
         updates.tick(settings, datetime.now(tz(settings)))
@@ -44,8 +44,8 @@ def main() -> None:
     for name, letter in (("weekly letter", _weekly_if_due), ("monthly look-back", _monthly_if_due)):
         try:
             letter()
-        except Exception:
-            log.exception("%s failed", name)  # never let a letter block the brief
+        except Exception as e:
+            llm.log_failure(name, e)  # never let a letter block the brief
     sys.argv = [sys.argv[0], "--scheduled"]
     daily.main()
 
@@ -70,10 +70,10 @@ def _weekly_if_due() -> None:
     try:
         weekly.run(settings, day, dry_run=False, late=_late_note("letter", late, day, hour))
     except Exception as e:
-        log.exception("weekly failed")
+        llm.log_failure("weekly", e)
         mailer.send_or_queue(settings, f"weekly-failed-{year}-{week:02d}",
                              f"{brand(settings)} · {day:%A} letter failed {strftime(now, '%-d %B')}",
-                             f"This week's letter failed to build ({e}). Details are in logs/butler.log.")
+                             f"This week's letter failed to build ({daily._short(e)}). Details are in logs/butler.log.")
     marker.touch()
 
 
@@ -92,9 +92,9 @@ def _monthly_if_due() -> None:
     try:
         monthly.run(settings, last, preview=False, late=_late_note("look-back", late, due, hour))
     except Exception as e:
-        log.exception("monthly failed")
+        llm.log_failure("monthly", e)
         mailer.send_or_queue(settings, f"monthly-failed-{last:%Y-%m}", f"{brand(settings)} · monthly look-back failed",
-                             f"The {last:%B} look-back failed ({e}). Details are in logs/butler.log.")
+                             f"The {last:%B} look-back failed ({daily._short(e)}). Details are in logs/butler.log.")
     marker.touch()
 
 

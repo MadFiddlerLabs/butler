@@ -12,6 +12,8 @@ from . import system
 DKIM = "DKIM signature missing or failed"
 # Gmail refusing the app password: SMTP says the first, IMAP the second.
 GMAIL_LOGIN = ("Username and Password not accepted", "AUTHENTICATIONFAILED")
+# Claude refusing the butler's key, as llm.log_failure logs it.
+CLAUDE_KEY = "Claude didn't accept your butler's API key"
 LOGIN_WAIT_MINUTES = 15      # longer than this between a restart and the first login is worth saying
 
 
@@ -26,16 +28,20 @@ def log_problems(lines: list[str]) -> list[tuple[str, str]]:
     if any(marker in line for line in lines for marker in GMAIL_LOGIN):
         problems.append(("Gmail refused your butler's app password.",
                          "Changing the Gmail password signs out every app password. Make a new app password "
-                         f"and store it again: {_store_gmail()}"))
+                         "and store it again: " + _store("butler-gmail", "Your butler's Gmail app password")))
+    if any(CLAUDE_KEY in line for line in lines):
+        problems.append(("Claude refused your butler's API key, so the brief went out without Claude's help.",
+                         "The key may have a typo, or it was deleted in the Claude Console. Make a new key there "
+                         "and store it: " + _store("butler-anthropic", "Your Claude API key")))
     return problems
 
 
-def _store_gmail() -> str:
-    """How the student stores the Gmail app password again on this computer: the Mac's dialog, or
+def _store(service: str, label: str) -> str:
+    """How the student stores a key or password again on this computer: the Mac's dialog, or
     `butler secret` typed hidden in a Terminal window on Windows."""
     if system.NAME == "windows":
-        return "type butler secret butler-gmail in a new Terminal window"
-    return 'scripts/store-secret.sh butler-gmail "Your butler\'s Gmail app password"'
+        return f"type butler secret {service} in a new Terminal window"
+    return f'scripts/store-secret.sh {service} "{label}"'
 
 
 def boot_time(sysctl: str) -> datetime | None:
