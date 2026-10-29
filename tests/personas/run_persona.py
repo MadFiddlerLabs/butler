@@ -1019,7 +1019,7 @@ In this session, you will also:
                 self.say("harness", f"the stand-in for Task Scheduler failed: {type(e).__name__}: {e}")
 
     # ---------- the free rehearsal ----------
-    PROMPTS = (("Name ›", ""), ("Press Enter to agree, or type no to stop ›", ""),
+    PROMPTS = (("Name ›", ""), ("Press Enter when you're ready ›", ""), ("Press Enter to agree, or type no to stop ›", ""),
                ("Type a number, or press Enter to skip ›", ""), ("Your email ›", "{email}"),
                ("Weekly lesson email? Type yes, or press Enter for no ›", ""),
                ("Is that right? Press Enter, or paste the line again ›", ""), ("Paste here ›", "{lesson}"),

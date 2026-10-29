@@ -27,7 +27,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import account, system
+from . import account, course_video, system
 from . import setup_settings as ss
 from .config import ROOT, plain_output, store_secret
 
@@ -199,6 +199,17 @@ class FirstRun:
             return subprocess.run(argv).returncode
         with open(self.log, "ab") as log:
             return subprocess.run(argv, stdout=log, stderr=subprocess.STDOUT).returncode
+
+    def video(self) -> None:
+        """Module 0's video, before the first question, once (course_video.py), while Python
+        installs. Enter carries on; with no keyboard (a script), it carries on by itself."""
+        if 0 in course_video.opened(self.data):
+            return
+        self.say()
+        for line in course_video.open_page(0, self.data):
+            self.say(line)
+        if sys.stdin is not None and sys.stdin.isatty():
+            self.keys.line(course_video.READY)
 
     def start_bootstrap(self) -> None:
         """Python installs while the student checks their email. On Windows this first run already
@@ -554,6 +565,7 @@ class FirstRun:
         signed_in, signed_email = self.signed_in()
         self.welcome(signed_in, resuming)
         self.start_bootstrap()
+        self.video()
 
         self.heading(f"Step 1 of 4{self.dot}Your email")
         if not self.terms():

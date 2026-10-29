@@ -85,6 +85,9 @@ pkill -f "$b/bin/uv" || true
 (cd "$b" && .venv/bin/python "$here/install_step_settings.py")
 printf 'claude_mode: ask\n' >> "$b/config/settings.yaml"
 date -u +%Y-%m-%dT%H:%M:%SZ > "$b/data/first-run-done"
+# Modules 0 and 1's videos were opened already (the first run, the first butler claude), so the app
+# goes straight to Claude Code: nobody is at this Terminal window to press Enter after a video.
+printf '0\n1\n' > "$b/data/course-videos-opened"
 # A stand-in for Claude Code, found first by Terminal's login shell, whichever shell that is.
 stub="$work/claude-bin"
 mkdir -p "$stub"

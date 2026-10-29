@@ -39,6 +39,8 @@ def main(butler: Path) -> None:
     console = Console(cmd, home, env)
     try:
         console.type("butler claude")
+        console.wait_for("Press Enter when you're ready › ")   # Module 1's video, the first time
+        console.type("")
         console.wait_for("Install Claude Code now? Press Enter for yes, or type no: ")
         console.type("")
         # Anthropic's installer downloads Claude Code; then Butler asks how it should work.

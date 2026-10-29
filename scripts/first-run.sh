@@ -233,6 +233,27 @@ else
 fi
 bootstrap_pid=$!
 
+# Module 0's video, before the first question: the course is watched first, then done. Once:
+# data/course-videos-opened lists the modules opened. src/butler/course_video.py says the same for
+# the later modules, in the same words; the Windows first run (first_run.py) is this one's twin.
+video_url="https://buildyourbutler.com/course/your-first-two-minutes/#video"
+if ! grep -qx 0 "$home/data/course-videos-opened" 2>/dev/null; then
+  say
+  if [ -n "${BUTLER_NO_OPEN:-}" ]; then
+    say "Module 0's video, Your first two minutes, is here:"
+    say "$video_url"
+  else
+    open "$video_url" >/dev/null 2>&1 || true
+    say "I've opened Module 0's video in your browser: Your first two minutes."
+  fi
+  printf '0\n' >> "$home/data/course-videos-opened"
+  say "Please watch it first: it shows what we're about to do. If you'd like to read along, the lesson is on the same page, after the video."
+  if [ -t 0 ]; then
+    printf "Press Enter when you're ready › "
+    read -r _ || true
+  fi
+fi
+
 # ---------- 2. email ----------
 
 heading "Step 1 of 4${dot}Your email"

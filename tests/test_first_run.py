@@ -119,6 +119,16 @@ class FirstRunTest(unittest.TestCase):
         self.assertIn("Your brief is ready", out)
         self.assertIn("It starts with Module 1: Meet Claude Code.", out)
         self.assertIn("starting Module 1 of the Build Your Butler course", out)
+        # Each module's video before the module: Module 0's before the first question, Module 1's
+        # before Claude Code. Opened (here, only shown: BUTLER_NO_OPEN) once each, and recorded.
+        self.assertIn("Module 0's video, Your first two minutes, is here:\n"
+                      "https://buildyourbutler.com/course/your-first-two-minutes/#video\n"
+                      "Please watch it first: it shows what we're about to do.", out)
+        self.assertLess(out.index("Module 0's video"), out.index("Step 1 of 4"))
+        self.assertIn("Module 1's video, Meet Claude Code, is here:\n"
+                      "https://buildyourbutler.com/course/meet-claude-code/#video", out)
+        self.assertLess(out.index("Module 1's video"), out.index("It starts with Module 1"))
+        self.assertEqual((h.root / "data" / "course-videos-opened").read_text().split(), ["0", "1"])
         # Weekly lesson emails only because they said yes.
         self.assertEqual(self.api.prefs, [{"email": "sam@example.com", "nudges": True}])
         # The session went to Keychain, never to a file.
@@ -312,6 +322,7 @@ class FirstRunTest(unittest.TestCase):
             self.assertIn(f"Already done: {done}", out)
         for asked in ("Name \u203a", "Your email \u203a"):
             self.assertNotIn(asked, out)
+        self.assertNotIn("video", out, "each module's video opens once")
         self.assertEqual(out.count("Paste here \u203a"), 1, "only the optional Claude Code line")
         self.assertEqual(len([c for c in self.api.calls if c[1] == "/api/auth/start"]), 1)
         self.assertIn("/api/me", [c[1] for c in self.api.calls])

@@ -18,11 +18,13 @@ one sentence, and offer the next step by its module, title and command.
 - Read `CLAUDE.md` first. Its hard rules apply throughout, and so does "Talking to someone
   learning with the course".
 - Use plain words. Explain any technical term the first time, in one short sentence.
-- **Start each step from its course page.** Before anything else in a step, read the step's
-  `url` in `src/butler/course_progress.json` (never type a course address from memory). Show it
-  and ask: "Open it in your browser now? (yes / no)". Yes is the default: on yes, or a plain
-  Enter, run `open <url>`, then say "Read or watch as much as you like. Tell me when you're
-  back." and wait for them. On no, carry on. Ask once per step.
+- **Start each step with its module's video.** Before anything else in a step, run
+  `bin/butler watch <step>` (for example `bin/butler watch calendar`). It opens the module's
+  page in their browser at its video, once per module. When it says it opened the video, pass
+  its words on and ask them to tell you when they've watched it, then wait for them before
+  anything else. If it says the video was opened before, carry on without mentioning it.
+  Never type a course address from memory: `butler watch` takes it from
+  `src/butler/course_progress.json`.
 - **Ask first, or auto.** `claude_mode` in `config/settings.yaml` is how they chose Claude Code
   should work: `ask` (the default: you check in before each change) or `auto` (you act more on
   your own, and a safety check reviews each step). If it isn't set, ask once, in plain words,
@@ -72,7 +74,6 @@ The steps are written for a Mac. On Windows, change the commands like this:
 | `bin/butler <command>` | `bin/butler.cmd <command>` |
 | `./run.sh <command>` | `.venv/Scripts/python.exe run.py <command>` |
 | `.venv/bin/python` | `.venv/Scripts/python.exe` |
-| `open <url>` | `.venv/Scripts/python.exe -m webbrowser <url>` |
 
 On Windows, Claude Code runs commands in Git Bash when Git for Windows is installed, and in PowerShell when it isn't. Write each command for the shell it runs in: in PowerShell, `PYTHONPATH=src <command>` is `$env:PYTHONPATH = "src"; <command>`, and a program in the folder runs as `.\.venv\Scripts\python.exe`.
 
