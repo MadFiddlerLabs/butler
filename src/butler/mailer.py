@@ -15,8 +15,8 @@ import time
 from email.message import EmailMessage
 from email.utils import formataddr, make_msgid
 
-from . import privacy
-from .config import KEYCHAIN_GMAIL, ROOT, keychain
+from . import privacy, system
+from .config import KEYCHAIN_GMAIL, ROOT, NotSetUp, keychain
 
 log = logging.getLogger("butler")
 OUTBOX = ROOT / "data" / "outbox"
@@ -107,7 +107,7 @@ def _deliver(settings: dict, msg: EmailMessage) -> None:
     cfg = settings["email"]
     password = keychain(KEYCHAIN_GMAIL)
     if not password:
-        raise RuntimeError(f"no Gmail app password in Keychain (service '{KEYCHAIN_GMAIL}')")
+        raise NotSetUp(f"no Gmail app password in {system.PASSWORD_STORE} yet (service '{KEYCHAIN_GMAIL}')")
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=60) as smtp:
         smtp.login(cfg["sender"], password)
         smtp.send_message(msg)
