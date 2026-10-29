@@ -160,6 +160,9 @@ REPORT_TOOL = tool("report", "Your report on the session, for the people who mak
                     "how_it_felt": {"type": "string"}}, ["findings", "how_it_felt"])
 
 
+INSTALLER_WAIT = 120   # seconds the `installer` command gets, as the student's account (install_mac)
+
+
 class Run:
     def __init__(self, args):
         spec = yaml.safe_load((HERE / "personas.yaml").read_text())
@@ -720,8 +723,13 @@ In this session, you will also:
         payload into its home and runs the package's own postinstall, as Installer does. The
         postinstall decides what Terminal should open and logs it; the harness opens exactly that
         .command in a login shell, typed the way Terminal types it."""
-        p = subprocess.run(["installer", "-pkg", str(self.downloads), "-target", "CurrentUserHomeDirectory"],
-                           capture_output=True, text=True)
+        # Up to 2 minutes: on macOS 26 it waits for a screen session that never comes, instead of
+        # failing (a rehearsal sat here until the runner went silent, 29 Oct 2026).
+        try:
+            p = subprocess.run(["installer", "-pkg", str(self.downloads), "-target", "CurrentUserHomeDirectory"],
+                               capture_output=True, text=True, timeout=INSTALLER_WAIT)
+        except subprocess.TimeoutExpired:
+            p = subprocess.CompletedProcess([], 1, "", f"no answer from installer in {INSTALLER_WAIT} seconds")
         if p.returncode == 0:
             self.difference("Installer ran from the command line (the `installer` command), not Installer.app's "
                             "windows, so the postinstall opened no Terminal; the harness opened what it would have")
