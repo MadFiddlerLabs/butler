@@ -17,8 +17,6 @@ import socket
 import traceback
 from datetime import date, datetime, time, timedelta
 
-import anthropic
-
 from . import calendar_source, charts, finance, headsup, llm, mailer, networth, practice, projects, updates, weather
 from .agenda import load_agenda
 from .config import ROOT, NotSetUp, brand, load_settings, tz
@@ -31,10 +29,8 @@ log = logging.getLogger("butler")
 
 def _short(e: Exception) -> str:
     """One readable line for the email footer; the full error goes to the log."""
-    if isinstance(e, anthropic.APIStatusError):
-        return f"Claude API error {e.status_code}"
-    if isinstance(e, anthropic.APIConnectionError):
-        return "couldn't reach Claude"
+    if words := llm.trouble(e):
+        return words
     return str(e).splitlines()[0][:120] if str(e) else type(e).__name__
 
 
@@ -72,7 +68,7 @@ def build(settings: dict, day: date, use_llm: bool, preview_projects: bool = Fal
             log.info("prep: %s", e)
             _not_connected(not_set_up, "Claude")
         except Exception as e:
-            log.exception("prep failed")
+            llm.log_failure("prep", e)
             problems.append(f"couldn't flag events to prepare for ({_short(e)})")
 
     news: list[dict] = []
@@ -87,7 +83,7 @@ def build(settings: dict, day: date, use_llm: bool, preview_projects: bool = Fal
                 log.info("news selection: %s", e)
                 _not_connected(not_set_up, "Claude")   # the headlines go out unedited, as lesson 4.5 expects
             except Exception as e:
-                log.exception("news selection failed")
+                llm.log_failure("news selection", e)
                 problems.append(f"news shown unedited ({_short(e)})")
         if not news:
             news = _raw_headlines(settings, stories)

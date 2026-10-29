@@ -368,8 +368,8 @@ def process(settings: dict, dry_run: bool = False) -> int:
             continue
         try:
             handled += _handle(settings, reply, today)
-        except Exception:
-            log.exception("replies: %s from %s failed", _key(reply), reply.sender)  # the next one still runs
+        except Exception as e:
+            llm.log_failure(f"replies: {_key(reply)} from {reply.sender}", e)  # the next one still runs
     return handled
 
 

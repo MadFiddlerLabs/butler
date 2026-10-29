@@ -7,6 +7,7 @@ links always come from the feed, never from the model.
 """
 
 import json
+import logging
 import re
 
 import anthropic
@@ -101,6 +102,34 @@ def event_label(e: Event) -> dict:
     """What a prompt says about who an event is from: an invite from outside the household is
     labelled, so Claude reads its title and notes as a stranger's."""
     return {"from": OUTSIDE_LABEL} if is_outside(e) else {}
+
+
+def trouble(e: Exception) -> str | None:
+    """Claude saying no, or out of reach, in plain words: a wrong key, an account out of credit,
+    an API error, no connection. None for anything else, which is the code's fault."""
+    if isinstance(e, anthropic.AuthenticationError):
+        return "Claude didn't accept your butler's API key"
+    if isinstance(e, anthropic.APIStatusError):
+        if "credit balance" in str(e).lower():
+            return "Claude's account is out of credit"
+        return f"Claude API error {e.status_code}"
+    if isinstance(e, anthropic.APIConnectionError):
+        return "couldn't reach Claude"
+    return None
+
+
+def log_failure(what: str, e: Exception) -> None:
+    """A part that failed, in the log. When Claude said no, it's one plain line: a wrong key says
+    the same every morning until the household stores a new one, and a traceback would only bury
+    that. Anything else is a bug, logged whole."""
+    log = logging.getLogger("butler")
+    words = trouble(e)
+    if words is None:
+        log.exception("%s failed", what)
+    elif isinstance(e, anthropic.AuthenticationError):
+        log.error("%s failed: %s. Store a new one with: butler secret %s", what, words, KEYCHAIN_ANTHROPIC)
+    else:
+        log.error("%s failed: %s", what, words)
 
 
 def _client(settings: dict) -> anthropic.Anthropic:

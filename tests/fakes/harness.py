@@ -15,7 +15,7 @@ Flows: daily, daily-dry, brief-check, replies, weekly, monthly, portal, progress
 - Anything else that tries the network fails loudly.
 
 BUTLER_FAKE_DOWN takes services down for the failure tests, comma-separated: lunchmoney, weather,
-news, claude (an API error 500), claude-timeout, smtp (Gmail refuses the login), imap (Gmail's
+news, claude (an API error 500), claude-timeout, claude-key (Claude refuses the key), smtp (Gmail refuses the login), imap (Gmail's
 IMAP is unreachable). The stub butler-ek reads it too: calendar makes it fail.
 
 BUTLER_FAKE_BUG plants a bug a release could ship, for the update's brief check: money (the money
@@ -268,6 +268,11 @@ def _claude_down():
     if "claude-timeout" in DOWN:
         error = anthropic.APITimeoutError.__new__(anthropic.APITimeoutError)
         Exception.__init__(error, "Request timed out.")
+    elif "claude-key" in DOWN:
+        error = anthropic.AuthenticationError.__new__(anthropic.AuthenticationError)
+        Exception.__init__(error, "Error code: 401 - {'type': 'error', 'error': {'type': "
+                                  "'authentication_error', 'message': 'invalid x-api-key'}}")
+        error.status_code = 401
     else:
         error = anthropic.InternalServerError.__new__(anthropic.InternalServerError)
         Exception.__init__(error, "Internal server error")
@@ -284,7 +289,7 @@ def fake_request(settings, system, prompt, schema):
         # (before Module 4) gets no answers.
         raise llm.NotSetUp("Claude isn't connected yet (Module 4 stores your butler's key)")
     RECORD["prompts"].append({"schema": name, "system": system, "prompt": prompt})
-    if DOWN & {"claude", "claude-timeout"}:
+    if DOWN & {"claude", "claude-timeout", "claude-key"}:
         raise _claude_down()
     try:
         jsonschema.Draft202012Validator.check_schema(schema)
