@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
-from butler import mailer, tick, update_report, updates
+from butler import mailer, system, tick, update_report, updates
 from fakes import fixtures
 from fakes.home import Home
 from test_updates import ApplySandbox
@@ -130,9 +130,31 @@ class NotConnectedYetTest(Case):
     def test_the_log_says_so_without_a_traceback(self):
         log = self.home.log()
         self.assertIn("calendar: the Calendar and Reminders helper isn't built yet", log)
-        self.assertIn("money: no Lunch Money token in Keychain", log)
+        self.assertIn(f"money: no Lunch Money token in {system.PASSWORD_STORE}", log)
         self.assertNotIn("calendar failed", log)
         self.assertNotIn("money failed", log)
+
+
+class ClaudeNotConnectedYetTest(Case):
+    """Before Module 4 stores the butler's Claude key, the brief lists Claude as not connected yet
+    (lesson 4.5 says the note stops listing it), with the feeds' own headlines, and no problem."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.home = Home(ek=False, secrets=("butler-gmail",))
+        cls.record = cls.home.run("daily")
+
+    def test_listed_quietly_with_the_headlines(self):
+        text = self.brief(self.record)["text"]
+        self.assertIn("Not connected yet: calendar, Claude, money, to-dos.", text)
+        self.assertIn("City extends metro night service", text)
+        self.assertNotIn("Problems this morning", text)
+
+    def test_the_log_says_so_without_a_traceback(self):
+        log = self.home.log()
+        self.assertIn("news selection: Claude isn't connected yet", log)
+        self.assertNotIn("news selection failed", log)
+        self.assertNotIn("Traceback", log)
 
 
 class HelperShippedButNoCalendarsYetTest(Case):
