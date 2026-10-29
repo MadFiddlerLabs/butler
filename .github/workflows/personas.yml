@@ -140,12 +140,66 @@ jobs:
         with:
           name: windows-installer
           path: dist
-      - name: ${{ matrix.persona }} takes the course, as the student's own standard account
+      # On a Mac the run goes in the background, watched in short steps, each followed by an upload of
+      # its progress: a hosted Mac that goes silent keeps no log (twice, 29 Oct 2026), but the last
+      # upload shows how far the run got and how the Mac was doing (tests/personas/watch.sh).
+      - name: ${{ matrix.persona }} starts the course, as the student's own standard account
         if: matrix.platform == 'mac'
         run: |
-          tests/personas/as-student.sh persona-out -- --persona "${{ matrix.persona }}" --platform mac \
+          mkdir -p persona-progress
+          nohup bash -c 'tests/personas/as-student.sh persona-out -- "$@" > persona-progress/run.log 2>&1
+                         echo $? > persona-progress/exit-code' bash \
+            --persona "${{ matrix.persona }}" --platform mac \
             --computer "${{ matrix.computer }}" --seed "${{ matrix.seed }}" --lessons "$PWD/lessons-mac.json" \
-            --installer "$INSTALLER" --budget "${{ inputs.budget }}" --claude-model "${{ inputs.claude_model }}" $REHEARSE
+            --installer "$INSTALLER" --budget "${{ inputs.budget }}" --claude-model "${{ inputs.claude_model }}" $REHEARSE \
+            > /dev/null 2>&1 &
+      - name: The next 5 minutes
+        if: matrix.platform == 'mac'
+        run: tests/personas/watch.sh persona-progress 5
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.platform == 'mac'
+        with:
+          name: progress-${{ matrix.persona }}-${{ matrix.computer }}-${{ matrix.seed }}
+          path: persona-progress/
+          overwrite: true
+      - name: The next 10 minutes
+        if: matrix.platform == 'mac'
+        run: tests/personas/watch.sh persona-progress 10
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.platform == 'mac'
+        with:
+          name: progress-${{ matrix.persona }}-${{ matrix.computer }}-${{ matrix.seed }}
+          path: persona-progress/
+          overwrite: true
+      - name: The next 15 minutes
+        if: matrix.platform == 'mac'
+        run: tests/personas/watch.sh persona-progress 15
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.platform == 'mac'
+        with:
+          name: progress-${{ matrix.persona }}-${{ matrix.computer }}-${{ matrix.seed }}
+          path: persona-progress/
+          overwrite: true
+      - name: The next 30 minutes
+        if: matrix.platform == 'mac'
+        run: tests/personas/watch.sh persona-progress 30
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.platform == 'mac'
+        with:
+          name: progress-${{ matrix.persona }}-${{ matrix.computer }}-${{ matrix.seed }}
+          path: persona-progress/
+          overwrite: true
+      - name: ${{ matrix.persona }} finishes the course
+        if: matrix.platform == 'mac'
+        # A rehearsal takes under half an hour; another hour means it's stuck. A paid run has the job's time.
+        timeout-minutes: ${{ inputs.budget == '0' && 60 || 300 }}
+        run: tests/personas/watch.sh persona-progress done
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.platform == 'mac'
+        with:
+          name: progress-${{ matrix.persona }}-${{ matrix.computer }}-${{ matrix.seed }}
+          path: persona-progress/
+          overwrite: true
       - name: ${{ matrix.persona }} takes the course, as the student's own standard account
         if: matrix.platform == 'windows'
         shell: pwsh
