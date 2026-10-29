@@ -348,7 +348,7 @@ class MidCourseTest(unittest.TestCase):
     def test_preview_builds_and_says_what_is_not_connected(self):
         self.assertIsNone(self.preview["error"], self.preview["error"])
         html = next((self.home.root / "out" / "preview").glob("brief-*.html")).read_text()
-        self.assertIn("Not connected yet: calendar, money, to-dos.", html)
+        self.assertIn("Not connected yet: calendar, Claude, money, to-dos.", html)   # lesson 4.5
         self.assertNotIn("Problems this morning", html)
         self.assertNotIn("Traceback", self.preview["stderr"])
 

@@ -192,7 +192,11 @@ class PostinstallTest(unittest.TestCase):
             f'#!/bin/bash\necho "$*" >> "{self.tmp}/dseditgroup.txt"\n[ -n "${{FAKE_ADMIN:-}}" ]\n')
         (fakebin / "ditto").write_text('#!/bin/bash\n[ -n "${FAKE_DITTO_FAILS:-}" ] && exit 1\ncp -R "$1" "$2"\n')
         (fakebin / "codesign").write_text('#!/bin/bash\n[ -z "${FAKE_CODESIGN_FAILS:-}" ]\n')
-        for f in ("open", "launchctl", "dseditgroup", "ditto", "codesign"):
+        # Who is at the screen: this user, unless FAKE_CONSOLE_USER says someone else is.
+        (fakebin / "stat").write_text(
+            '#!/bin/bash\nif [ "$*" = "-f %Su /dev/console" ]; then echo "${FAKE_CONSOLE_USER:-$(id -un)}"; exit 0; fi\n'
+            'exec /usr/bin/stat "$@"\n')
+        for f in ("open", "launchctl", "dseditgroup", "ditto", "codesign", "stat"):
             (fakebin / f).chmod(0o755)
         self.apps = self.tmp / "Applications"          # stands in for /Applications
         self.apps.mkdir()
@@ -252,6 +256,50 @@ class PostinstallTest(unittest.TestCase):
         self.run_postinstall("Bento.pkg", FAKE_ASUSER_FAILS="1")
         self.assertIn("first-run.command", self.opened.read_text())
         self.assertIn("opened Terminal with first-run.command (open)", self.log())
+
+    def test_a_student_who_isnt_at_the_screen_gets_no_window_in_someone_elses_session(self):
+        """Found by tests/e2e/standard-user.sh: run for an account with no screen session, the plain
+        `open` fallback opened Terminal in the session of whoever was at the screen."""
+        self.run_postinstall("Bento.pkg", FAKE_ASUSER_FAILS="1", FAKE_CONSOLE_USER="someone-else")
+        self.assertFalse(self.opened.exists(), "Terminal opened in another account's session")
+        self.assertRegex(self.log(), r"installed \(fresh\): could not open Terminal with first-run\.command "
+                                     r"\(launchctl asuser \d+ open; \S+ isn't the one at the screen, so not open, exit 5\)")
+
+    def test_run_as_root_it_finds_a_home_folder_with_a_space(self):
+        """Found by tests/e2e/standard-user.sh: run as root, postinstall read the console user's home
+        from dscl with awk's second word, which a path with a space ("/Users/byb test") breaks:
+        dscl puts such a path on its own line. The PATH line and the Butler app then went nowhere."""
+        home = self.tmp / "byb test"
+        butler = home / "Butler"
+        home.mkdir()
+        (self.home / "Butler").rename(butler)
+        self.home = home                     # Installer's target: the student's home
+        app = home / "Applications" / "Butler.app" / "Contents"
+        app.mkdir(parents=True)
+        (app / "Info.plist").write_text("<plist><dict><key>CFBundleIdentifier</key>"
+                                        "<string>com.buildyourbutler.butler-app</string></dict></plist>")
+        fakebin = self.tmp / "rootbin"
+        fakebin.mkdir()
+        me = subprocess.run(["id", "-un"], capture_output=True, text=True).stdout.strip()
+        scripts = {
+            # Root, as Installer may run it; the student is at the screen.
+            "id": '#!/bin/bash\n[ "$*" = "-u" ] && { echo 0; exit 0; }\n[ "$*" = "-un" ] && { echo root; exit 0; }\n'
+                  'exec /usr/bin/id "$@"\n',
+            "dscl": f'#!/bin/bash\nprintf "NFSHomeDirectory:\\n {home}\\n"\n',
+            "chown": "#!/bin/bash\nexit 0\n",
+            "sudo": '#!/bin/bash\n[ "$1" = -u ] && shift 2\nexec "$@"\n',
+        }
+        for name, text in scripts.items():
+            (fakebin / name).write_text(text)
+            (fakebin / name).chmod(0o755)
+        self.run_postinstall("Bento.pkg", HOME="/var/root", FAKE_CONSOLE_USER=me,
+                             PATH=f"{fakebin}:{self.env['PATH']}")
+        self.assertIn(f'export PATH="{butler}/bin:$PATH"', (home / ".zprofile").read_text())
+        self.assertEqual((butler / ".butler-name").read_text(), "Bento\n")
+        self.assertIn(f"-a Terminal {butler}/scripts/first-run.command", self.opened.read_text())
+        log = (butler / "logs" / "install.log").read_text()
+        self.assertIn("the Butler app stays in ~/Applications", log)
+        self.assertNotIn("no new Butler app", log)
 
     def test_when_terminal_wont_open_the_log_says_so_and_the_install_still_succeeds(self):
         self.run_postinstall("Bento.pkg", FAKE_ASUSER_FAILS="1", FAKE_OPEN_EXIT="1")
@@ -407,6 +455,37 @@ class PostinstallTest(unittest.TestCase):
             self.assertTrue(os.access(path, os.X_OK), name)
         self.assertIn("first-run.sh\" --again", (REPO / "scripts" / "welcome-back.command").read_text())
         self.assertIn("bin/butler", (REPO / "scripts" / "butler.command").read_text())
+
+
+class LaunchdInstallTest(unittest.TestCase):
+    """launchd/install.sh, the schedule's install (/butler-setup inbox), with `launchctl` recorded and
+    a stand-in for Butler's Python that answers the send hours."""
+
+    def test_a_new_account_without_launch_agents_and_a_space_in_its_home(self):
+        """Found by tests/e2e/standard-user.sh: a Mac account that has never had a launch agent has
+        no ~/Library/LaunchAgents, and install.sh wrote into it without making it."""
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        home = tmp / "byb test"
+        root = home / "Butler"
+        shutil.copytree(REPO / "launchd", root / "launchd")
+        (root / ".venv" / "bin").mkdir(parents=True)
+        (root / ".venv" / "bin" / "python").write_text("#!/bin/bash\necho 7 17\n")
+        fakebin = tmp / "fakebin"
+        fakebin.mkdir()
+        (fakebin / "launchctl").write_text(f'#!/bin/bash\necho "$*" >> "{tmp}/launchctl.txt"\n')
+        for f in (root / ".venv" / "bin" / "python", fakebin / "launchctl"):
+            f.chmod(0o755)
+        proc = subprocess.run(["bash", str(root / "launchd" / "install.sh")], capture_output=True, text=True,
+                              env={**os.environ, "HOME": str(home), "PATH": f"{fakebin}:/usr/bin:/bin"})
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        agents = home / "Library" / "LaunchAgents"
+        for label in ("butler", "morning", "portal"):
+            plist = (agents / f"com.buildyourbutler.{label}.plist").read_text()
+            self.assertIn(f"<string>{root}/run.sh</string>", plist)
+            self.assertNotIn("__", plist)
+            self.assertIn(f"bootstrap gui/{os.getuid()} {agents}/com.buildyourbutler.{label}.plist",
+                          (tmp / "launchctl.txt").read_text())
 
 
 class DoneScreenTest(unittest.TestCase):

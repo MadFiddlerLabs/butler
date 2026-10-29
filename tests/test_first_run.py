@@ -83,6 +83,25 @@ class FirstRunTest(unittest.TestCase):
         self.addCleanup(h.close)
         return h
 
+    def test_a_butler_folder_whose_path_has_a_space_gets_ready(self):
+        """Found by tests/e2e/standard-user.sh: in /Users/byb test/Butler, the first run started its
+        own scripts/bootstrap.sh through `bash -c` unquoted, ran "/Users/byb", and said "Something
+        went wrong getting ready". Here the real bootstrap's place is taken by one that makes the
+        test's .venv, so only how it's started is tested."""
+        h = self.home()
+        spaced = h.tmp / "byb test" / "Butler"
+        spaced.parent.mkdir()
+        h.root.rename(spaced)
+        h.root = spaced
+        fake = h.env.pop("BUTLER_BOOTSTRAP")
+        (spaced / "scripts" / "bootstrap.sh").write_text(f"#!/bin/bash\nset -e\ncd \"$(dirname \"$0\")/..\"\n{fake}\n")
+        proc = h.first_run(["", "", "", "skip", *LESSONS])
+        out = proc.stdout
+        self.assertNotIn("Something went wrong getting ready", out, out + proc.stderr)
+        self.assertIn("Bento is ready.", out)
+        self.assertIn("I work for Sam and Alex.", out)
+        self.assertTrue((spaced / "data" / "first-run-done").exists(), out + proc.stderr)
+
     def test_the_whole_first_run(self):
         h = self.home()
         proc = h.first_run(["", "", "3", "sam@example.com", "yes", *LESSONS])

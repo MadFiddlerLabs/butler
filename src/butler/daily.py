@@ -38,6 +38,11 @@ def _short(e: Exception) -> str:
     return str(e).splitlines()[0][:120] if str(e) else type(e).__name__
 
 
+def _not_connected(not_set_up: list[str], part: str) -> None:
+    if part not in not_set_up:
+        not_set_up.append(part)
+
+
 def build(settings: dict, day: date, use_llm: bool, preview_projects: bool = False,
           update_budget: bool = False, snapshot: bool = True) -> Brief:
     zone = tz(settings)
@@ -63,6 +68,9 @@ def build(settings: dict, day: date, use_llm: bool, preview_projects: bool = Fal
         try:
             prep, phrase = llm.flag_prep(settings, agenda)
             log.info("prep: %d flagged", len(prep))
+        except NotSetUp as e:
+            log.info("prep: %s", e)
+            _not_connected(not_set_up, "Claude")
         except Exception as e:
             log.exception("prep failed")
             problems.append(f"couldn't flag events to prepare for ({_short(e)})")
@@ -75,6 +83,9 @@ def build(settings: dict, day: date, use_llm: bool, preview_projects: bool = Fal
         if use_llm and stories:
             try:
                 news = _fill_empty_regions(settings, stories, llm.pick_news(settings, stories, day), day)
+            except NotSetUp as e:
+                log.info("news selection: %s", e)
+                _not_connected(not_set_up, "Claude")   # the headlines go out unedited, as lesson 4.5 expects
             except Exception as e:
                 log.exception("news selection failed")
                 problems.append(f"news shown unedited ({_short(e)})")

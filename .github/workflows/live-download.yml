@@ -1,0 +1,308 @@
+# The download students really get today: the installer buildyourbutler.com hands out, fetched
+# the way a browser fetches it, on a clean runner. Every other installer test builds its own; this
+# one checks the published one. It must be the version the update manifest offers, byte for byte,
+# signed as Butler's updater and the operating system check it, and it must install and name the
+# butler from its filename.
+#
+#   Mac:     /download/<Name>/<Name>.pkg          (Netlify serves /files/Butler-latest.pkg)
+#   Windows: /download/windows/<Name>/<Name>.exe  (Netlify serves /files/Butler-latest.exe)
+#   The website's scripts/write-redirects.mjs writes both routes; /updates/stable.json is the manifest.
+#
+# It reads only: no account, no secret, nothing sent. A failure on the schedule or a release opens
+# (or comments on) one issue, as the other scheduled checks do (.github/scripts/report-failure.sh).
+#
+# release.yml publishes with GITHUB_TOKEN, and GitHub starts no workflow from events that token
+# makes, so `release: published` fires only for a release a person publishes. The weekly run is the
+# one to rely on. The website picks a new release up on its next deploy, so right after a release
+# the live download may still be the one before: that's a notice here, not a failure.
+name: live-download
+
+on:
+  schedule:
+    - cron: "40 6 * * 2"
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+env:
+  SITE: https://buildyourbutler.com
+  NAME: Bento
+  # A browser's request, so the site answers as it answers a student.
+  BROWSER_UA: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+  MAC_UA: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
+
+jobs:
+  windows:
+    name: windows (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, windows-11-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: The manifest and the download, as a browser gets them
+        id: get
+        shell: pwsh
+        run: |
+          $dir = New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\download"
+          $manifest = Invoke-RestMethod "$env:SITE/updates/stable.json"
+          if (-not $manifest.available) { throw "the manifest offers no version: $($manifest.reason)" }
+          if (-not $manifest.windows) { throw "the manifest $($manifest.version) has no Windows installer" }
+          Write-Host "manifest: $($manifest.version), Windows $($manifest.windows.url), $($manifest.windows.size) bytes"
+          $url = "$env:SITE/download/windows/$env:NAME/$env:NAME.exe"
+          $exe = Join-Path $dir "$env:NAME.exe"
+          $seen = curl.exe --fail --location --silent --show-error --retry 3 -A "$env:BROWSER_UA" `
+            -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" `
+            -o $exe -w "%{http_code} %{content_type} %{url_effective}" $url
+          if ($LASTEXITCODE -ne 0) { throw "GET $url failed (curl exit $LASTEXITCODE)" }
+          Write-Host "GET $url -> $seen"
+          if ($seen -match "text/html") { throw "the download is a web page (the 'almost ready' page?), not the installer: $seen" }
+          $hash = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLower()
+          $size = (Get-Item $exe).Length
+          Write-Host "downloaded: $size bytes, sha256 $hash"
+          if ($hash -ne $manifest.windows.sha256) { throw "the download isn't the manifest's $($manifest.version) installer: sha256 $hash, the manifest says $($manifest.windows.sha256)" }
+          if ($size -ne $manifest.windows.size) { throw "the download is $size bytes, the manifest says $($manifest.windows.size)" }
+          "version=$($manifest.version)" >> $env:GITHUB_OUTPUT
+          "exe=$exe" >> $env:GITHUB_OUTPUT
+      - name: Signed, valid, by Butler's publisher
+        shell: pwsh
+        env:
+          EXE: ${{ steps.get.outputs.exe }}
+        run: |
+          $publisher = (Select-String -Path src\butler\updates.py -Pattern '^PUBLISHER = "(.+)"').Matches[0].Groups[1].Value
+          $sig = Get-AuthenticodeSignature $env:EXE
+          $cn = if ($sig.SignerCertificate) { $sig.SignerCertificate.GetNameInfo([System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false) } else { "" }
+          Write-Host "$($sig.Status): $($sig.SignerCertificate.Subject); timestamped by $($sig.TimeStamperCertificate.Subject)"
+          if ($sig.Status -ne "Valid") { throw "the live installer's signature is $($sig.Status): $($sig.StatusMessage)" }
+          if ($cn -ne $publisher) { throw "the live installer is signed by '$cn', not '$publisher' (updates.PUBLISHER)" }
+          if (-not $sig.TimeStamperCertificate) { throw "the live installer's signature isn't timestamped, so it expires with the certificate" }
+          # WinVerifyTrust and the organization check, from Butler's own code, as its updater checks.
+          python .github/scripts/windows_signer.py $env:EXE
+          if ($LASTEXITCODE -ne 0) { throw "the signer isn't the one Butler's updater accepts" }
+      - name: It installs, silently, and is the manifest's version
+        shell: pwsh
+        env:
+          EXE: ${{ steps.get.outputs.exe }}
+          VERSION: ${{ steps.get.outputs.version }}
+        run: |
+          (Get-Item $env:EXE).VersionInfo | Format-List ProductVersion, FileVersion, ProductName
+          $b = "$env:USERPROFILE\Butler"
+          if (Test-Path $b) { throw "$b is already there on a clean runner" }
+          $p = Start-Process $env:EXE -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/LOG=$env:RUNNER_TEMP\install.txt" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content "$env:RUNNER_TEMP\install.txt" -Tail 40; Get-Content -ErrorAction SilentlyContinue "$b\logs\bootstrap.log" -Tail 60; throw "the live installer exited $($p.ExitCode)" }
+          if (-not (Test-Path "$b\.venv\Scripts\python.exe")) { Get-Content -ErrorAction SilentlyContinue "$b\logs\bootstrap.log" -Tail 60; throw "no Python in $b\.venv" }
+          $installed = (Get-Content -Raw "$b\.butler-version").Trim()
+          Write-Host "installed: $installed; manifest: $env:VERSION"
+          if ($installed -ne $env:VERSION) { throw "the live installer installed $installed, but the manifest offers $env:VERSION" }
+          if (Test-Path "$b\.butler-unsigned-build") { throw "the live installer is an unsigned build" }
+          $name = (Get-Content -Raw "$b\.butler-name").Trim()
+          if ($name -ne $env:NAME) { throw ".butler-name is '$name', not '$env:NAME' from the file's name" }
+          Get-Content "$b\logs\install.log"
+      - name: butler help, in a new window's environment
+        # A window opened now gets the PATH from the registry (the system's, then the user's, where
+        # the installer added Butler's bin), not this step's.
+        shell: pwsh
+        run: |
+          $machine = [Environment]::GetEnvironmentVariable("Path", "Machine")
+          $user = [Environment]::GetEnvironmentVariable("Path", "User")
+          $env:Path = [Environment]::ExpandEnvironmentVariables("$machine;$user")
+          $cmd = cmd.exe /d /c "butler help" 2>&1 | Out-String
+          $cmdExit = $LASTEXITCODE
+          Write-Host $cmd
+          if ($cmdExit -ne 0 -or $cmd -notmatch "The butler command") { throw "butler help in a new Command Prompt exited $cmdExit" }
+          $ps = powershell.exe -NoProfile -Command "butler help" 2>&1 | Out-String
+          $psExit = $LASTEXITCODE
+          if ($psExit -ne 0 -or $ps -notmatch "The butler command") { Write-Host $ps; throw "butler help in a new PowerShell exited $psExit" }
+          Write-Host "butler help works in a new Command Prompt and a new PowerShell."
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-download-${{ matrix.os }}-logs
+          path: ~/Butler/logs/
+          if-no-files-found: ignore
+
+  mac:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: The manifest and the download, as a browser gets them
+        id: get
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/download"; mkdir -p "$dir"
+          curl -fsSL --retry 3 "$SITE/updates/stable.json" -o "$RUNNER_TEMP/manifest.json"
+          field() { python3 -I -c 'import json, sys; m = json.load(open(sys.argv[1])); v = m.get(sys.argv[2]); print("" if v is None else v)' "$RUNNER_TEMP/manifest.json" "$1"; }
+          [ "$(field available)" = "True" ] || { echo "::error::the manifest offers no version: $(field reason)"; exit 1; }
+          version="$(field version)"; sha="$(field sha256)"; size="$(field size)"
+          echo "manifest: $version, $(field pkg_url), $size bytes"
+          url="$SITE/download/$NAME/$NAME.pkg"
+          pkg="$dir/$NAME.pkg"
+          seen="$(curl --fail --location --silent --show-error --retry 3 -A "$MAC_UA" \
+            -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" \
+            -o "$pkg" -w "%{http_code} %{content_type} %{url_effective}" "$url")"
+          echo "GET $url -> $seen"
+          case "$seen" in *text/html*) echo "::error::the download is a web page (the 'almost ready' page?), not the package: $seen"; exit 1;; esac
+          got="$(shasum -a 256 "$pkg" | cut -d' ' -f1)"; bytes="$(stat -f %z "$pkg")"
+          echo "downloaded: $bytes bytes, sha256 $got"
+          [ "$got" = "$sha" ] || { echo "::error::the download isn't the manifest's $version package: sha256 $got, the manifest says $sha"; exit 1; }
+          [ "$bytes" = "$size" ] || { echo "::error::the download is $bytes bytes, the manifest says $size"; exit 1; }
+          { echo "version=$version"; echo "pkg=$pkg"; } >> "$GITHUB_OUTPUT"
+      - name: Signed by Butler's Developer ID, accepted by Gatekeeper, notarized and stapled
+        env:
+          PKG: ${{ steps.get.outputs.pkg }}
+        run: |
+          set -uo pipefail
+          team="$(sed -n 's/^TEAM_ID = "\(.*\)"/\1/p' src/butler/updates.py)"
+          sig="$(pkgutil --check-signature "$PKG" 2>&1)"; code=$?
+          echo "$sig"
+          [ "$code" = 0 ] || { echo "::error::pkgutil --check-signature exited $code"; exit 1; }
+          echo "$sig" | grep -q "signed by a developer certificate issued by Apple" || { echo "::error::not signed with a Developer ID certificate"; exit 1; }
+          echo "$sig" | grep -Eq "^[[:space:]]*1\. Developer ID Installer: .*\($team\)[[:space:]]*$" || { echo "::error::not signed by Butler's team ($team)"; exit 1; }
+          gate="$(spctl -a -vv -t install "$PKG" 2>&1)"; code=$?
+          echo "$gate"
+          [ "$code" = 0 ] && echo "$gate" | grep -q "accepted" || { echo "::error::Gatekeeper refuses the live package (spctl exit $code)"; exit 1; }
+          echo "$gate" | grep -q "Notarized Developer ID" || { echo "::error::Gatekeeper accepts it, but not as notarized"; exit 1; }
+          xcrun stapler validate "$PKG" || { echo "::error::the notarization ticket isn't stapled"; exit 1; }
+      - name: It's the manifest's version, it installs, and the name came through
+        env:
+          PKG: ${{ steps.get.outputs.pkg }}
+          VERSION: ${{ steps.get.outputs.version }}
+        run: |
+          set -euo pipefail
+          inner="$(cd "$RUNNER_TEMP" && xar -xf "$PKG" Distribution && sed -n 's/.*<pkg-ref id="com.buildyourbutler.butler" version="\([^"]*\)".*/\1/p' Distribution | head -n 1)"
+          echo "package version: $inner; manifest: $VERSION"
+          [ "$inner" = "${VERSION#v}" ] || { echo "::error::the live package is $inner, but the manifest offers $VERSION"; exit 1; }
+          b="$HOME/Butler"
+          [ ! -e "$b" ] || { echo "::error::$b is already there on a clean runner"; exit 1; }
+          installer -pkg "$PKG" -target CurrentUserHomeDirectory
+          installed="$(cat "$b/.butler-version")"
+          echo "installed: $installed"
+          [ "$installed" = "$VERSION" ] || { echo "::error::the live package installed $installed, but the manifest offers $VERSION"; exit 1; }
+          name="$(cat "$b/.butler-name")"
+          [ "$name" = "$NAME" ] || { echo "::error::.butler-name is '$name', not '$NAME' from the file's name"; exit 1; }
+          cat "$b/logs/install.log"
+          # A new Terminal window: a login shell reads ~/.zprofile, where the package put Butler's bin.
+          # Before the first run brings Python, `butler` answers only `setup` (bin/butler), so this
+          # checks it's found and points the student there, as macos-e2e does.
+          new_window() { env -i HOME="$HOME" USER="$USER" TERM=xterm-256color PATH=/usr/bin:/bin:/usr/sbin:/sbin zsh -l -c "$1"; }
+          found="$(new_window 'command -v butler')"
+          echo "a new window finds: $found"
+          [ "$found" = "$b/bin/butler" ] || { echo "::error::a new Terminal window doesn't find butler in $b/bin"; exit 1; }
+          out="$(new_window 'butler status' 2>&1 || true)"
+          echo "$out"
+          echo "$out" | grep -q "butler setup" || { echo "::error::butler status in a new Terminal window doesn't point to butler setup"; exit 1; }
+      - name: Students get the newest release
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.get.outputs.version }}
+        run: |
+          latest="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
+          if [ -n "$VERSION" ] && [ "$latest" != "$VERSION" ]; then
+            echo "::notice::The live download is $VERSION; the newest release is $latest. The website offers a release after its next deploy, unless updates/hold.json holds it."
+          fi
+          echo "### Live download: $VERSION (newest release $latest)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-download-macos-logs
+          path: ~/Butler/logs/
+          if-no-files-found: ignore
+
+  mac-update:
+    # A student on the release before the live one gets the live one over the air, as their Mac
+    # does: no test manifest, no test signature, the real Installer. Once from `butler update --yes`,
+    # once from the tick's own daily check inside the real launchd job. (An e2e run on 28 Oct 2026
+    # saw the tick refuse the live v0.5.6 as "isn't signed by Butler's publisher"; this is the check.)
+    name: mac update from the previous release (${{ matrix.how }})
+    strategy:
+      fail-fast: false
+      matrix:
+        how: [command, tick]
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: The release before the live one, installed, with its Python
+        id: old
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          live="$(curl -fsSL "$SITE/updates/stable.json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')"
+          previous="$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases --json tagName --jq '.[].tagName' \
+            | python3 -c 'import sys; live=sys.argv[1]; key=lambda t: tuple(int(x) for x in t.lstrip("v").split("."));
+          tags=[t.strip() for t in sys.stdin if t.strip()]; print(max((t for t in tags if key(t) < key(live)), key=key))' "$live")"
+          echo "live $live, installing $previous first"
+          gh release download "$previous" --repo "$GITHUB_REPOSITORY" --pattern Butler.pkg --dir "$RUNNER_TEMP/old"
+          installer -pkg "$RUNNER_TEMP/old/Butler.pkg" -target CurrentUserHomeDirectory
+          b="$HOME/Butler"
+          [ "$(cat "$b/.butler-version")" = "$previous" ] || { echo "::error::installed $(cat "$b/.butler-version"), not $previous"; exit 1; }
+          (cd "$b" && bash scripts/bootstrap.sh)
+          { echo "live=$live"; echo "previous=$previous"; } >> "$GITHUB_OUTPUT"
+      - name: butler update --yes takes it to the live version
+        if: matrix.how == 'command'
+        env:
+          LIVE: ${{ steps.old.outputs.live }}
+        run: |
+          set -uo pipefail
+          b="$HOME/Butler"
+          "$b/bin/butler" update --yes; code=$?
+          cat "$b/data/updates/state.json" 2>/dev/null || true
+          [ "$code" = 0 ] || { echo "::error::butler update --yes exited $code"; tail -n 40 "$b/logs/butler.log"; exit 1; }
+          [ "$(cat "$b/.butler-version")" = "$LIVE" ] || { echo "::error::still on $(cat "$b/.butler-version"), not $LIVE"; exit 1; }
+      - name: The tick's own check, in the real launchd job, takes it to the live version
+        if: matrix.how == 'tick'
+        env:
+          LIVE: ${{ steps.old.outputs.live }}
+        run: |
+          set -uo pipefail
+          b="$HOME/Butler"
+          # The schedule goes in during /butler-setup, after the first run has written settings; the
+          # tick does nothing without them. The example household's settings stand in, updates on.
+          cp "$b/config/settings.example.yaml" "$b/config/settings.yaml"
+          grep -q "^updates: auto" "$b/config/settings.yaml" || { echo "::error::the example settings don't have updates: auto"; exit 1; }
+          "$b/launchd/install.sh"
+          for _ in $(seq 1 120); do
+            [ "$(cat "$b/.butler-version")" = "$LIVE" ] && break
+            sleep 10
+          done
+          launchctl print "gui/$(id -u)/com.buildyourbutler.butler" | grep -E "runs =|last exit code|state =" || true
+          cat "$b/data/updates/state.json" 2>/dev/null || true
+          grep -E "update" "$b/logs/butler.log" | tail -n 20 || true
+          "$b/launchd/uninstall.sh" || true
+          [ "$(cat "$b/.butler-version")" = "$LIVE" ] || { echo "::error::the tick didn't update to $LIVE within 20 minutes"; exit 1; }
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-update-${{ matrix.how }}-logs
+          path: ~/Butler/logs/
+          if-no-files-found: ignore
+
+  report:
+    # One issue for the run, not one per job.
+    needs: [windows, mac, mac-update]
+    if: failure() && github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Open an issue when a scheduled or release run fails
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/report-failure.sh

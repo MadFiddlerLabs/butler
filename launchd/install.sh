@@ -20,6 +20,8 @@ while [ $# -gt 0 ]; do
 done
 
 mkdir -p "$root/logs"
+# A Mac account that has never had a launch agent has no LaunchAgents folder yet.
+mkdir -p "$HOME/Library/LaunchAgents"
 read -r send_hour weekly_hour < <(cd "$root" && PYTHONPATH=src .venv/bin/python -c \
   "from butler.config import load_settings as l; e = l()['email']; print(e['send_hour'], e['weekly_hour'])")
 

@@ -108,6 +108,32 @@ jobs:
           test -x /Applications/Butler.app/Contents/MacOS/Butler
           test ! -e "$HOME/Applications/Butler.app"
           codesign --verify --strict /Applications/Butler.app
+      - name: The daily schedule in the logged-in account's GUI domain (the runner's, an admin)
+        run: |
+          # The settings Module 2 writes (the upgrade step left only a name), then the jobs.
+          (cd "$HOME/Butler" && .venv/bin/python "$GITHUB_WORKSPACE/tests/e2e/install_step_settings.py")
+          tests/e2e/schedule-gui.sh
+
+  student:
+    # A student's own account: standard (not an admin), with a space in its home folder's path.
+    # Installer, the first run typed in a pty, `butler claude` with the real Claude Code installer,
+    # the real launchd jobs and an update found by the tick: all as that account, on Apple silicon
+    # and on Intel. tests/e2e/standard-user.sh says what a hosted runner can't do for it, and why.
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-latest, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the Butler app and two packages (unsigned test builds)
+        run: |
+          packaging/macos/build-app.sh "$RUNNER_TEMP/Butler.app" v0.0.1
+          echo "V1=$(packaging/macos/build-pkg.sh --version v0.0.1 --out "$RUNNER_TEMP/v1" --app "$RUNNER_TEMP/Butler.app" | tail -n 1)" >> "$GITHUB_ENV"
+          echo "V2=$(packaging/macos/build-pkg.sh --version v0.0.2 --out "$RUNNER_TEMP/v2" --app "$RUNNER_TEMP/Butler.app" | tail -n 1)" >> "$GITHUB_ENV"
+      - name: Install, first run, Claude Code, the schedule and an update, as a standard account
+        run: tests/e2e/standard-user.sh "$V1" "$V2"
 
   updates:
     # Over-the-air updates with the real Installer: v0.0.1 → v0.0.2 keeps the household's files
