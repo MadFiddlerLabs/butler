@@ -447,6 +447,29 @@ class TickTest(unittest.TestCase):
         sync.assert_called_once_with()
         daily.assert_called_once()
 
+    def test_gmail_not_connected_yet_is_a_quiet_line_not_a_traceback(self):
+        """Before the household stores the Gmail app password, every tick finds no replies to read.
+        That's normal during setup, so butler.log gets one line, not a traceback every 5 minutes."""
+        from butler import config, inbox, tick
+        with mock.patch.object(inbox, "keychain", return_value=None), \
+             mock.patch.object(tick.updates, "tick"), mock.patch.object(tick.mailer, "flush"), \
+             mock.patch.object(tick, "load_settings", return_value={"timezone": "Europe/Lisbon",
+                                                                      "email": {"trusted_senders": []}}), \
+             mock.patch.object(tick, "_weekly_if_due"), mock.patch.object(tick, "_monthly_if_due"), \
+             mock.patch.object(tick.daily, "main"), mock.patch.object(tick.progress, "sync"), \
+             mock.patch.object(tick.logging, "basicConfig"), \
+             mock.patch.object(tick, "ROOT", Path(tempfile.mkdtemp())) as root, \
+             self.assertLogs("butler", "INFO") as logs:
+            (root / "config").mkdir()
+            (root / "config" / "settings.yaml").write_text("name: Bento\n")
+            tick.main()
+        text = "\n".join(logs.output)
+        self.assertIn(f"replies: no Gmail app password in {tick.system.PASSWORD_STORE} yet", text)
+        self.assertNotIn("replies failed", text)
+        self.assertNotIn("Traceback", text)
+        with mock.patch.object(inbox, "keychain", return_value=None):
+            self.assertRaises(config.NotSetUp, inbox.fetch_unread, {"email": {}})
+
     def test_without_the_households_settings_the_tick_does_nothing(self):
         """After "Start fresh" moved the settings to a backup, the schedule may still run. It must
         never fall back to the invented example household and send its emails."""

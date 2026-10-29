@@ -12,7 +12,8 @@ from dataclasses import dataclass
 from email.header import decode_header, make_header
 from email.utils import parseaddr
 
-from .config import KEYCHAIN_GMAIL, keychain
+from . import system
+from .config import KEYCHAIN_GMAIL, NotSetUp, keychain
 
 
 @dataclass
@@ -77,7 +78,7 @@ def _dkim_passes(msg: email.message.Message, sender: str) -> bool:
 def _login(settings: dict) -> imaplib.IMAP4_SSL:
     password = keychain(KEYCHAIN_GMAIL)
     if not password:
-        raise RuntimeError(f"no Gmail app password in Keychain (service '{KEYCHAIN_GMAIL}')")
+        raise NotSetUp(f"no Gmail app password in {system.PASSWORD_STORE} yet (service '{KEYCHAIN_GMAIL}')")
     imap = imaplib.IMAP4_SSL("imap.gmail.com", 993)
     imap.login(settings["email"]["sender"], password)
     return imap
@@ -96,7 +97,7 @@ def fetch_unread(settings: dict, mark_read: bool = False) -> list[Reply]:
     cfg = settings["email"]
     password = keychain(KEYCHAIN_GMAIL)
     if not password:
-        raise RuntimeError(f"no Gmail app password in Keychain (service '{KEYCHAIN_GMAIL}')")
+        raise NotSetUp(f"no Gmail app password in {system.PASSWORD_STORE} yet (service '{KEYCHAIN_GMAIL}')")
     trusted = {a.lower() for a in cfg["trusted_senders"]}
 
     with imaplib.IMAP4_SSL("imap.gmail.com", 993) as imap:

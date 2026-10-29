@@ -9,7 +9,7 @@ import sys
 from datetime import date, datetime, timedelta
 
 from . import daily, mailer, monthly, progress, replies, system, updates, weekly
-from .config import ROOT, brand, load_settings, tz
+from .config import ROOT, NotSetUp, brand, load_settings, tz
 from .fmt import strftime
 
 log = logging.getLogger("butler")
@@ -31,6 +31,8 @@ def main() -> None:
         log.exception("outbox failed")
     try:
         replies.process(load_settings())
+    except NotSetUp as e:
+        log.info("replies: %s", e)       # Gmail isn't connected yet: normal during setup, every 5 minutes
     except Exception:
         log.exception("replies failed")  # never let replies block the brief
     try:

@@ -277,7 +277,12 @@ def _claude_down():
 
 def fake_request(settings, system, prompt, schema):
     import jsonschema
+    from butler import llm
     name = _schema_name(schema)
+    if not llm.keychain(llm.KEYCHAIN_ANTHROPIC):
+        # As llm._client does, which this fake replaces: a home without the butler's Claude key
+        # (before Module 4) gets no answers.
+        raise llm.NotSetUp("Claude isn't connected yet (Module 4 stores your butler's key)")
     RECORD["prompts"].append({"schema": name, "system": system, "prompt": prompt})
     if DOWN & {"claude", "claude-timeout"}:
         raise _claude_down()

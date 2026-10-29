@@ -11,6 +11,7 @@ import urllib.parse
 import urllib.request
 from datetime import date
 
+from . import system
 from .config import ROOT, NotSetUp, keychain
 
 KEYCHAIN_LUNCHMONEY = "butler-lunchmoney"
@@ -21,7 +22,7 @@ PAGE = 1000          # v2's default page size; it allows up to 2000
 def get(path: str, **params) -> dict:
     token = keychain(KEYCHAIN_LUNCHMONEY)
     if not token:
-        raise NotSetUp(f"no Lunch Money token in Keychain (service '{KEYCHAIN_LUNCHMONEY}')")
+        raise NotSetUp(f"no Lunch Money token in {system.PASSWORD_STORE} (service '{KEYCHAIN_LUNCHMONEY}')")
     query = f"?{urllib.parse.urlencode(params)}" if params else ""
     req = urllib.request.Request(
         f"{BASE}/{path}{query}",
