@@ -59,9 +59,8 @@ Name: "{userprograms}\Butler"; Filename: "{cmd}"; Parameters: "/k """"{app}\bin\
 Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}\bin"; Check: NeedsAddPath(ExpandConstant('{app}\bin'))
 
 [Run]
-; Butler's Python first. cmd carries every line of its output, errors too, into the log, and the
-; 64-bit PowerShell ({sysnative}) sees the computer's real processor (the installer is 32-bit).
-Filename: "{cmd}"; Parameters: "/c """"{sysnative}\WindowsPowerShell\v1.0\powershell.exe"" -NoProfile -ExecutionPolicy Bypass -File ""{app}\scripts\bootstrap.ps1"" > ""{app}\logs\bootstrap.log"" 2>&1"""; WorkingDir: "{app}"; StatusMsg: "Getting Butler's own Python. This can take a few minutes."; Flags: runhidden waituntilterminated; BeforeInstall: MakeLogs
+; Butler's Python comes first, from CurStepChanged(ssPostInstall) below, so the wizard can show
+; each step as it happens.
 Filename: "{app}\.venv\Scripts\python.exe"; Parameters: "-X utf8 ""{app}\run.py"" installed --installer ""{srcexe}"" --silent"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; Check: WizardSilent and HasPython
 Filename: "{app}\.venv\Scripts\python.exe"; Parameters: "-X utf8 ""{app}\run.py"" installed --installer ""{srcexe}"""; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; Check: (not WizardSilent) and HasPython
 
@@ -69,9 +68,34 @@ Filename: "{app}\.venv\Scripts\python.exe"; Parameters: "-X utf8 ""{app}\run.py"
 var
   NoPython: Boolean;
 
-procedure MakeLogs;
+// Each line bootstrap.ps1 prints, errors too: into logs\bootstrap.log, and the latest under the
+// wizard's status, so a slow download shows which step it's on ("Getting Python 3.13 …").
+procedure BootstrapLine(const S: String; const Error, FirstLine: Boolean);
+begin
+  SaveStringToFile(ExpandConstant('{app}\logs\bootstrap.log'), S + #13#10, True);
+  if Trim(S) <> '' then
+    WizardForm.FilenameLabel.Caption := Trim(S);
+end;
+
+// Butler's Python. The bar moves the whole time: a full, still bar looked stuck while Python
+// downloaded (owner's VM, 29 Oct 2026). The 64-bit PowerShell ({sysnative}) sees the computer's
+// real processor (the installer is 32-bit).
+procedure GetPython;
+var
+  ResultCode: Integer;
 begin
   ForceDirectories(ExpandConstant('{app}\logs'));
+  DeleteFile(ExpandConstant('{app}\logs\bootstrap.log'));
+  WizardForm.StatusLabel.Caption := 'Getting Butler''s own Python. This can take a few minutes.';
+  WizardForm.FilenameLabel.Caption := '';
+  WizardForm.ProgressGauge.Style := npbstMarquee;
+  try
+    ExecAndLogOutput(ExpandConstant('{sysnative}\WindowsPowerShell\v1.0\powershell.exe'),
+      '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\scripts\bootstrap.ps1') + '"',
+      ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ResultCode, @BootstrapLine);
+  finally
+    WizardForm.ProgressGauge.Style := npbstNormal;
+  end;
 end;
 
 // Called as each [Run] step comes up, so after the bootstrap has run.
@@ -84,6 +108,8 @@ end;
 // An install without Python says so and fails (exit code 9), instead of finishing quietly.
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
+  if CurStep = ssPostInstall then
+    GetPython;
   if (CurStep = ssDone) and not HasPython then
     SuppressibleMsgBox('Butler couldn''t get its Python, so it isn''t ready yet. Check the internet connection and run this installer again. ' +
       'What went wrong is in ' + ExpandConstant('{app}\logs\bootstrap.log') + '.', mbError, MB_OK, IDOK);

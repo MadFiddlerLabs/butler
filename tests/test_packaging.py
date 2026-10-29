@@ -706,6 +706,18 @@ class LockTest(unittest.TestCase):
         self.assertRegex(installer, r"(?m)^PrivilegesRequired=lowest$", "the guard is off only because Setup isn't elevated")
         self.assertNotIn("a minute or two", installer)
 
+    def test_the_installing_page_shows_each_step_of_getting_python(self):
+        """The owner's VM (29 Oct 2026): a full, still bar while Python downloaded looked stuck.
+        The bootstrap runs from the installer's code, each line it prints goes under the status
+        and into logs\\bootstrap.log, and the bar moves the whole time. windows_wizard.py checks
+        the page on a real install."""
+        installer = (REPO / "packaging" / "windows" / "butler.iss").read_text()
+        self.assertRegex(installer, r"ExecAndLogOutput\([^;]*bootstrap\.ps1[^;]*@BootstrapLine\)")
+        self.assertIn("npbstMarquee", installer)
+        self.assertIn("logs\\bootstrap.log'), S + #13#10, True)", installer)
+        self.assertRegex(installer, r"CurStep = ssPostInstall then\s+GetPython")
+        self.assertNotIn("bootstrap.ps1", installer.split("[Run]")[1].split("[Code]")[0], "not also from [Run]")
+
     def test_ci_tests_the_locked_packages_and_checks_the_lock(self):
         workflows = REPO / ".github" / "workflows"
         self.assertIn("scripts/lock.sh --check", (workflows / "tests.yml").read_text())

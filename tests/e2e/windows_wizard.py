@@ -35,6 +35,8 @@ from pywinauto import Application
 
 WIZARD = re.compile(r"^Setup - Butler")
 BUTTONS = ("Finish", "Install", "Next")          # pressed in this order of preference
+# bootstrap.ps1's steps, which the installing page shows as they happen (butler.iss, GetPython)
+STEPS = ("Getting uv", "Getting Python", "Installing Butler's packages")
 OPEN_FILE = "Open File - Security Warning"
 SMARTSCREEN = ("Windows protected your PC", "Microsoft Defender SmartScreen", "Windows Defender SmartScreen")
 
@@ -199,6 +201,7 @@ def main(installer: Path, name: str) -> int:
     last_page: list[str] = []
     tries: dict[int, int] = {}
     finished = False
+    steps: list[str] = []
     while time.monotonic() < deadline:
         time.sleep(1)
         now = windows()
@@ -225,6 +228,10 @@ def main(installer: Path, name: str) -> int:
                     if page != last_page:
                         print(f"wizard page: {page}", flush=True)
                         last_page = page
+                    for step in STEPS:
+                        if step not in steps and any(label.startswith(step) for label in page):
+                            steps.append(step)
+                            screenshot(f"installing-{len(steps)}.png")
                     for label in BUTTONS:
                         if press(window, label):
                             finished = finished or label == "Finish"
@@ -239,7 +246,10 @@ def main(installer: Path, name: str) -> int:
             except Exception as e:  # noqa: BLE001 - the window went while we looked; look again
                 print(f"  ({title!r}: {type(e).__name__}: {e})", flush=True)
         if finished and not wizard_open:
-            print("the wizard finished", flush=True)
+            print(f"the wizard finished; the installing page showed: {steps}", flush=True)
+            if not steps:
+                print("but it never showed a step of getting Python (a still bar looks stuck)", flush=True)
+                return 1
             return 0
     print(f"the wizard didn't finish in 20 minutes; its last page: {last_page}", flush=True)
     return 1
