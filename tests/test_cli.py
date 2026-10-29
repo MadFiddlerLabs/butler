@@ -673,3 +673,87 @@ class ButlerCmdTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CourseVideoTest(unittest.TestCase):
+    """Each module's video opens in the browser as the module starts (course_video.py): once per
+    module, at the page's video, from the same course map the website's contract check reads."""
+
+    def setUp(self):
+        self.data = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.data, True)
+        for p in (mock.patch.object(cli.course_video, "DATA", self.data),
+                  mock.patch.dict(os.environ, {"BUTLER_COLUMNS": "1000"})):
+            p.start()
+            self.addCleanup(p.stop)
+        os.environ.pop("BUTLER_NO_OPEN", None)
+
+    def watch(self, *args: str) -> tuple[int, str, mock.Mock]:
+        out = io.StringIO()
+        with mock.patch.object(cli.course_video.system, "open_file") as opened, redirect_stdout(out):
+            code = cli.main(["watch", *args])
+        return code, out.getvalue(), opened
+
+    def test_a_step_opens_its_modules_video_once(self):
+        code, out, opened = self.watch("calendar")
+        self.assertEqual(code, 0)
+        opened.assert_called_once_with("https://buildyourbutler.com/course/show-your-butler-your-calendar/#video")
+        self.assertIn("I've opened Module 3's video in your browser: Show your butler your calendar.", out)
+        self.assertIn("Please watch it first: it shows what we're about to do. If you'd like to read along, "
+                      "the lesson is on the same page, after the video.", out)
+        code, out, opened = self.watch("3")
+        self.assertEqual(code, 0)
+        opened.assert_not_called()
+        self.assertIn("Module 3's video was opened before", out)
+        code, out, opened = self.watch("calendar", "--again")
+        opened.assert_called_once()
+        self.assertEqual((self.data / "course-videos-opened").read_text().split(), ["3", "3"])
+
+    def test_each_step_and_module_has_a_page(self):
+        for step, info in cli.progress.course_map().items():
+            self.assertEqual(cli.course_video.url(info["module"]), info["url"] + "#video", step)
+
+    def test_an_unknown_step_says_how(self):
+        code, out, opened = self.watch("calender")
+        self.assertEqual(code, 1)
+        opened.assert_not_called()
+        self.assertIn("Say which step or module, like this: butler watch calendar", out)
+
+    def claude(self, tty: bool) -> tuple[str, mock.Mock, mock.Mock]:
+        welcomed = self.data / "claude-welcomed"
+        out = io.StringIO()
+        with mock.patch.object(cli, "CLAUDE_WELCOMED", welcomed), \
+             mock.patch.object(cli, "_claude_path", return_value="/usr/local/bin/claude"), \
+             mock.patch.object(cli.ss, "load", return_value={"claude_mode": "ask"}), \
+             mock.patch.object(cli.progress, "report"), \
+             mock.patch.object(cli.course_video.system, "open_file") as opened, \
+             mock.patch.object(cli, "_ask", return_value="") as ask, \
+             mock.patch.object(cli.sys.stdin, "isatty", return_value=tty), redirect_stdout(out):
+            cli.open_claude(dry_run=True)
+        return out.getvalue(), opened, ask
+
+    def test_the_first_butler_claude_opens_module_1s_video_and_waits_for_enter(self):
+        out, opened, ask = self.claude(tty=True)
+        opened.assert_called_once_with("https://buildyourbutler.com/course/meet-claude-code/#video")
+        self.assertLess(out.index("I've opened Module 1's video"), out.index("Opening Claude Code"))
+        ask.assert_called_once_with(cli.course_video.READY)
+        out, opened, ask = self.claude(tty=True)
+        opened.assert_not_called()
+        ask.assert_not_called()
+
+    def test_with_no_keyboard_it_carries_on(self):
+        out, opened, ask = self.claude(tty=False)
+        opened.assert_called_once()
+        ask.assert_not_called()
+
+    def test_the_mac_first_run_opens_the_same_page_in_the_same_words(self):
+        script = (REPO / "scripts" / "first-run.sh").read_text()
+        self.assertIn(f'video_url="{cli.course_video.url(0)}"', script)
+        title = cli.progress.course_modules()[0]["title"]
+        self.assertIn(f"I've opened Module 0's video in your browser: {title}.", script)
+        self.assertIn(f"Module 0's video, {title}, is here:", script)
+        self.assertIn("Please watch it first: it shows what we're about to do. If you'd like to read along, "
+                      "the lesson is on the same page, after the video.", script)
+        self.assertIn('printf "Press Enter when you\'re ready › "', script)
+        self.assertEqual(cli.course_video.READY, "Press Enter when you're ready › ")
+

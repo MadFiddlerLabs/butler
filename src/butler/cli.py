@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import config, doctor, progress, setup_settings as ss, system, updates
+from . import config, course_video, doctor, progress, setup_settings as ss, system, updates
 from .config import ROOT, plain_output
 
 CLAUDE_INSTALL = "curl -fsSL https://claude.ai/install.sh | bash"
@@ -217,6 +217,34 @@ def _installer() -> tuple[str, list[str]]:
     return CLAUDE_INSTALL, ["bash", "-c", CLAUDE_INSTALL]
 
 
+def _watch_first(module: int, data: Path | None = None) -> None:
+    """The module's video, opened before the module starts. A person at the keyboard presses Enter
+    once they've watched it; with no keyboard (a script), Butler carries on."""
+    for line in course_video.open_page(module, data):
+        say(line)
+    if sys.stdin is not None and sys.stdin.isatty():
+        _ask(course_video.READY)
+
+
+def cmd_watch(args) -> int:
+    """`butler watch calendar` (a /butler-setup step) or `butler watch 3`: the module's video, opened
+    once as the step starts. Claude asks the student to say when they've watched it. Opened before,
+    it says so and opens nothing, unless --again."""
+    steps, modules = progress.course_map(), progress.course_modules()
+    wanted = (args.what or "").strip().lower()
+    module = steps[wanted]["module"] if wanted in steps else int(wanted) if wanted.isdigit() else None
+    if module not in modules:
+        say("Say which step or module, like this: butler watch calendar (or: butler watch 3)")
+        return 1
+    if module in course_video.opened() and not args.again:
+        say(f"Module {module}'s video was opened before: {course_video.url(module)}")
+        say(f"To open it again: butler watch {wanted} --again")
+        return 0
+    for line in course_video.open_page(module):
+        say(line)
+    return 0
+
+
 def cmd_claude(args) -> int:
     return open_claude(args.yes, args.dry_run)
 
@@ -227,6 +255,8 @@ def open_claude(yes: bool = False, dry_run: bool = False, opening: str | None = 
     done, a question about what to change. Installs Claude Code first if it's missing. `opening`
     replaces the usual two lines about what opens (`butler resume` says it its own way)."""
     dry = dry_run or bool(os.environ.get("BUTLER_CLAUDE_DRY_RUN"))
+    if not CLAUDE_WELCOMED.exists() and 1 not in course_video.opened(CLAUDE_WELCOMED.parent):
+        _watch_first(1, CLAUDE_WELCOMED.parent)   # Meet Claude Code: what it is, and Ask first or Auto
     exe = _claude_path()
     if not exe:
         say("Next, I move into Claude Code: an AI helper that does the rest of the setup with you.")
@@ -597,6 +627,7 @@ def commands() -> list[tuple[str, list[tuple[str, str]]]]:
             ("butler adults Sam Alex", "who the emails are for"),
             ("butler brief", "write a brief now and open it"),
             ("butler claude", "continue the course in Claude Code"),
+            ("butler watch calendar", "open a module's video (a step, or a module number)"),
             ("butler claude-mode ask", "Claude Code asks before each change (or: auto)"),
             ("butler secret butler-anthropic", "store a key or password, typed hidden"),
         ]),
@@ -670,6 +701,9 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("claude")
     p.add_argument("--yes", action="store_true")
     p.add_argument("--dry-run", action="store_true")
+    p = sub.add_parser("watch")
+    p.add_argument("what", nargs="?")
+    p.add_argument("--again", action="store_true")
     p = sub.add_parser("claude-mode")
     p.add_argument("mode", nargs="?")
     sub.add_parser("doctor")
@@ -682,6 +716,7 @@ def main(argv: list[str] | None = None) -> int:
                 "status": cmd_status, "progress": cmd_progress, "claude": cmd_claude,
                 "claude-mode": cmd_claude_mode, "doctor": cmd_doctor, "update": cmd_update,
                 "portal": cmd_portal, "resume": cmd_resume, "setup": cmd_setup, "secret": cmd_secret,
+                "watch": cmd_watch,
                 None: cmd_home}
     words = sys.argv[1:] if argv is None else argv
     try:

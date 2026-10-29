@@ -80,11 +80,12 @@ class MappingTest(unittest.TestCase):
             self.assertRegex(skill, rf"(?m)^## {step} \((course )?Module {entry['module']}: "
                                     rf"{re.escape(modules[entry['module']]['title'])}\)$", step)
 
-    def test_the_skill_offers_the_course_page_first_and_waits(self):
+    def test_the_skill_starts_each_step_with_its_video_and_waits(self):
         skill = (REPO / ".claude" / "skills" / "butler-setup" / "SKILL.md").read_text()
-        rule = skill.split("**Start each step from its course page.**")[1].split("\n- ")[0]
-        for words in ("`url` in `src/butler/course_progress.json`", "Open it in your browser now? (yes / no)",
-                      "Yes is the default", "run `open <url>`", "wait for them", "On no, carry on"):
+        rule = skill.split("**Start each step with its module's video.**")[1].split("\n- ")[0]
+        for words in ("run `bin/butler watch <step>`", "Before anything else in a step",
+                      "tell you when they've watched it", "wait for them", "opened before, carry on",
+                      "`src/butler/course_progress.json`"):
             self.assertIn(words, " ".join(rule.split()), words)
 
     def test_the_skill_runs_tailscale_by_its_full_path(self):

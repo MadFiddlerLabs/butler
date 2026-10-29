@@ -56,7 +56,7 @@ someone developing Butler itself. The hard rules apply to both.
 | `src/butler/system/` | Everything that differs between macOS and Windows: secrets, the schedule check, opening a file, the screen reader, the update lock. `mac.py` and `windows.py` have the same functions; nothing else calls Keychain, launchd or `open` |
 | `run.py`, `src/butler/schedule.py` | Windows: `run.sh`'s twin in Python (UTF-8 mode, keeps the computer awake for the tick), and the Task Scheduler tasks that mirror the launchd jobs, the morning one waking the computer (`python run.py schedule install`) |
 | `config/*.example.yaml`, `budget/budget.example.xlsx`, `examples/` | The invented example household |
-| `bin/butler`, `src/butler/cli.py`, `doctor.py` | The `butler` command: one pasted line per early lesson; `butler resume` goes straight to where the student left off; `butler doctor` reads the log and the last restart; `butler secret <name>` stores a key typed hidden |
+| `bin/butler`, `src/butler/cli.py`, `doctor.py`, `course_video.py` | The `butler` command: one pasted line per early lesson; `butler resume` goes straight to where the student left off; `butler doctor` reads the log and the last restart; `butler secret <name>` stores a key typed hidden |
 | `scripts/first-run.sh` | The guided first run the package opens: sign-in, lessons, then Claude Code. Run again, it skips what's done; `--again` (after a reinstall) offers resume or start fresh |
 | `bin/butler.cmd`, `src/butler/first_run.py` | Windows: the `butler` command (Butler's Python through `run.py cli`) and the guided first run in Python, first-run.sh's twin: same prompts, files and exit codes. `tests/test_first_run_python.py` runs both on the same answers and compares them, so change both together |
 | `helpers/butler-app/` | The Butler app, in `/Applications` on an admin account (else `~/Applications`; `place_app` in `scripts/lib/install.sh`): opens Terminal on `butler resume`, the way back |
@@ -121,8 +121,9 @@ terminal. It doesn't apply to developers.
 - Their mode is theirs. `butler claude-mode ask` or `auto` changes it from the next
   `butler claude`; never change it for them. Whatever the mode, sending email still needs
   their clear yes.
-- Each `/butler-setup` step starts by offering the module's page on buildyourbutler.com (the
-  step's `url` in `src/butler/course_progress.json`), so the lesson and the setup go together.
+- Each module starts with its video: the first run opens Module 0's, `butler claude` Module 1's
+  the first time, and each `/butler-setup` step runs `butler watch <step>` before anything else.
+  Ask them to say when they've watched it, and wait. The lesson's text is on the same page, after the video.
 - The first time they ask about files or folders, start with "You'll rarely need to open these
   yourself. Just ask me." Give the detail after that, and only if they want it. Say it once, not
   at the start of every answer.
