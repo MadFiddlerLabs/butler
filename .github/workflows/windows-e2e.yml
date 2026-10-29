@@ -279,6 +279,9 @@ jobs:
         # tests/e2e/windows_wizard.py: "Mr Pickles (1).exe" with the Mark of the Web, opened as a
         # double-click opens it, every page clicked. No /VERYSILENT. As the runner's own account,
         # into its own profile: the one part of this job that isn't BYB Test (see the step above).
+        # x64 only: the ARM runner's screen sits on Windows' first-start privacy page, so no click
+        # reaches a window there (screenshot, 28 Oct 2026). ARM still installs as BYB Test above.
+        if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
           python -X utf8 tests\e2e\windows_wizard.py C:\byb\Butler-Setup.exe

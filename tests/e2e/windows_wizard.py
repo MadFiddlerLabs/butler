@@ -102,6 +102,12 @@ def screenshot(name: str) -> None:
         print(f"  (no screenshot: {type(e).__name__}: {e})", flush=True)
 
 
+def class_name(hwnd: int) -> str:
+    buffer = ctypes.create_unicode_buffer(256)
+    user32.GetClassNameW(hwnd, buffer, 256)
+    return buffer.value
+
+
 def download(installer: Path, name: str) -> Path:
     """A copy in Downloads, carrying the Mark of the Web as a browser leaves it."""
     downloads = Path.home() / "Downloads"
@@ -223,7 +229,9 @@ def main(installer: Path, name: str) -> int:
                         if press(window, label):
                             finished = finished or label == "Finish"
                             break
-                elif title in ("Setup", "Butler", "Error"):
+                elif title in ("Setup", "Butler", "Error") and class_name(hwnd) == "#32770":
+                    # A dialog's class: Inno's own main window is also titled "Setup", and is
+                    # there all through the install (28 Oct 2026, the screenshot showed no box).
                     # A message box from Setup: an error, or "couldn't get its Python".
                     print(f"message box {title!r}: {box_text(hwnd)} {uia_text(hwnd)}", flush=True)
                     screenshot("message-box.png")
