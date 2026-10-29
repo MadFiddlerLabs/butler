@@ -1047,7 +1047,10 @@ In this session, you will also:
                 await self.act("on_screen", action="click_email_link", what="the link in the email", text="")
                 await self.act("on_screen", action="click_on_page", what="Yes, sign me in", text="Yes, sign me in")
                 clicked = True
-            lines = [line.strip() for line in screen.splitlines() if line.strip()]
+            # The terminal's own text: the harness adds "[Your browser opens a page: …]" below it after
+            # `butler brief`, which hid the "Paste here ›" prompt for 45 minutes (29 Oct 2026).
+            terminal = screen.split("\n[Your browser opens a page:", 1)[0]
+            lines = [line.strip() for line in terminal.splitlines() if line.strip()]
             reply = next((a for p, a in self.PROMPTS if lines and lines[-1].endswith(p)), None)
             if reply is None:
                 screen = await self.act("terminal", action="look", text="", window=window)
