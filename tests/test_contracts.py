@@ -287,23 +287,25 @@ class CourseContractTest(unittest.TestCase):
         self.assertEqual(settings["permissions"]["defaultMode"], "default")
         self.assertNotIn("settings.json", (REPO / ".gitignore").read_text())
 
-    def test_only_the_read_only_checks_run_without_asking(self):
+    def test_only_the_read_only_checks_and_the_videos_run_without_asking(self):
         """The persona rounds asked about `butler progress` and `butler status` again and again,
         and the owner agreed (28 Oct 2026) that they, and `butler doctor`, run without asking:
-        they only read (progress also sends the lesson ticks the skill means it to). Nothing else
-        is pre-approved, and none of the three takes arguments. On Windows, Claude Code often uses its
-        PowerShell tool, which Bash rules don't cover, so the same three have PowerShell rules too
-        (owner, 28 Oct)."""
+        they only read (progress also sends the lesson ticks the skill means it to). On 29 Oct the
+        owner added `butler watch`, which each /butler-setup step runs first: it opens the module's
+        video page and notes that it did. Nothing else is pre-approved. On Windows, Claude Code
+        often uses its PowerShell tool, which Bash rules don't cover, so each has PowerShell rules
+        too (owner, 28 Oct)."""
         import json
         allow = json.loads((REPO / ".claude" / "settings.json").read_text())["permissions"]["allow"]
         for rule in allow:
             m = (re.fullmatch(r"Bash\((butler|bin/butler|\./bin/butler|bin/butler\.cmd) "
-                              r"(progress|status|doctor)( \*)?\)", rule)
+                              r"(progress|status|doctor|watch)( \*)?\)", rule)
                  or re.fullmatch(r"PowerShell\((butler|\.\\bin\\butler\.cmd|bin\\butler\.cmd|bin/butler\.cmd|\./bin/butler\.cmd) "
-                                 r"(progress|status|doctor)( \*)?\)", rule))
+                                 r"(progress|status|doctor|watch)( \*)?\)", rule))
             self.assertTrue(m, rule)
-        self.assertEqual(len(allow), 54)
+        self.assertEqual(len(allow), 72)
         self.assertIn("PowerShell(.\\bin\\butler.cmd progress)", allow, "the form Claude used in round 5")
+        self.assertIn("Bash(bin/butler watch *)", allow, "the form the setup skill runs")
 
     def test_commands_run_where_claude_code_opened_without_changing_folders(self):
         """Persona round 5 (28 Oct): on Windows, Claude began nearly every command with

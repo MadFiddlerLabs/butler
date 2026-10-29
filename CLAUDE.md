@@ -60,7 +60,7 @@ someone developing Butler itself. The hard rules apply to both.
 | `scripts/first-run.sh` | The guided first run the package opens: sign-in, lessons, then Claude Code. Run again, it skips what's done; `--again` (after a reinstall) offers resume or start fresh |
 | `bin/butler.cmd`, `src/butler/first_run.py` | Windows: the `butler` command (Butler's Python through `run.py cli`) and the guided first run in Python, first-run.sh's twin: same prompts, files and exit codes. `tests/test_first_run_python.py` runs both on the same answers and compares them, so change both together |
 | `helpers/butler-app/` | The Butler app, in `/Applications` on an admin account (else `~/Applications`; `place_app` in `scripts/lib/install.sh`): opens Terminal on `butler resume`, the way back |
-| `.claude/settings.json` | Claude Code starts in ask-first (`default`) mode here; `butler claude` passes the household's `claude_mode`. Only `butler progress`, `status` and `doctor` run without asking (Bash and PowerShell rules): they only read |
+| `.claude/settings.json` | Claude Code starts in ask-first (`default`) mode here; `butler claude` passes the household's `claude_mode`. Only `butler progress`, `status` and `doctor` (they only read) and `butler watch` (opens a module's video) run without asking (Bash and PowerShell rules) |
 | `src/butler/setup_settings.py`, `account.py` | Settings written one answer at a time; the course account |
 | `src/butler/progress.py`, `course_progress.json` | Progress that marks itself: each setup step's check, the step-to-lesson map, the offline queue (`data/progress.json`), `butler progress` |
 | `packaging/macos/` | The installer package and the universal Calendar helper (docs/RELEASING.md) |
