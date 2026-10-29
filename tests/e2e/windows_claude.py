@@ -22,6 +22,13 @@ FIRST_SCREEN = ("Welcome to Claude Code", "Choose the text style", "Select login
                 "Claude account with subscription", "Let's get started")
 
 
+def first_screen(screen: str) -> bool:
+    """Compared without spaces: the console reads some of Claude Code's lines with the spaces
+    gone ("Let'sgetstarted", 28 Oct 2026), drawn as cursor moves rather than characters."""
+    flat = "".join(screen.split())
+    return any("".join(s.split()) in flat for s in FIRST_SCREEN)
+
+
 def main(butler: Path) -> None:
     env = new_window_environment()
     env.pop("BUTLER_CLAUDE_DRY_RUN", None)
@@ -39,7 +46,7 @@ def main(butler: Path) -> None:
         console.type("")
         console.wait_for("Opening Claude Code in your Butler folder.")
         deadline = time.monotonic() + 180
-        while time.monotonic() < deadline and not any(s in console.text() for s in FIRST_SCREEN):
+        while time.monotonic() < deadline and not first_screen(console.text()):
             time.sleep(1)
         screen = console.text()
         print(screen[-4000:], flush=True)
@@ -49,7 +56,7 @@ def main(butler: Path) -> None:
     check("Butler found claude in the same window, without asking for a new one",
           "I can't find it yet" not in screen)
     check("the installer didn't fail", "didn't finish" not in screen)
-    check("Claude Code's first screen opened", any(s in screen for s in FIRST_SCREEN), screen[-3000:])
+    check("Claude Code's first screen opened", first_screen(screen), screen[-3000:])
 
 
 if __name__ == "__main__":
