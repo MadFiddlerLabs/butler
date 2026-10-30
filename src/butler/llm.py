@@ -263,13 +263,21 @@ def pick_news(settings: dict, stories: list[Story], day=None) -> list[dict]:
 
     by_ref = {s.ref: s for s in stories}
     counts: dict[str, int] = {}
-    chosen = []
+    chosen, unknown = [], []
     for item in picked:
         story = by_ref.get(item["ref"])
-        if story is None or counts.get(story.region, 0) >= per_region:
+        if story is None:
+            unknown.append(item["ref"])
+            continue
+        if counts.get(story.region, 0) >= per_region:
             continue
         counts[story.region] = counts.get(story.region, 0) + 1
         chosen.append({"story": story, "headline": item["headline"], "summary": item["summary"]})
+    # One line per brief, so a section that falls back to the feeds' own headlines shows why: no
+    # candidates, no picks, or picks whose refs match nothing (a persona's 5-section brief, 30 Oct 2026).
+    logging.getLogger("butler").info("news picks: %s%s", ", ".join(f"{label} {counts.get(key, 0)} of {len(candidates[key])}"
+                                          for key, label in regions),
+             f"; refs matching no story: {', '.join(unknown[:10])}" if unknown else "")
     order = [key for key, _ in regions]
     chosen.sort(key=lambda c: order.index(c["story"].region))
     return chosen

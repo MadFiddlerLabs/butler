@@ -322,6 +322,22 @@ class CourseContractTest(unittest.TestCase):
                 for line in block.splitlines():
                     self.assertNotRegex(line.strip(), r"^(cd|Set-Location)\b", f"{name}: {line.strip()}")
 
+    def test_every_reply_to_a_student_ends_with_a_next_step(self):
+        """The owner's own finding (30 Oct 2026): Claude answered a question or did something and
+        left no obvious next step, about 1 reply in 4 in a persona's transcript. Permission
+        questions come with a plain sentence first, and the calendar step asks all of lesson 3.4's
+        questions, with Google's wording explained before its page opens."""
+        student = (REPO / "CLAUDE.md").read_text().split("## Talking to someone learning")[1].split("\n## ")[0]
+        setup = " ".join(SKILLS["butler-setup"].split())
+        for name, text in (("CLAUDE.md, students", " ".join(student.split())), ("butler-setup", setup)):
+            self.assertIn("End every reply with one clear next step", text, name)
+            self.assertIn('"what\'s next?"', text, name)
+            self.assertRegex(text, r"[Bb]efore a command that asks their permission, say in one plain sentence", name)
+        self.assertIn("ask every one, one at a time", setup)
+        self.assertIn("Say this before the page opens, not after", setup)
+        self.assertIn("Anthropic asks for a card", setup)
+        self.assertIn("Module 4 needs a card for Anthropic's API", setup)
+
     def test_progress_and_feedback_are_checked_not_guessed(self):
         """Persona rounds 4 to 6: Claude told students a module was skipped, then "not ticked yet",
         with no check; and /butler-tune looked for feedback sent a minute before, which Butler

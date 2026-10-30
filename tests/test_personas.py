@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import sys
+import textwrap
 import unittest
 import unittest.mock
 from pathlib import Path
@@ -20,10 +21,15 @@ import screens  # noqa: E402
 from terminal import Screen, Terminal, plain  # noqa: E402
 
 
-def cli_prompt() -> str:
-    """Butler's first opening prompt for Claude Code, as open_claude passes it."""
+def cli_module():
     sys.path.insert(0, str(HERE.parent / "src"))
     from butler import cli
+    return cli
+
+
+def cli_prompt() -> str:
+    """Butler's first opening prompt for Claude Code, as open_claude passes it."""
+    cli = cli_module()
     return cli.FIRST_CLAUDE_PROMPT.format(manners=cli.MANNERS["auto"])
 
 
@@ -43,10 +49,12 @@ class PersonasTest(unittest.TestCase):
         cli = (HERE.parent / "src" / "butler" / "cli.py").read_text()
         for line in ('say("Opening Claude Code in your Butler folder. If it asks you to sign in, follow the link it shows.")',
                      'say(f"{opening} If it asks you to sign in, follow the link it shows.")',
-                     'say("It starts with Module 1: Meet Claude Code." if first else "It picks up where you left off in the course.")'):
+                     'say("It starts with Module 1: Meet Claude Code." if first else "It picks up where you left off in the course.")',
+                     'say(CLAUDE_HERE)'):
             self.assertIn(line, cli)
+        here = textwrap.fill(cli_module().CLAUDE_HERE, 76)
         screen = ("Type 1 or 2, or press Enter for Ask first: \nAsk first it is.\nOpening Claude Code in your Butler folder. "
-                  "If it asks you to sign in, follow the link it shows.\nIt starts with Module 1: Meet Claude Code.\n"
+                  f"If it asks you to sign in, follow the link it shows.\nIt starts with Module 1: Meet Claude Code.\n{here}\n"
                   "╭─ Welcome to Claude Code ─╮\n")
         m = screens.CLAUDE_OPENING.search(screen)
         self.assertTrue(screen[m.end():].startswith("╭─ Welcome"), "everything after is Claude Code's own screen")

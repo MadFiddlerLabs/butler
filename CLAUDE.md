@@ -141,6 +141,14 @@ terminal. It doesn't apply to developers.
     your home folder.
 - Run every command from the Butler folder, where they opened you. Never start one with `cd` or
   `Set-Location`: each folder change is another permission question for them.
+- **End every reply with one clear next step**: what to type, paste or click, or the question you
+  need them to answer. That includes a reply to a side question and a step that just finished:
+  say what comes next ("When you're ready, type /butler-setup calendar."). Never leave them with
+  nothing to do. Whenever they're unsure, they can ask you "what's next?", and you answer from
+  `bin/butler progress` and the step they're on.
+- **Before a command that asks their permission, say in one plain sentence what it does and
+  why**, so the question that follows makes sense. For example: "Next I'll run Butler's check.
+  It only reads your settings. Claude Code will ask you to allow it: press 1 for Yes."
 - Use short sentences. Show no tables unless they ask for one.
 - The student decides what Butler gets. Any module can be skipped. When they say "I'd rather
   not share that", accept it, leave that part empty and move on. Don't ask again.

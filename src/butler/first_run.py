@@ -37,6 +37,13 @@ HEARD_LABELS = ("A friend or family member", "A web search", "Reddit", "Hacker N
                 "YouTube", "Social media", "A newsletter", "A podcast", "Somewhere else")
 EMAIL = re.compile(r'[^@"\\]+@[^@"\\]+\.[^@"\\]+')
 COMPUTER = system.COMPUTERS
+# What this window is, said first: most students have never used a terminal (persona round, 30 Oct 2026).
+WINDOW_LINE = "This window is {terminal}: you type short lines here, and I tell you each one. Closing it does no harm: "
+COME_BACK = {
+    "app": "the Butler app brings you back.",
+    "resume": "type butler resume in a new Terminal window to come back.",
+    "windows": "click Start, type Butler and press Enter to come back.",
+}
 PATH_NOTE = {
     "mac": 'I added one line to ~/.zprofile so you can type "butler" in any new Terminal window.',
     "windows": 'I added Butler to your PATH so you can type "butler" in any new Terminal window.',
@@ -342,18 +349,29 @@ class FirstRun:
         self.say("I'll email you a link to sign in. It keeps your place in the course.")
         self.say(f"We never see your household's data. It goes only from this {self.computer} to services you "
                  "choose, such as Anthropic and Google.")
-        next_email = None
+        next_email = typed = None
         while True:
+            # A retyped address while waiting is said back as it's sent; one typed here is checked first.
+            confirm = not next_email
             if next_email:
                 email, next_email = next_email, None
+            elif typed:
+                email, typed = typed, None
             else:
-                email = re.sub(r"\s", "", self.keys.line("Your email \u203a ") or "")
+                email = self.keys.line("Your email \u203a ") or ""
+            email = re.sub(r"\s", "", email)
             if not email or email == "skip":
                 self.say("No problem. Sign in later with: butler setup")
                 return
             if not EMAIL.fullmatch(email):
                 self.say("That doesn't look like an email address. Try again, or type skip.")
                 continue
+            if confirm:
+                answer = re.sub(r"\s", "", self.keys.line(f"Send the link to {email}? Press Enter, or type the right "
+                                                           "address \u203a ") or "")
+                if answer.lower() not in ("", "y", "yes"):
+                    typed = answer
+                    continue
             try:
                 started = account.start(email, self.name, f"setup/{self.version}")
             except account.AccountError as e:
@@ -464,6 +482,9 @@ class FirstRun:
         self.name = name
         _write(self.root / ".butler-name", name + "\n")
         self.say()
+        windows = system.NAME == "windows"
+        come_back = "windows" if windows else "app" if system.butler_app() else "resume"
+        self.say(WINDOW_LINE.format(terminal="a Terminal" if windows else "Terminal") + COME_BACK[come_back])
         if resuming:
             self.say("Let's pick up where we left off. I'll skip whatever is done already.")
         else:

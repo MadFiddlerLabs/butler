@@ -104,7 +104,7 @@ class FirstRunTest(unittest.TestCase):
 
     def test_the_whole_first_run(self):
         h = self.home()
-        proc = h.first_run(["", "", "3", "sam@example.com", "yes", *LESSONS])
+        proc = h.first_run(["", "", "3", "sam@example.com", "", "yes", *LESSONS])
         out = proc.stdout
         self.assertEqual(proc.returncode, 0, out + proc.stderr)
         self.assertIn("Hello! I'm Bento, your new butler.", out)
@@ -204,11 +204,11 @@ class FirstRunTest(unittest.TestCase):
 
     def test_terms_and_heard_given_offline_reach_the_server_later(self):
         h = self.home(api=None)
-        h.first_run(["", "", "5", "sam@example.com"])
+        h.first_run(["", "", "5", "sam@example.com", ""])
         accepted = json.loads((h.root / "data" / "terms.json").read_text())["terms_accepted_at"]
         h.env["BUTLER_API"] = self.api.url + "/api"
         h.env["BUTLER_GEOCODE_URL"] = self.api.url + "/geocode"
-        proc = h.first_run(["", "sam@example.com", "", *LESSONS])
+        proc = h.first_run(["", "sam@example.com", "", "", *LESSONS])
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertNotIn("By continuing", proc.stdout)
         self.assertNotIn("Where did you hear", proc.stdout)
@@ -224,7 +224,7 @@ class FirstRunTest(unittest.TestCase):
         self.assertIn("Where did you hear about Butler? (optional)", first.stdout)
         self.assertIn("Type a number from 1 to 10, or press Enter to skip.", first.stdout)
         self.assertEqual(json.loads((h.root / "data" / "heard.json").read_text()), {"heard": None})
-        again = h.first_run(["", "sam@example.com", ""])
+        again = h.first_run(["", "sam@example.com", "", ""])
         self.assertNotIn("Where did you hear", again.stdout)
         starts = [body for method, path, body in self.api.calls if path == "/api/auth/start"]
         self.assertEqual(len(starts), 1)
@@ -252,7 +252,7 @@ class FirstRunTest(unittest.TestCase):
 
     def test_offline_still_reaches_the_first_brief(self):
         h = self.home(api=None)
-        proc = h.first_run(["", "", "", "sam@example.com", *LESSONS[:4], ""])
+        proc = h.first_run(["", "", "", "sam@example.com", "", *LESSONS[:4], ""])
         out = proc.stdout
         self.assertEqual(proc.returncode, 1, out)   # the town lookup needs the internet
         self.assertIn("I can't reach buildyourbutler.com right now", out)
@@ -276,7 +276,7 @@ class FirstRunTest(unittest.TestCase):
 
     def test_bad_email_then_good(self):
         h = self.home()
-        proc = h.first_run(["", "", "", "not-an-email", "sam@example.com", "", *LESSONS])
+        proc = h.first_run(["", "", "", "not-an-email", "sam@example.com", "", "", *LESSONS])
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertIn("doesn't look like an email address", proc.stdout)
         self.assertIn("You're signed in as sam@example.com.", proc.stdout)
@@ -285,7 +285,7 @@ class FirstRunTest(unittest.TestCase):
         api = FakeAccountAPI(unavailable=True).start()
         self.addCleanup(api.stop)
         h = self.home(api=api)
-        proc = h.first_run(["", "", "", "sam@example.com", *LESSONS])
+        proc = h.first_run(["", "", "", "sam@example.com", "", *LESSONS])
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertIn("Sign-in isn't available right now. That's on our side, not yours.", proc.stdout)
         self.assertEqual(proc.stdout.count("Your email \u203a"), 1, "it asked for the email only once")
@@ -308,7 +308,7 @@ class FirstRunTest(unittest.TestCase):
 
     def test_a_second_run_skips_what_is_done_and_never_asks_the_name_or_email_when_signed_in(self):
         h = self.home()
-        first = h.first_run(["", "", "", "sam@example.com", "", *LESSONS])
+        first = h.first_run(["", "", "", "sam@example.com", "", "", *LESSONS])
         self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
         self.assertTrue((h.root / "data" / "first-run-started").exists())
         self.assertTrue((h.root / "data" / "first-run-done").exists())
