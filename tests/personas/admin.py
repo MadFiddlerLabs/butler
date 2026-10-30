@@ -87,7 +87,10 @@ def serve(folder: Path) -> None:
             except Exception as e:  # noqa: BLE001 - the run hears why
                 result = {"error": f"{type(e).__name__}: {e}"}
                 print(f"{ask.name}: {result['error']}", flush=True)
-            done.write_text(json.dumps(result))
+            # Whole or not at all, as the request is: the run reads it the moment it appears (an empty
+            # read failed the 31 December dates check, 30 Oct 2026).
+            done.with_suffix(".donetmp").write_text(json.dumps(result))
+            os.replace(done.with_suffix(".donetmp"), done)
         time.sleep(0.5)
 
 

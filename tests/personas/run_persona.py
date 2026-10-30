@@ -51,7 +51,7 @@ from pathlib import Path
 import anthropic
 import yaml
 from claude_agent_sdk import (AssistantMessage, ClaudeAgentOptions, ClaudeSDKClient, ResultMessage, TextBlock,
-                              ToolUseBlock)
+                              ToolResultBlock, ToolUseBlock, UserMessage)
 from claude_agent_sdk.types import PermissionResultAllow, PermissionResultDeny
 
 HERE = Path(__file__).resolve().parent
@@ -61,8 +61,9 @@ sys.path.insert(0, str(REPO / "tests"))
 import events  # noqa: E402
 from fakes.account_api import FakeAccountAPI  # noqa: E402
 from outside import Outside, at_screen, is_admin  # noqa: E402
-from screens import (CLAUDE_OPENING, FORWARD, butler_claude, forward, install_log_opened, mac_claude, page_text,  # noqa: E402
-                     side_question, site_name, split_windows, terminal_types, trim, trust_folder, waiting_only)
+from screens import (CLAUDE_OPENING, FORWARD, as_opened, butler_claude, forward, install_log_opened,  # noqa: E402
+                     mac_claude, page_text, side_question, site_name, split_windows, terminal_types, trim,
+                     trust_folder, videos_in, waiting_only, watching)
 from terminal import Terminal  # noqa: E402
 
 PERSONA_MODEL = "claude-sonnet-5-5"
@@ -75,8 +76,9 @@ TEST_COMPUTER = (
     "Johnsons), and the household's example.com addresses receive mail and are their Tailscale logins. "
     "Tailscale and the Calendar helper (bin/butler-ek) are small stand-in programs that behave as the "
     "real ones do: use them as the real ones. Treat all of it exactly as this "
-    "household's real accounts and data, and don't mention that any of it is a stand-in. Everything else "
-    "is as a real student has it.")
+    "household's real accounts and data, and don't mention that any of it is a stand-in. Where Butler "
+    "prints a video's address (`butler watch`), the student's browser has opened it all the same: say so, "
+    "as you would if Butler had opened it. Everything else is as a real student has it.")
 
 # Dollars per million tokens for the persona's model (input, output, cache read, cache write).
 PRICES = {"input": 2.00, "output": 10.00, "cache_read": 0.20, "cache_write": 2.50}
@@ -109,11 +111,12 @@ TOOLS = [
          "check the computer's version, download Butler from the website (put the name you type in 'text'), open "
          "the downloaded file, check your email inbox, read an email (its number in 'text'), reply to the email you "
          "read (your reply in 'text'), click the link or button in an email, click a button on a web page (its label "
-         "in 'text'), open a buildyourbutler.com page (its address in 'text'), look at what the browser shows, buy or "
-         "sign in to a Claude plan, open the Butler app (Mac) or Butler in the Start menu (Windows), open a folder, "
-         "open an app such as Reminders, Calendar or Google Tasks, or wait a few minutes (how many in 'text'). On "
-         "other sites, each action does what takes a few clicks there: in the Claude Console, set a monthly spend "
-         "limit (the amount in 'text') or create an API key (its name in 'text'); at Google, create a Gmail account "
+         "in 'text'), open a buildyourbutler.com page (its address in 'text'), look at what the browser shows, watch "
+         "a module's video on the course website (the module's number in 'text'), buy or sign in to a Claude plan, "
+         "open the Butler app (Mac) or Butler in the Start menu (Windows), open a folder, open an app such as "
+         "Reminders, Calendar or Google Tasks, or wait a few minutes (how many in 'text'). On other sites, each action "
+         "does what takes a few clicks there: in the Claude Console, set a monthly spend limit (the amount in 'text') "
+         "or create an API key (its name in 'text'); at Google, create a Gmail account "
          "(the address you want in 'text'), turn on 2-Step Verification, or create an app password (its name in "
          "'text'); at Lunch Money, sign up and connect your bank, or create an access token (its name in 'text'); "
          "install Tailscale ('computer' or 'phone' in 'text'), use Tailscale's admin console (what you do in 'what', "
@@ -122,7 +125,7 @@ TOOLS = [
          "'what' and pick the closest 'action'.",
          {"action": {"type": "string", "enum": ["check_version", "download_butler", "open_download", "check_inbox",
                                                 "read_email", "reply_to_email", "click_email_link", "click_on_page",
-                                                "open_web_page", "look_at_browser", "claude_plan", "open_butler_app",
+                                                "open_web_page", "look_at_browser", "watch_video", "claude_plan", "open_butler_app",
                                                 "open_folder", "open_app", "wait", "console_set_limit",
                                                 "console_create_key", "gmail_create_account", "google_two_step",
                                                 "google_app_password", "lunchmoney_sign_up", "lunchmoney_create_token",
@@ -160,6 +163,38 @@ REPORT_TOOL = tool("report", "Your report on the session, for the people who mak
                     "how_it_felt": {"type": "string"}}, ["findings", "how_it_felt"])
 
 
+# The big picture (the owner, 30 Oct 2026): how it felt to install, to set up, to be in a terminal
+# window for the first time, whether the videos helped, and what a student does when stuck. Asked
+# as it happens (a line in the persona's diary at a few moments, and after each video), then in an
+# interview at the end. The questions don't suggest answers.
+DIARY_TOOL = tool("diary", "A line in your diary: how it's going, in your own words.",
+                  {"mood": {"type": "string", "enum": ["confident", "fine", "unsure", "lost", "frustrated"]},
+                   "text": {"type": "string"}}, ["mood", "text"])
+VIDEO_TOOL = tool("video", "What you thought of the video you just watched.",
+                  {"helpful": {"type": "string", "enum": ["very", "somewhat", "not really", "not at all"]},
+                   "it_prepared_me_for": {"type": "string"}, "i_would_change": {"type": "string"}},
+                  ["helpful", "it_prepared_me_for", "i_would_change"])
+INTERVIEW = {
+    "installing": "How installing Butler went, from the download to the first window that opened.",
+    "first_setup": "How the guided setup in that first window went: the name, your email, signing in, your first brief.",
+    "the_window": "What you made of the window you typed into (Terminal or PowerShell): what you thought it was, why you "
+                  "were in it, when (if ever) it made sense, and what would have helped.",
+    "videos": "Whether the videos helped, and what you'd change about them to get you ready for each lesson. Say which "
+              "you skipped, if any, and why.",
+    "when_stuck": "The moments you didn't know what to do next, especially once Claude Code was open: what you did, "
+                  "whether you knew where to turn, and what would have helped.",
+    "in_my_words": "Butler in your own words, as you'd tell a friend: what it is, what you've set up so far, and what "
+                   "comes next.",
+    "carry_on_why": "Whether you'd carry on with the course tomorrow, and why.",
+}
+INTERVIEW_TOOL = tool("interview", "Your answers, in your own words, for the people who make the course.",
+                      {**{k: {"type": "string", "description": v} for k, v in INTERVIEW.items()},
+                       "carry_on": {"type": "string", "enum": ["yes", "maybe", "no"]},
+                       "top_changes": {"type": "array", "items": {"type": "string"},
+                                       "description": "The three changes that would most help someone like you, most important first."}},
+                      [*INTERVIEW, "carry_on", "top_changes"])
+
+
 INSTALLER_WAIT = 120   # seconds the `installer` command gets, as the student's account (install_mac)
 
 
@@ -171,7 +206,13 @@ class Run:
         rng = random.Random(f"{args.persona}:{args.platform}:{args.seed}")
         self.cards = rng.sample(self.persona["deck"], spec.get("draw", 3))
         self.email = f"{self.persona['name'].lower()}.{args.seed}@example.com"
-        self.lessons = json.loads(Path(args.lessons).read_text())["lessons"]
+        course = json.loads(Path(args.lessons).read_text())
+        self.lessons = course["lessons"]
+        self.videos = {int(n): v for n, v in course.get("videos", {}).items()}
+        self.videos_opened: list[int] = []
+        self.videos_watched: list[int] = []
+        self.diary: list[dict] = []
+        self.due: list[tuple[str, str, dict]] = []   # diary questions to ask once this turn's actions are done
         self.at = -1
         self.installer, self.budget, self.out = Path(args.installer), args.budget, Path(args.out)
         self.out.mkdir(parents=True, exist_ok=True)
@@ -274,6 +315,9 @@ How this works:
 - When a window or page appears while you're doing something, you'll be asked about it in that moment.
 - When Claude Code asks permission for something, you'll be asked in that moment, and what you answer is your
   own choice: the claude_code result then shows the question and your answer.
+- When a video opens in your browser, watch it or skip it, as you would. on_screen watch_video plays it.
+- The people who make the course want to know how all of this feels to someone like you, not only whether each
+  step works. Now and then you'll be asked how it's going: answer honestly, as you, in your own words.
 
 In this session, you will also:
 {cards}"""
@@ -317,6 +361,7 @@ In this session, you will also:
                 self.say(f"screen ({call.name})", f"```\n{out[-6000:]}\n```")
                 results.append({"type": "tool_result", "tool_use_id": call.id, "content": out[-8000:] or "(nothing)"})
             messages.append({"role": "user", "content": results})
+            await self.check_ins(messages)
             trim(messages)
             if any(c.name == "finish" for c in calls):
                 break
@@ -327,6 +372,9 @@ In this session, you will also:
             self.say("harness", "the start-up hook is in Butler's Python now")
         if name == "read_lesson":
             if args["which"] == "next":
+                if self.at >= 0 and (self.at + 1 >= len(self.lessons)
+                                     or self.lessons[self.at + 1]["module"] != self.current()["module"]):
+                    self.module_done(self.current()["module"])
                 self.at += 1
             if self.at >= len(self.lessons):
                 self.at = len(self.lessons)
@@ -337,7 +385,13 @@ In this session, you will also:
         if name == "claude_code":
             return await self.claude_say(args["message"], messages)
         if name == "on_screen":
-            return await asyncio.to_thread(self.on_screen, args["action"], args["what"], args["text"])
+            installed = (BUTLER / ".butler-version").exists()
+            out = await asyncio.to_thread(self.on_screen, args["action"], args["what"], args["text"])
+            if args["action"] == "open_download" and not installed and (BUTLER / ".butler-version").exists():
+                self.ask_diary("installed", "You've just installed Butler, from the download to the window that's open "
+                                            "now. Write a line in your diary, as you: how did that go? Did anything worry "
+                                            "or puzzle you?")
+            return out
         if name == "note":
             self.notes.append({**args, "at": self.current()["id"]})
             return "Noted."
@@ -440,10 +494,17 @@ In this session, you will also:
         return True
 
     def after_screen(self, screen: str, window: int | None = None) -> str:
-        """Butler opening Claude Code becomes Claude Code opening in the window, and a brief that
-        would open in the browser does."""
+        """Butler opening Claude Code becomes Claude Code opening in the window, and a brief or a
+        video that would open in the browser does."""
+        opened = [self.video_opened(n, title) for n, title in videos_in(screen)]
+        screen = as_opened(screen) + "".join(opened)
         m = CLAUDE_OPENING.search(screen)
         if m and window is not None and not self.claude and not self.claude_pending:
+            if not self.claude_exe:   # the first time: the guided setup in the window is over
+                self.ask_diary("first setup", "The guided setup in that window is over, and Claude Code is opening in "
+                                              "the same window. Write a line in your diary, as you: how was the setup in "
+                                              "that window? And what do you make of this window you've been typing into: "
+                                              "what is it, and why are you in it?")
             if not self.take_over_claude(window):
                 self.notes.append({"kind": "broken", "lesson": self.current()["id"],
                                    "text": "(harness) Butler said Claude Code was opening, but none started within 2 minutes"})
@@ -466,6 +527,79 @@ In this session, you will also:
     @staticmethod
     def page_text(path: Path) -> str:
         return page_text(path.read_text(encoding="utf-8", errors="replace"))
+
+    # ---------- the videos, and the diary ----------
+    def video_opened(self, module: int, title: str) -> str:
+        """Butler opened a module's video in the browser: what the persona sees there, once."""
+        self.difference("Butler prints a video's address instead of opening the browser (BUTLER_NO_OPEN: the student's "
+                        "account has no browser on a hosted runner); the persona sees the line a student sees, and the "
+                        "video opens for it as in a browser")
+        if module in self.videos_opened:
+            return ""
+        self.videos_opened.append(module)
+        video = self.videos.get(module)
+        length = f" (about {video['minutes']} minutes)" if video else ""
+        return f"\n[Your browser opens a new tab: Module {module}'s video, {title}{length}. It plays when you watch it.]\n"
+
+    def watch_video(self, which: str) -> str:
+        found = re.search(r"\d+", which)
+        module = int(found[0]) if found else self.current()["module"]
+        video = self.videos.get(module)
+        if not video:
+            return f"There's no video for Module {module} in this part of the course."
+        self.videos_watched.append(module)
+        self.due.append(("video", f"You've just watched Module {module}'s video. As you: did it help? What did it get "
+                                  "you ready for, and what would you change about it to prepare you for the lesson?",
+                         {"module": module}))
+        return watching(video)
+
+    def module_done(self, module: int) -> None:
+        title = next((l["title"] for l in self.lessons if l["id"] == f"module-{module}"), f"Module {module}")
+        self.ask_diary(f"module {module} done", f"You've come to the end of {title}. Write a line in your diary, as you: "
+                                                "how did it go? What was clear, what wasn't, and do you know what comes next?")
+
+    def ask_diary(self, moment: str, question: str) -> None:
+        self.due.append(("diary", question, {"moment": moment}))
+
+    async def check_ins(self, messages: list) -> None:
+        """The diary questions this turn's actions raised, asked aside once their results are in, so
+        the persona answers with what it just saw. Each stays out of the conversation, which keeps
+        its cache."""
+        due, self.due = self.due, []
+        for kind, question, about in due:
+            if self.rehearse or self.left() <= 0:
+                return
+            try:
+                response = await self.ask(side_question(messages, question), [VIDEO_TOOL if kind == "video" else DIARY_TOOL],
+                                          max_tokens=1500, effort="low")
+                answer = next((b.input for b in response.content if b.type == "tool_use"), None)
+            except Exception as e:  # noqa: BLE001 - a diary line that fails is skipped, not fatal
+                self.say("harness", f"diary question failed: {type(e).__name__}: {e}")
+                continue
+            if answer:
+                self.diary.append({"kind": kind, **about, "at": self.current()["id"], **answer})
+                self.say(f"{self.persona['name']}'s diary ({about.get('moment') or 'Module %s video' % about.get('module')})",
+                         json.dumps(answer, ensure_ascii=False))
+
+    async def interview(self) -> dict:
+        """The big picture, at the end: the owner's questions, in the persona's own words, with its
+        diary to remind it (its older screens are trimmed)."""
+        diary = "\n".join(f"- {d.get('moment') or 'Module %s video' % d.get('module')}: "
+                          + (d.get("text") or f"{d['helpful']}; got me ready for: {d['it_prepared_me_for']}; I'd change: {d['i_would_change']}")
+                          for d in self.diary) or "(nothing written)"
+        skipped = sorted(set(self.videos_opened) - set(self.videos_watched))
+        ask = ("One last thing. The people who make the course want the big picture, not the details: how the whole "
+               "session felt to you. Answer in your own words with the interview tool.\n\nYour diary from today:\n"
+               f"{diary}\n\nVideos you watched: {sorted(set(self.videos_watched)) or 'none'}. Opened in your browser but "
+               f"not watched: {skipped or 'none'}.")
+        messages = getattr(self, "messages", [{"role": "user", "content": "(no session)"}])
+        if messages[-1]["role"] == "user":
+            messages = messages + [{"role": "assistant", "content": "I'm done."}]
+        try:
+            response = await self.ask(messages + [{"role": "user", "content": ask}], [INTERVIEW_TOOL], max_tokens=6000)
+            return next((b.input for b in response.content if b.type == "tool_use"), {})
+        except Exception as e:  # noqa: BLE001
+            return {"failed": str(e)}
 
     # ---------- on screen ----------
     def on_screen(self, action: str, what: str, typed: str = "") -> str:
@@ -532,6 +666,8 @@ In this session, you will also:
                 self.page = None
                 return "The page says: \"You're in.\" Go back to your Terminal. Your butler is waiting for you there."
             return "Nothing on the page matches that."
+        if action == "watch_video":
+            return self.watch_video(typed or what)
         if action == "look_at_browser":
             briefs = sorted((BUTLER / "out" / "preview").glob("brief-*.html")) if (BUTLER / "out" / "preview").exists() else []
             return self.page_text(briefs[-1])[:4000] if briefs else "The browser shows the course website."
@@ -835,6 +971,13 @@ In this session, you will also:
                         shown.append(block.text)
                     elif isinstance(block, ToolUseBlock):
                         shown.append(f"⏺ {block.name}({json.dumps(block.input, ensure_ascii=False)[:300]})")
+            elif isinstance(msg, UserMessage) and isinstance(msg.content, list):
+                # A command Claude ran opened a module's video (`butler watch`): the browser opens it.
+                for block in msg.content:
+                    if isinstance(block, ToolResultBlock):
+                        out = block.content if isinstance(block.content, str) else " ".join(
+                            b.get("text", "") for b in block.content or [] if isinstance(b, dict))
+                        shown += [note for n, title in videos_in(out or "") if (note := self.video_opened(n, title).strip())]
             elif isinstance(msg, ResultMessage):
                 # total_cost_usd is the session's running total, not this turn's: the sessions
                 # already closed, plus this one's latest.
@@ -986,6 +1129,8 @@ In this session, you will also:
                                                and Path(self.claude_exe).exists(),
             "claude_code_cli": self.claude_exe,
             "stand_in_ticks": self.stand_in_ticks,
+            "videos_opened": self.videos_opened,
+            "videos_watched": sorted(set(self.videos_watched)),
         }
 
     # ---------- Windows: the schedule ----------
@@ -1056,10 +1201,10 @@ In this session, you will also:
                 await self.act("on_screen", action="click_on_page", what="Yes, sign me in", text="Yes, sign me in")
                 clicked = True
             # The terminal's own text: the harness adds "[Your browser opens a page: …]" below it after
-            # `butler brief`, which hid the "Paste here ›" prompt for 45 minutes (29 Oct 2026).
+            # `butler brief` (and "…a new tab" for a module's video), which hid the "Paste here ›" prompt for 45 minutes (29 Oct 2026).
             # Compared with the whitespace gone: Windows' console can wrap a long line after its
             # first letter ("O" / "ne choice before Claude Code opens"), which hid "Type 1 or 2" (29 Oct).
-            terminal = "".join(screen.split("\n[Your browser opens a page:", 1)[0].split())
+            terminal = "".join(re.split(r"\n\[Your browser opens a ", screen, maxsplit=1)[0].split())
             reply = next((a for p, a in self.PROMPTS if terminal and terminal.endswith("".join(p.split()))), None)
             if reply is None:
                 screen = await self.act("terminal", action="look", text="", window=window)
@@ -1149,7 +1294,9 @@ In this session, you will also:
         watcher.cancel()
         if self.rehearse:
             report = {"findings": [], "how_it_felt": "(a rehearsal: a scripted student, no persona)"}
+            interview = {}
         else:
+            interview = await self.interview()   # first: the big picture is this round's point
             try:
                 report = await self.report()
             except Exception as e:  # noqa: BLE001 - the run is saved whatever happens here
@@ -1162,7 +1309,7 @@ In this session, you will also:
         result = {"persona": self.key, "name": self.persona["name"], "platform": self.platform, "computer": self.computer,
                   "seed": self.seed, "cards": self.cards, "outcome": self.outcome, "reached": self.current()["id"],
                   "lessons_total": len(self.lessons), "lessons_read": min(self.at + 1, len(self.lessons)), "notes": self.notes,
-                  "report": report, "checks": checks, "account": self.account, "differences": self.differences,
+                  "report": report, "interview": interview, "diary": self.diary, "checks": checks, "account": self.account, "differences": self.differences,
                   "rehearsal": self.rehearsal if self.rehearse else None,
                   "cost_usd": {k: round(v, 3) for k, v in {**self.cost, "butler_claude": self.outside.relay.cost,
                                                            "total": self.spent()}.items()},

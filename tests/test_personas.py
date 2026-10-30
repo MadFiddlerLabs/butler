@@ -251,6 +251,31 @@ class PersonasTest(unittest.TestCase):
         self.assertEqual(screens.page_text("<style>x{}</style><h1>Good morning</h1><p>Rain\n at 9</p>"), "Good morning Rain at 9")
         self.assertEqual(screens.page_text("<p>Ukraine&#x27;s &quot;truce&quot; &amp; more</p>"), 'Ukraine\'s "truce" & more')
 
+    def test_the_harness_opens_each_video_where_butler_would(self):
+        """With BUTLER_NO_OPEN Butler prints a video's address (course_video.open_page, and
+        first-run.sh for Module 0). The harness reads that line, shows the persona the line Butler
+        says when it opens the browser, and opens the video for it. Change them together."""
+        import tempfile
+        sys.path.insert(0, str(HERE.parent / "src"))
+        from butler import course_video, progress
+        title = progress.course_modules()[3]["title"]
+        with tempfile.TemporaryDirectory() as tmp:
+            with unittest.mock.patch.dict(os.environ, {"BUTLER_NO_OPEN": "1"}):
+                printed = "\n".join(course_video.open_page(3, Path(tmp)))
+            with unittest.mock.patch.dict(os.environ, {"BUTLER_NO_OPEN": ""}), \
+                    unittest.mock.patch.object(course_video.system, "open_file"):
+                opened = "\n".join(course_video.open_page(3, Path(tmp)))
+        self.assertEqual(screens.videos_in(printed), [(3, title)])
+        self.assertEqual(screens.as_opened(printed), opened, "the persona sees what a student sees")
+        first_run = (HERE.parent / "scripts" / "first-run.sh").read_text()
+        self.assertIn('say "Module 0\'s video, Your first two minutes, is here:"', first_run)
+        url = re.search(r'video_url="([^"]+)"', first_run)[1]
+        self.assertEqual(screens.videos_in(f"Module 0's video, Your first two minutes, is here:\n{url}\n"),
+                         [(0, "Your first two minutes")])
+        video = {"module": 3, "title": title, "minutes": 1,
+                 "scenes": [{"shown": "A title card", "said": "Welcome to Module 3."}]}
+        self.assertIn("The voice: Welcome to Module 3.", screens.watching(video))
+
     def test_trusting_the_folder_is_kept_where_claude_code_reads_it(self):
         """Round 4 (28 Oct): Butler's allow list (butler #74) never applied, because an SDK session
         ignores a folder's allow rules until the folder is trusted. The persona's Yes now records it."""
@@ -343,6 +368,31 @@ class ReportTest(unittest.TestCase):
         self.assertLess(md.index("### setup.email"), md.index("### m1-claude-code"), "three runs found it")
         self.assertIn("tracebacks on screen in 1 runs", md)
         self.assertIn("No run finished", report.render([]))
+        self.assertNotIn("The big picture", md, "runs from before the interview have none")
+
+    def test_the_big_picture_comes_first_in_their_own_words(self):
+        run = self.run_("Walter", "windows", 1, [{"severity": "minor", "lesson": "setup.email", "what_happened": "x",
+                                                   "expected": "", "suggestion": ""}], videos_opened=[0, 1], videos_watched=[0])
+        run["interview"] = {"installing": "Slow, but fine.", "the_window": "A black box I didn't trust.", "carry_on": "maybe",
+                            "top_changes": ["Say what the window is", "Shorter videos"]}
+        run["diary"] = [{"kind": "diary", "moment": "installed", "mood": "unsure", "text": "What is this window?"},
+                        {"kind": "video", "module": 0, "helpful": "somewhat", "it_prepared_me_for": "naming it",
+                         "i_would_change": "show the window | first"}]
+        md = report.render([run])
+        self.assertLess(md.index("## The big picture"), md.index("## Findings"))
+        self.assertIn("| Walter | windows | 1 | maybe | 0 | 1 |", md, "Module 1's video opened but not watched")
+        self.assertIn("### The window they typed into", md)
+        self.assertIn("- **Walter** (windows, run 1): A black box I didn't trust.", md)
+        self.assertIn("1. Say what the window is 2. Shorter videos", md)
+        self.assertIn("| 0 | Walter (windows) | somewhat | naming it | show the window / first |", md)
+        self.assertIn("- *installed* (unsure): What is this window?", md)
+
+    def test_the_report_asks_each_interview_question(self):
+        import ast
+        tree = ast.parse((HERE / "personas" / "run_persona.py").read_text())
+        asked = next(ast.literal_eval(n.value) for n in tree.body
+                     if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") == "INTERVIEW")
+        self.assertEqual(list(asked), list(report.QUESTIONS))
 
 
 if __name__ == "__main__":
