@@ -139,7 +139,7 @@ for (const mod of modules) {
   out.push({
     module: n, order: 0, id: `module-${n}`, title: `Module ${n}: ${mod.data.title}`,
     text: [`# Module ${n}: ${mod.data.title}`,
-      ...(v ? [`[The page opens with this module's video: ${v.title}, about ${v.minutes} minutes.]`] : []),
+      ...(v ? [`[The page opens with this module's video: ${v.title}, about ${v.minutes} minute${v.minutes === 1 ? '' : 's'}.]`] : []),
       String(mod.data.win ?? ''), `New this module: ${words(mod.data.setup)}`,
       `You'll need:\n${needs.map((x) => `- ${x}`).join('\n')}`, text(render(mod.body))].join('\n\n'),
   });

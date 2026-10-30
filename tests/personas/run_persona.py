@@ -62,7 +62,7 @@ import events  # noqa: E402
 from fakes.account_api import FakeAccountAPI  # noqa: E402
 from outside import Outside, at_screen, is_admin  # noqa: E402
 from screens import (CLAUDE_OPENING, FORWARD, as_opened, butler_claude, forward, install_log_opened,  # noqa: E402
-                     mac_claude, page_text, side_question, site_name, split_windows, terminal_types, trim,
+                     mac_claude, minutes, page_text, side_question, site_name, split_windows, terminal_types, trim,
                      trust_folder, videos_in, waiting_only, watching)
 from terminal import Terminal  # noqa: E402
 
@@ -538,7 +538,7 @@ In this session, you will also:
             return ""
         self.videos_opened.append(module)
         video = self.videos.get(module)
-        length = f" (about {video['minutes']} minutes)" if video else ""
+        length = f" (about {minutes(video['minutes'])})" if video else ""
         return f"\n[Your browser opens a new tab: Module {module}'s video, {title}{length}. It plays when you watch it.]\n"
 
     def watch_video(self, which: str) -> str:
@@ -1166,6 +1166,7 @@ In this session, you will also:
     # ---------- the free rehearsal ----------
     PROMPTS = (("Name ›", ""), ("Press Enter when you're ready ›", ""), ("Press Enter to agree, or type no to stop ›", ""),
                ("Type a number, or press Enter to skip ›", ""), ("Your email ›", "{email}"),
+               ("Press Enter, or type the right address ›", ""),
                ("Weekly lesson email? Type yes, or press Enter for no ›", ""),
                ("Is that right? Press Enter, or paste the line again ›", ""), ("Paste here ›", "{lesson}"),
                ("Install Claude Code now? Press Enter for yes, or type no:", ""),

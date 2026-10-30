@@ -34,8 +34,8 @@ CLAUDE_INSTALL_WINDOWS = "irm https://claude.ai/install.ps1 | iex"
 FIRST_CLAUDE_PROMPT = (
     "Hi! I've just set up my butler and I'm starting Module 1 of the Build Your Butler course, "
     "Meet Claude Code. Please welcome me in plain words: say what you are, what you can do in this "
-    "Butler folder, and {manners}. Don't change any files yet. "
-    "Then suggest one simple first question I could ask you."
+    "Butler folder, and {manners}. Tell me that whenever I'm unsure what to do, I can ask you: what's next? "
+    "Don't change any files yet. Then suggest one simple first question I could ask you."
 )
 # What the welcome promises depends on the student's choice (`claude_mode`), so it stays true.
 MANNERS = {
@@ -50,6 +50,9 @@ DONE_CLAUDE_PROMPT = (
     "Please greet me in a line or two, in plain words, and ask what I'd like to change or improve. "
     "Don't change any files yet."
 )
+# Said each time Claude Code opens, because it opens in the same window as Butler.
+CLAUDE_HERE = ("Claude Code works in this window. Type to it in plain words, and it runs the commands for you. "
+               "Whenever you're unsure, ask it: what's next?")
 CLAUDE_WELCOMED = ROOT / "data" / "claude-welcomed"
 # Written by the first run when it's over; the installer reads it too.
 FIRST_RUN_DONE = ROOT / "data" / "first-run-done"
@@ -267,6 +270,9 @@ def open_claude(yes: bool = False, dry_run: bool = False, opening: str | None = 
                 say("No problem. When you're ready, type: butler claude")
                 return 0
         line, argv = _installer()
+        # All three personas stopped at this note, unexplained (30 Oct 2026). _claude_path looks in
+        # ~/.local/bin itself, so the PATH doesn't matter here.
+        say("Anthropic's installer may end with a note about your PATH. You can ignore it: I find Claude Code myself.")
         if dry:
             say(f"(dry run) would run: {line}")
             exe = "claude"
@@ -292,6 +298,7 @@ def open_claude(yes: bool = False, dry_run: bool = False, opening: str | None = 
     else:
         say("Opening Claude Code in your Butler folder. If it asks you to sign in, follow the link it shows.")
         say("It starts with Module 1: Meet Claude Code." if first else "It picks up where you left off in the course.")
+    say(CLAUDE_HERE)
     # The flag wins over any settings file, so the student's choice holds whatever else is set.
     argv = [exe, "--permission-mode", ss.PERMISSION_MODES[mode], prompt]
     if dry:

@@ -29,7 +29,7 @@ class WrapTest(unittest.TestCase):
         return out
 
     def test_first_run_fits_80_columns(self):
-        proc = self.home.first_run(["", "", "", "sam@example.com", "", *LESSONS])
+        proc = self.home.first_run(["", "", "", "sam@example.com", "", "", *LESSONS])
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         for line in self.lines(proc.stdout):
             if " " not in line.strip() or line.startswith("(dry run)"):   # a URL or path stays whole

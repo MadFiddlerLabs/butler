@@ -44,7 +44,13 @@ one sentence, and offer the next step by its module, title and command.
 - **End each step with its "Next:" line**, as written at the end of each step below. It names
   the module, its title and the command, for example "Next: Module 3, Show your butler your
   calendar (`/butler-setup calendar`)."
-- Do one thing at a time. Say what you're about to do and what they'll see.
+- **End every reply with one clear next step**, as `CLAUDE.md` says: what to type, paste or
+  click, or the question they should answer. After a side question, come back to the step
+  ("Shall we carry on with your calendars?"). Whenever they're unsure, they can ask you
+  "what's next?".
+- Do one thing at a time. Say what you're about to do and what they'll see. Before a command
+  that asks their permission, say in one plain sentence what it does, so the question that
+  follows makes sense.
 - Don't show long command output. Summarize it in a sentence and keep the details to yourself.
 - Ask for choices with AskUserQuestion, and for names in a plain question.
 - Each step ends with a check. Don't move on until it passes. When it does, say so warmly and
@@ -183,8 +189,15 @@ place of steps 1 to 4 and 6.
 4. If their calendars live in Google or Microsoft and don't show up, they add the account in
    System Settings > Internet Accounts, with Calendars and Reminders switched on. A Mac
    household that keeps everything in Google can use Google directly instead, as on Windows.
-5. Interview: which calendars go in the brief; whose each one is; nicknames that appear in
-   event titles (aliases); holiday calendars; which calendar new events from replies go to.
+5. Interview. Lesson 3.4 lists these six questions, so ask every one, one at a time (a persona
+   was asked two of them, and the brief put everyone's events under one person):
+   1. Which calendars go in the brief?
+   2. Whose is each calendar? Name each one and ask; "the family" is an answer too.
+   3. Nicknames in event titles: the names and short forms that mean someone ("Ben" for
+      Benjamin, "M swim" for Mia), as `people[].aliases`.
+   4. Holiday calendars.
+   5. Which calendar new events from replies go to (`write_to`).
+   6. The to-do and shopping lists: their names, made in step 6 if they're missing.
 6. Create the Reminders lists: `bin/butler-ek ensure-list --list "<todo_list>"` and the same
    for the shopping list.
 7. Update `calendar.include`, `holidays`, `write_to` and `people[].calendars` / `aliases`.
@@ -195,8 +208,16 @@ place of steps 1 to 4 and 6.
 Butler can add events and tasks, and mark tasks done. It never edits or deletes anything.
 
 1. Set `calendar.source: google` in `config/settings.yaml`.
-2. **Sign in.** Explain in one sentence: they sign in to Google in their browser, and the
-   sign-in goes straight into the computer's password safe, so you never see it. Run
+2. **Sign in.** Before you run anything, explain two things:
+   - They sign in to Google in their browser, and the sign-in goes straight into the computer's
+     password safe, so you never see it.
+   - Google's page will say Butler can "see and edit" their calendar events and "create, edit,
+     organise and delete" their tasks. That's Google's wording for the whole permission. Butler
+     only reads events and adds new ones. It never changes or deletes an event, and never
+     deletes a task. Say this before the page opens, not after: the wording worried a persona
+     who read it first.
+
+   Then run
    `./run.sh gcal connect`. Their browser opens Google's sign-in page. They choose their own
    Google account and allow Calendar and Tasks. It waits five minutes for them.
    - "Google didn't allow: …" means a box was left unticked. Run it again and tick every box.
@@ -212,14 +233,18 @@ Butler can add events and tasks, and mark tasks done. It never edits or deletes 
 5. Then steps 5, 7 and 8 above. Before the preview, `./run.sh gcal status` says "Google is
    connected".
 
-Next: Module 4, Give your butler a brain (`/butler-setup brain`).
+Next: Module 4, Give your butler a brain (`/butler-setup brain`). Say with it, so it's no
+surprise: Module 4 needs a card for Anthropic's API, with a monthly spending limit they choose,
+and it's optional. Two personas stopped there, wary of the card (30 Oct 2026).
 
 ## brain (Module 4: Give your butler a brain)
 
 The win: Claude writes the news summaries and notes on what to prepare for.
 
-1. Explain in two sentences: Butler uses Claude through an API key. This is separate from
-   their Claude plan and billed by use, so they'll set a spending limit first.
+1. Explain, before anything else, in a few plain sentences: Butler uses Claude through an API
+   key. This is separate from their Claude plan and billed by use. Anthropic asks for a card,
+   and they set a monthly spending limit themselves, so it can never cost more than that. Then
+   offer to skip the module: the brief works without it.
 2. They go to platform.claude.com and create an account.
 3. If they have a Max plan, its monthly API credit can pay for Butler: in Claude (claude.ai or
    the app), Settings > Billing > API credits > **Link organization**, then pick the Console

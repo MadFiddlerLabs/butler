@@ -57,7 +57,7 @@ class FirstRunFlowTest(unittest.TestCase):
 
     def test_the_whole_first_run(self):
         h = self.home()
-        proc = h.py_first_run(["", "", "3", "sam@example.com", "yes", *LESSONS])
+        proc = h.py_first_run(["", "", "3", "sam@example.com", "", "yes", *LESSONS])
         out = proc.stdout
         self.assertEqual(proc.returncode, 0, out + proc.stderr)
         self.assertIn("Hello! I'm Bento, your new butler.", out)
@@ -108,7 +108,7 @@ class FirstRunFlowTest(unittest.TestCase):
 
     def test_offline_carries_on_to_the_first_lesson(self):
         h = self.home(api=None)
-        proc = h.py_first_run(["", "", "", "sam@example.com"])
+        proc = h.py_first_run(["", "", "", "sam@example.com", ""])
         self.assertEqual(proc.returncode, 1, proc.stdout)
         self.assertIn("I can't reach buildyourbutler.com right now", proc.stdout)
         self.assertIn("Bento is ready.", proc.stdout)
@@ -118,7 +118,7 @@ class FirstRunFlowTest(unittest.TestCase):
     def test_a_second_run_skips_what_is_done(self):
         h = self.home()
         h.lessons_done()
-        first = h.py_first_run(["", "", "", "sam@example.com", "", ""])
+        first = h.py_first_run(["", "", "", "sam@example.com", "", "", ""])
         self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
         self.assertTrue((h.root / "data" / "first-run-done").exists())
         again = h.py_first_run([""])
@@ -166,7 +166,7 @@ class FirstRunFlowTest(unittest.TestCase):
         api = FakeAccountAPI().start()
         self.addCleanup(api.stop)
         h = self.home(api=api)
-        proc = h.py_first_run(["", "", "", "sam@example.com", "skip"])
+        proc = h.py_first_run(["", "", "", "sam@example.com", "", "skip"])
         self.assertIn("Waiting for your click.", proc.stdout)
         self.assertIn("We'll finish signing in later. Type: butler setup", proc.stdout)
         self.assertEqual([c[1] for c in api.calls].count("/api/auth/poll"), 1, "skip stopped the polling")
@@ -193,7 +193,7 @@ class FirstRunFlowTest(unittest.TestCase):
             proc.kill()
             self.fail("".join(printed))
 
-        proc.stdin.write("\n\n\nsam@example.com\n")
+        proc.stdin.write("\n\n\nsam@example.com\n\n")
         proc.stdin.flush()
         until(lambda: [c[1] for c in api.calls].count("/api/auth/poll") >= 3)
         api.click()
@@ -211,18 +211,37 @@ class FirstRunFlowTest(unittest.TestCase):
         api = FakeAccountAPI().start()
         self.addCleanup(api.stop)
         h = self.home(api=api)
-        proc = h.py_first_run(["", "", "", "sam@exmaple.com", "butler setup", "sam@example.com", "skip"])
+        proc = h.py_first_run(["", "", "", "sam@exmaple.com", "", "butler setup", "sam@example.com", "skip"])
         self.assertIn("Sent to sam@exmaple.com!", proc.stdout)
         self.assertIn("Type your email again if it was wrong, or type skip to do this later.", proc.stdout)
         self.assertIn("Sending a new link to sam@example.com.", proc.stdout)
         self.assertEqual([r["email"] for r in api.requests.values()], ["sam@exmaple.com", "sam@example.com"])
         self.assertEqual(proc.stdout.count("Your email \u203a"), 1, "the new address isn't asked for twice")
 
+    def test_the_address_is_checked_before_the_link_goes(self):
+        """Found by the persona tests (30 Oct 2026): a typo cost a round trip to the inbox. The
+        address shows back first; typing the right one asks again, and only that one gets a link."""
+        api = FakeAccountAPI().start()
+        self.addCleanup(api.stop)
+        h = self.home(api=api)
+        proc = h.py_first_run(["", "", "", "sam@exmaple.com", "sam@example.com", "", "skip"])
+        self.assertIn("Send the link to sam@exmaple.com? Press Enter, or type the right address \u203a", proc.stdout)
+        self.assertIn("Send the link to sam@example.com? Press Enter, or type the right address \u203a", proc.stdout)
+        self.assertEqual([r["email"] for r in api.requests.values()], ["sam@example.com"])
+
+    def test_the_window_says_what_it_is_first(self):
+        """Most students have never used a terminal: the first run says what this window is, and
+        that closing it does no harm, before it asks anything else."""
+        proc = self.home().py_first_run(["", "", "", "skip"])
+        line = proc.stdout.index("This window is")
+        self.assertLess(line, proc.stdout.index("Step 1 of 4"))
+        self.assertIn("Closing it does no harm", proc.stdout)
+
     def test_an_expired_link_sends_a_new_one(self):
         api = FakeAccountAPI(expire=True).start()
         self.addCleanup(api.stop)
         h = self.home(api=api)
-        proc = h.py_first_run(["", "", "", "sam@example.com", "skip"])
+        proc = h.py_first_run(["", "", "", "sam@example.com", "", "skip"])
         self.assertIn("That link expired. Let's send a new one.", proc.stdout)
         self.assertEqual(proc.stdout.count("Your email \u203a"), 2)
 
@@ -230,7 +249,7 @@ class FirstRunFlowTest(unittest.TestCase):
         api = FakeAccountAPI(unavailable=True).start()
         self.addCleanup(api.stop)
         h = self.home(api=api)
-        proc = h.py_first_run(["", "", "", "not-an-email", "sam@example.com"])
+        proc = h.py_first_run(["", "", "", "not-an-email", "sam@example.com", ""])
         self.assertIn("doesn't look like an email address", proc.stdout)
         self.assertIn("Sign-in isn't available right now. That's on our side, not yours.", proc.stdout)
         self.assertEqual(proc.stdout.count("Your email \u203a"), 2)
@@ -410,7 +429,7 @@ class EquivalenceTest(unittest.TestCase):
         return {k: (f"<issued {api.issued.index(v)}>" if v in api.issued else v) for k, v in h.secrets().items()}
 
     def test_a_whole_first_run_then_again_with_newer_terms_then_welcome_back(self):
-        self.both((["", "", "3", "sam@example.com", "yes", 'butler town "Paris"', 'butler town "Paris, Texas"', "",
+        self.both((["", "", "3", "sam@example.com", "", "yes", 'butler town "Paris"', 'butler town "Paris, Texas"', "",
                     *LESSONS[2:]], ()),
                   ([""], ()), newer_terms, (["", ""], ()),
                   ([""], ("--again",)), (["3", "2", ""], ("--again",)), (["2", "yes", "", "skip"], ("--again",)))
@@ -426,22 +445,25 @@ class EquivalenceTest(unittest.TestCase):
         self.both((["Bad!Name", "Alfred", "", "", "skip"], ()), name=None)
 
     def test_offline_then_online(self):
-        self.both((["", "", "5", "sam@example.com", 'butler town "Lisbon"'], ()), online,
-                  (["", "sam@example.com", "", 'butler town "Lisbon"', ""], ()), offline=True)
+        self.both((["", "", "5", "sam@example.com", "", 'butler town "Lisbon"'], ()), online,
+                  (["", "sam@example.com", "", "", 'butler town "Lisbon"', ""], ()), offline=True)
 
     def test_sign_in_down_and_a_bad_email(self):
-        self.both((["", "", "", "not-an-email", "sam@example.com"], ()), api={"unavailable": True})
+        self.both((["", "", "", "not-an-email", "sam@example.com", ""], ()), api={"unavailable": True})
 
     def test_an_expired_link(self):
-        self.both((["", "", "", "sam@example.com", "skip"], ()), api={"expire": True})
+        self.both((["", "", "", "sam@example.com", "", "skip"], ()), api={"expire": True})
 
     def test_skip_while_waiting_for_the_click(self):
-        self.both((["", "", "", "sam@example.com", "skip"], ()), api={})
+        self.both((["", "", "", "sam@example.com", "", "skip"], ()), api={})
 
     def test_a_mistyped_email_retyped_while_waiting(self):
         """Found by the persona tests: the address shows back, and typing the right one while it
         waits sends a new link to it; anything else typed gets a hint, not silence."""
-        self.both((["", "", "", "sam@exmaple.com", "butler setup", "sam@example.com", "skip"], ()), api={})
+        self.both((["", "", "", "sam@exmaple.com", "", "butler setup", "sam@example.com", "skip"], ()), api={})
+
+    def test_a_mistyped_email_caught_before_it_is_sent(self):
+        self.both((["", "", "", "sam@exmaple.com", "sam@example.com", "", "skip"], ()), api={})
 
     def test_a_screen_reader(self):
         self.both((["", "", "", "skip"], ()), env={"CLAUDE_AX_SCREEN_READER": "1"})

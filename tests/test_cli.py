@@ -241,6 +241,13 @@ class CliTest(unittest.TestCase):
         self.assertIn("would run: curl -fsSL https://claude.ai/install.sh | bash", proc.stdout)
         self.assertIn("It starts with Module 1: Meet Claude Code.", proc.stdout)
         self.assertIn("Don't change any files yet.", proc.stdout)
+        # Found by the persona round (30 Oct 2026): Anthropic's PATH note, explained before it shows;
+        # where they are; and the way out of being stuck, said here and in Claude's own welcome.
+        out = " ".join(proc.stdout.split())
+        self.assertLess(out.index("a note about your PATH. You can ignore it"), out.index("would run: curl"))
+        self.assertIn("Claude Code works in this window.", out)
+        self.assertIn("ask it: what's next?", out)
+        self.assertIn("I can ask you: what's next?", out)
 
     def test_claude_later_picks_up_where_you_left_off(self):
         (self.home.root / "data").mkdir(exist_ok=True)

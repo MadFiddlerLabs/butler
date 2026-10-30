@@ -21,7 +21,7 @@ $bin = Join-Path $root "bin"
 $uv = Join-Path $bin "uv.exe"
 $have = if (Test-Path $uv) { (& $uv --version 2>$null) -split " " | Select-Object -Index 1 } else { "" }
 if ($have -ne $version) {
-    Write-Host "Getting uv $version, which gives Butler its own Python (https://docs.astral.sh/uv/)."
+    Write-Host "Getting a small tool (uv $version) that gives Butler its own copy of Python."
     $tmp = Join-Path ([IO.Path]::GetTempPath()) ("butler-uv-" + [guid]::NewGuid())
     New-Item -ItemType Directory $tmp | Out-Null
     try {

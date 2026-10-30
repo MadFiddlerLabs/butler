@@ -39,11 +39,16 @@ def as_opened(text: str) -> str:
     return VIDEO_LINE.sub(lambda m: f"I've opened Module {m[1]}'s video in your browser: {m[2]}.", text)
 
 
+def minutes(n) -> str:
+    """"about 1 minute", not "about 1 minutes"."""
+    return f"{n} minute" + ("" if n == 1 else "s")
+
+
 def watching(video: dict) -> str:
     """A module's video (lessons.mjs's `videos`), as the persona takes it in: scene by scene, what's
     on screen and what the voice says."""
     scenes = "\n".join(f"- On screen: {s['shown']}\n  The voice: {s['said']}" for s in video["scenes"])
-    return f"You watch Module {video['module']}'s video, {video['title']} (about {video['minutes']} minutes):\n\n{scenes}"
+    return f"You watch Module {video['module']}'s video, {video['title']} (about {minutes(video['minutes'])}):\n\n{scenes}"
 
 
 def page_text(html: str) -> str:
@@ -122,7 +127,8 @@ def trust_folder(folder, config: Path | None = None) -> None:
 # tests/test_personas.py checks them against cli.py, so change both together.
 CLAUDE_OPENING = re.compile(
     r"If\s+it\s+asks\s+you\s+to\s+sign\s+in,\s+follow\s+the\s+link\s+it\s+shows\.[^\n]*\n"
-    r"(?:[ \t]*It\s+(?:starts\s+with\s+Module\s+1:\s+Meet\s+Claude\s+Code|picks\s+up\s+where\s+you\s+left\s+off\s+in\s+the\s+course)\.[^\n]*\n)?")
+    r"(?:[ \t]*It\s+(?:starts\s+with\s+Module\s+1:\s+Meet\s+Claude\s+Code|picks\s+up\s+where\s+you\s+left\s+off\s+in\s+the\s+course)\.[^\n]*\n)?"
+    r"(?:[ \t]*Claude\s+Code\s+works\s+in\s+this\s+window\.[\s\S]*?ask\s+it:\s+what's\s+next\?[^\n]*\n)?")
 _CLAUDE_EXE = re.compile(r"(^|[\\/])claude(\.exe)?$", re.I)
 
 

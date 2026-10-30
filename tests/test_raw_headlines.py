@@ -66,5 +66,26 @@ class EmptyRegionsTest(unittest.TestCase):
         self.assertEqual(daily._fill_empty_regions(SETTINGS, self.stories, both, None), both)
 
 
+class PicksLogTest(unittest.TestCase):
+    """A persona's 5-section brief kept Claude's picks only for its first section (30 Oct 2026),
+    cause unknown. The log now says, per section, how many Claude picked, and any ref it made up."""
+
+    def test_each_section_and_any_unknown_ref_is_logged(self):
+        from unittest import mock
+        from butler import llm
+        settings = {"household": {"place": "Lisbon"},
+                    "news": {"stories_per_region": 2, "regions": [{"key": "europe", "label": "Europe"},
+                                                                  {"key": "world", "label": "World"}]}}
+        stories = [story("europe", 1, "Lisbon trams back", "https://news.example.test/trams"),
+                   story("world", 1, "Ocean survey ends", "https://news.example.test/ocean")]
+        answer = {"stories": [{"ref": "europe-1", "headline": "Trams are back", "summary": "Invented."},
+                              {"ref": "World-1", "headline": "Survey ends", "summary": "Invented."}]}
+        with mock.patch.object(llm, "_ask_json", return_value=answer), \
+             mock.patch.object(llm, "recent_news", return_value=[]), \
+             self.assertLogs("butler", "INFO") as logs:
+            llm.pick_news(settings, stories)
+        self.assertIn("news picks: Europe 1 of 1, World 0 of 1; refs matching no story: World-1", logs.output[-1])
+
+
 if __name__ == "__main__":
     unittest.main()

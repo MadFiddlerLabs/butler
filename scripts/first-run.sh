@@ -217,6 +217,12 @@ if [ "$(tr -d '\n' < "$home/.butler-name" 2>/dev/null || true)" != "$name" ]; th
   printf '%s\n' "$name" > "$home/.butler-name.new" && mv -f "$home/.butler-name.new" "$home/.butler-name"
 fi
 say
+# What this window is, before anything else: most students have never used a terminal (persona round, 30 Oct 2026).
+if [ -n "$(app_location "$HOME")" ]; then
+  say "This window is Terminal: you type short lines here, and I tell you each one. Closing it does no harm: the Butler app brings you back."
+else
+  say "This window is Terminal: you type short lines here, and I tell you each one. Closing it does no harm: type butler resume in a new Terminal window to come back."
+fi
 if [ -n "$resuming" ]; then
   say "Let's pick up where we left off. I'll skip whatever is done already."
 else
@@ -303,10 +309,17 @@ sign_in() {
   token=""
   email=""
   next_email=""
+  typed=""
   while :; do
+    # A retyped address while waiting is said back as it's sent; one typed here is checked first.
+    confirm=1
     if [ -n "$next_email" ]; then
       email="$next_email"
       next_email=""
+      confirm=""
+    elif [ -n "$typed" ]; then
+      email="$typed"
+      typed=""
     else
       printf 'Your email › '
       read -r email || email=""
@@ -320,6 +333,15 @@ sign_in() {
     if ! printf '%s' "$email" | grep -Eq '^[^@"\\]+@[^@"\\]+\.[^@"\\]+$'; then
       say "That doesn't look like an email address. Try again, or type skip."
       continue
+    fi
+    if [ -n "$confirm" ]; then
+      printf 'Send the link to %s? Press Enter, or type the right address › ' "$email"
+      read -r answer || answer=""
+      answer="$(printf '%s' "$answer" | tr -d '[:space:]')"
+      case "$(printf '%s' "$answer" | tr '[:upper:]' '[:lower:]')" in
+        ""|y|yes) ;;
+        *) typed="$answer"; continue ;;
+      esac
     fi
     response="$(post /auth/start "{\"email\":\"$email\",\"butler_name\":\"$name\",\"client\":\"setup/$version\",\"terms_version\":\"$terms_version\",\"terms_accepted_at\":\"$terms_accepted_at\"${heard:+,\"heard\":\"$heard\"}}")"
     code="$(printf '%s' "$response" | tail -n 1)"
