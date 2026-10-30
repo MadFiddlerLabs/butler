@@ -340,3 +340,16 @@ class RelayTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RelayExchangeTest(unittest.TestCase):
+    def test_each_butler_call_is_kept_with_its_prompt_and_answer(self):
+        """Butler keeps neither, so a brief that dropped Claude's news picks couldn't say why (30 Oct 2026)."""
+        body = json.dumps({"model": "claude-sonnet-5-5", "system": "You edit a news brief.",
+                           "messages": [{"role": "user", "content": "For each region..."}]}).encode()
+        answer = json.dumps({"stop_reason": "end_turn", "content": [{"type": "thinking", "thinking": "x"},
+                                                                     {"type": "text", "text": '{"stories": []}'}]}).encode()
+        kept = outside.exchange(body, 200, answer)
+        self.assertEqual((kept["model"], kept["stop_reason"], kept["prompt"], kept["answer"]),
+                         ("claude-sonnet-5-5", "end_turn", "For each region...", '{"stories": []}'))
+        self.assertEqual(outside.exchange(b"not json", 400, b"oops")["answer"], "oops")

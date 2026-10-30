@@ -1315,6 +1315,8 @@ In this session, you will also:
                                                            "total": self.spent()}.items()},
                   "minutes": round((time.monotonic() - started) / 60, 1)}
         (self.out / "run.json").write_text(json.dumps(result, indent=2, ensure_ascii=False))
+        (self.out / "butler-claude.json").write_text(json.dumps(self.outside.relay.exchanges, indent=1, ensure_ascii=False),
+                                                     encoding="utf-8")
         (self.out / "transcript.md").write_text(
             f"# {self.persona['name']} ({self.key}) on {self.computer}, run {self.seed}\n\nChoices: {self.cards}\n\n"
             + "\n".join(self.log), encoding="utf-8")

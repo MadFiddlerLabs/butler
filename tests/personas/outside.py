@@ -94,6 +94,7 @@ class Relay:
         self.keys: set[str] = set()
         self.cost = 0.0
         self.calls = 0
+        self.exchanges: list[dict] = []   # each call's prompt and answer, kept with the run for diagnosis
         self.allowed = allowed
         # The run's key, kept out of the environment: the student's windows inherit it, and a
         # student has no ANTHROPIC_API_KEY.
@@ -135,6 +136,7 @@ class Relay:
                     model, usage = usage_of(answer)
                     relay.cost += price(model, usage)
                     relay.calls += 1
+                relay.exchanges.append(exchange(body, code, answer))
                 self._send(code, answer, {"content-type": kind})
 
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -143,6 +145,25 @@ class Relay:
 
     def stop(self):
         self._server.shutdown()
+
+
+def exchange(body: bytes, code: int, answer: bytes) -> dict:
+    """One of Butler's Claude calls, as the run keeps it: the prompt and the text Claude answered
+    (Butler keeps neither, so a brief that dropped Claude's picks couldn't say why: 30 Oct 2026)."""
+    try:
+        request = json.loads(body)
+        prompt = " ".join(m["content"] if isinstance(m["content"], str) else json.dumps(m["content"])
+                          for m in request.get("messages", []))
+    except (ValueError, KeyError, TypeError):
+        request, prompt = {}, body.decode("utf-8", "replace")
+    try:
+        reply = json.loads(answer)
+        text = "".join(b.get("text", "") for b in reply.get("content", []) if b.get("type") == "text")
+        stop = reply.get("stop_reason")
+    except (ValueError, AttributeError):
+        text, stop = answer.decode("utf-8", "replace"), None
+    return {"status": code, "model": request.get("model"), "stop_reason": stop,
+            "system": str(request.get("system", ""))[:2000], "prompt": prompt, "answer": text}
 
 
 def _code(n: int, alphabet: str = string.ascii_lowercase + string.digits) -> str:
