@@ -1,6 +1,7 @@
 """One report from every persona run (tests/personas/run_persona.py writes a run.json each): the
-findings grouped by lesson, most-reported first, what each run reached, Butler's own checks, and
-what the round cost. Plain Python: no model reads it, so it costs nothing.
+big picture first (the end-of-run interview, the videos, the diaries), then the findings grouped by
+lesson, most-reported first, what each run reached, Butler's own checks, and what the round cost.
+Plain Python: no model reads it, so it costs nothing.
 
     python tests/personas/report.py <folder of run folders> > report.md
 """
@@ -10,6 +11,11 @@ from collections import defaultdict
 from pathlib import Path
 
 SEVERITY = {"blocker": 0, "major": 1, "minor": 2, "polish": 3}
+# The end-of-run interview's answers (run_persona.INTERVIEW), in the report's words and order.
+QUESTIONS = {"installing": "Installing", "first_setup": "The first setup, in the installer's window",
+             "the_window": "The window they typed into", "videos": "The videos",
+             "when_stuck": "When they didn't know what to do next", "in_my_words": "Butler, in their own words",
+             "carry_on_why": "Would they carry on tomorrow?"}
 
 
 def where(run: dict) -> str:
@@ -53,6 +59,8 @@ def render(runs: list[dict]) -> str:
         out += ["", "**Where the runs' path differed from a student's:**"]
         out += [f"- ({', '.join(sorted(computers))}) {d}" for d, computers in differences.items()]
 
+    out += big_picture(runs)
+
     by_lesson: dict[str, list[tuple[dict, dict]]] = defaultdict(list)
     for r in runs:
         for f in r["report"].get("findings", []):
@@ -82,6 +90,46 @@ def render(runs: list[dict]) -> str:
         out.append(f"- **{r['name']}** ({where(r)}, run {r['seed']}; {'; '.join(r['cards'])}): "
                    f"{r['report'].get('how_it_felt', '')}")
     return "\n".join(out) + "\n"
+
+
+def big_picture(runs: list[dict]) -> list[str]:
+    """How it felt, from 10,000 feet: each persona's interview answers side by side, what they
+    thought of each video, and their diaries as they went. Runs from before the interview have none."""
+    asked = [r for r in runs if r.get("interview") and not r["interview"].get("failed")]
+    if not asked and not any(r.get("diary") for r in runs):
+        return []
+    who = lambda r: f"**{r['name']}** ({where(r)}, run {r['seed']})"  # noqa: E731
+    out = ["", "## The big picture", "",
+           "| Persona | Computer | Run | Carry on? | Videos watched | Opened, not watched |", "|---|---|---|---|---|---|"]
+    for r in sorted(runs, key=lambda r: (r["persona"], where(r), r["seed"])):
+        c = r["checks"]
+        watched, opened = c.get("videos_watched") or [], c.get("videos_opened") or []
+        skipped = sorted(set(opened) - set(watched))
+        out.append(f"| {r['name']} | {where(r)} | {r['seed']} | {(r.get('interview') or {}).get('carry_on', '–')} | "
+                   f"{', '.join(map(str, watched)) or 'none'} | {', '.join(map(str, skipped)) or 'none'} |")
+    for key, label in QUESTIONS.items():
+        answers = [(r, r["interview"].get(key)) for r in asked if r["interview"].get(key)]
+        if answers:
+            out += ["", f"### {label}", ""] + [f"- {who(r)}: {a}" for r, a in answers]
+    changes = [(r, r["interview"].get("top_changes") or []) for r in asked]
+    if any(c for _, c in changes):
+        out += ["", "### The changes they'd make first", ""]
+        out += [f"- {who(r)}: " + " ".join(f"{i}. {c}" for i, c in enumerate(cs, 1)) for r, cs in changes if cs]
+    videos = sorted(((d.get("module"), r, d) for r in runs for d in r.get("diary") or [] if d.get("kind") == "video"),
+                    key=lambda x: (x[0] if x[0] is not None else -1, x[1]["persona"]))
+    if videos:
+        out += ["", "### Each video, just after watching it", "",
+                "| Module | Persona | Helpful? | It got them ready for | They'd change |", "|---|---|---|---|---|"]
+        cell = lambda t: str(t or "").replace("|", "/").replace("\n", " ")  # noqa: E731
+        out += [f"| {m} | {r['name']} ({where(r)}) | {d.get('helpful', '')} | {cell(d.get('it_prepared_me_for'))} | "
+                f"{cell(d.get('i_would_change'))} |" for m, r, d in videos]
+    diaries = [(r, [d for d in r.get("diary") or [] if d.get("kind") == "diary"]) for r in runs]
+    if any(d for _, d in diaries):
+        out += ["", "### Their diaries, as they went", ""]
+        for r, lines in diaries:
+            if lines:
+                out += [f"{who(r)}:", ""] + [f"- *{d.get('moment')}* ({d.get('mood')}): {d.get('text')}" for d in lines] + [""]
+    return out
 
 
 if __name__ == "__main__":

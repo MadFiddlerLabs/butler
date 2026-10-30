@@ -24,6 +24,28 @@ def site_name(typed: str) -> tuple[str, str]:
     return "Butler", NAME_ERROR if typed.strip() else ""
 
 
+# What Butler says where it would open a module's video, with BUTLER_NO_OPEN (course_video.open_page,
+# and scripts/first-run.sh for Module 0): a runner's student account has no browser to open.
+VIDEO_LINE = re.compile(r"Module (\d+)'s video, (.+?), is here:\s+(https://buildyourbutler\.com/course/[\w-]+/#video)")
+
+
+def videos_in(text: str) -> list[tuple[int, str]]:
+    """The module videos Butler opened in this text: (module, title)."""
+    return [(int(m[1]), m[2]) for m in VIDEO_LINE.finditer(text)]
+
+
+def as_opened(text: str) -> str:
+    """The text as a student's screen shows it, where Butler opened the video in their browser."""
+    return VIDEO_LINE.sub(lambda m: f"I've opened Module {m[1]}'s video in your browser: {m[2]}.", text)
+
+
+def watching(video: dict) -> str:
+    """A module's video (lessons.mjs's `videos`), as the persona takes it in: scene by scene, what's
+    on screen and what the voice says."""
+    scenes = "\n".join(f"- On screen: {s['shown']}\n  The voice: {s['said']}" for s in video["scenes"])
+    return f"You watch Module {video['module']}'s video, {video['title']} (about {video['minutes']} minutes):\n\n{scenes}"
+
+
 def page_text(html: str) -> str:
     """A web page as the persona reads it: the words, without scripts, styles or tags, and with
     entities decoded as a browser shows them (round 6 saw "Ukraine&#x27;s" and called it a bug)."""
