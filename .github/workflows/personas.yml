@@ -40,6 +40,11 @@ on:
       claude_model:
         description: "The student's Claude Code model (sonnet is a Pro plan's; empty for Claude Code's default)"
         default: "sonnet"
+      windows_installer:
+        description: "Windows: release = the signed Butler-Setup.exe of the latest release, as students download it; build = this commit's, unsigned"
+        type: choice
+        options: [release, build]
+        default: release
 
 permissions:
   contents: read
@@ -84,15 +89,30 @@ jobs:
           path: lessons-*.json
 
   windows-installer:
-    # The installer a Windows student downloads (an unsigned test build), built once on x64. Inno
-    # Setup's installer is 32-bit, and runs on Windows on ARM as students' copies do.
+    # The installer a Windows student downloads. By default the signed one from the latest release:
+    # an unsigned build shows Windows' "Unknown Publisher" warning, which no student sees, and two
+    # careful personas rightly stopped there (30 Oct 2026). `build` makes this commit's instead,
+    # unsigned, once on x64: Inno Setup's installer is 32-bit, and runs on Windows on ARM too.
     needs: plan
     if: needs.plan.outputs.windows == 'true'
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - shell: pwsh
+      - name: The signed installer of the latest release
+        if: inputs.windows_installer != 'build'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --repo "${{ github.repository }}" --pattern Butler-Setup.exe --dir dist
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $signature = Get-AuthenticodeSignature dist\Butler-Setup.exe
+          "Signed by: $($signature.SignerCertificate.Subject) ($($signature.Status))"
+          if ($signature.Status -ne 'Valid') { throw "the release's installer isn't validly signed" }
+      - name: This commit's installer, unsigned
+        if: inputs.windows_installer == 'build'
+        shell: pwsh
         run: |
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
           powershell -ExecutionPolicy Bypass -File packaging\windows\build-installer.ps1 -Version v0.0.1-persona
@@ -134,7 +154,7 @@ jobs:
         run: |
           pkg="$(packaging/macos/build-pkg.sh --version v0.0.1-persona --out dist | tail -n 1)"
           echo "INSTALLER=$pkg" >> "$GITHUB_ENV"
-      - name: The installer a student downloads (an unsigned test build)
+      - name: The installer a student downloads (signed from the latest release, or this commit's unsigned)
         if: matrix.platform == 'windows'
         uses: actions/download-artifact@v4
         with:
