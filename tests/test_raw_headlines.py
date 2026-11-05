@@ -68,7 +68,8 @@ class EmptyRegionsTest(unittest.TestCase):
 
 class PicksLogTest(unittest.TestCase):
     """A persona's 5-section brief kept Claude's picks only for its first section (30 Oct 2026),
-    cause unknown. The log now says, per section, how many Claude picked, and any ref it made up."""
+    cause unknown. A section left without picks now gets a second try on its own, and the log says,
+    per section, how many Claude picked, and any ref it made up."""
 
     def test_each_section_and_any_unknown_ref_is_logged(self):
         from unittest import mock
@@ -84,7 +85,58 @@ class PicksLogTest(unittest.TestCase):
              mock.patch.object(llm, "recent_news", return_value=[]), \
              self.assertLogs("butler", "INFO") as logs:
             llm.pick_news(settings, stories)
-        self.assertIn("news picks: Europe 1 of 1, World 0 of 1; refs matching no story: World-1", logs.output[-1])
+        self.assertIn("news picks: Europe 1 of 1, World 0 of 1; refs matching no story: World-1, World-1; asked again for World", logs.output[-1])
+
+    def _three_sections(self):
+        settings = {"household": {"place": "Lisbon"},
+                    "news": {"stories_per_region": 2, "regions": [{"key": "europe", "label": "Europe"},
+                                                                  {"key": "world", "label": "World"},
+                                                                  {"key": "tech", "label": "Tech"}]}}
+        stories = [story("europe", 1, "Lisbon trams back", "https://news.example.test/trams"),
+                   story("world", 1, "Ocean survey ends", "https://news.example.test/ocean")]
+        return settings, stories
+
+    def test_a_section_left_without_picks_is_asked_for_again_on_its_own(self):
+        from unittest import mock
+        from butler import llm
+        settings, stories = self._three_sections()
+        first = {"stories": [{"ref": "europe-1", "headline": "Trams are back", "summary": "Invented."}]}
+        second = {"stories": [{"ref": "world-1", "headline": "Survey ends", "summary": "Invented."}]}
+        with mock.patch.object(llm, "_ask_json", side_effect=[first, second]) as ask, \
+             mock.patch.object(llm, "recent_news", return_value=[]), \
+             self.assertLogs("butler", "INFO") as logs:
+            news = llm.pick_news(settings, stories)
+        self.assertEqual([n["headline"] for n in news], ["Trams are back", "Survey ends"])
+        self.assertEqual(ask.call_count, 2)
+        again = ask.call_args_list[1].args[2]
+        self.assertIn("Ocean survey ends", again)
+        self.assertNotIn("Lisbon trams back", again)   # Tech has no stories, and Europe has its picks
+        self.assertNotIn('"Tech"', again)
+        self.assertIn("Europe 1 of 1, World 1 of 1, Tech 0 of 0; asked again for World", logs.output[-1])
+
+    def test_every_section_picked_is_one_call_and_nothing_picked_is_not_retried(self):
+        from unittest import mock
+        from butler import llm
+        settings, stories = self._three_sections()
+        both = {"stories": [{"ref": "europe-1", "headline": "A", "summary": "Invented."},
+                            {"ref": "world-1", "headline": "B", "summary": "Invented."}]}
+        for answer, count in ((both, 2), ({"stories": []}, 0)):
+            with mock.patch.object(llm, "_ask_json", return_value=answer) as ask, \
+                 mock.patch.object(llm, "recent_news", return_value=[]):
+                self.assertEqual(len(llm.pick_news(settings, stories)), count)
+            self.assertEqual(ask.call_count, 1)
+
+    def test_a_failed_second_try_keeps_the_first_picks(self):
+        from unittest import mock
+        from butler import llm
+        settings, stories = self._three_sections()
+        first = {"stories": [{"ref": "europe-1", "headline": "Trams are back", "summary": "Invented."}]}
+        with mock.patch.object(llm, "_ask_json", side_effect=[first, llm.ClaudeError("cut off")]), \
+             mock.patch.object(llm, "recent_news", return_value=[]), \
+             self.assertLogs("butler", "WARNING") as logs:
+            news = llm.pick_news(settings, stories)
+        self.assertEqual([n["headline"] for n in news], ["Trams are back"])
+        self.assertIn("the second try failed", logs.output[0])
 
 
 if __name__ == "__main__":
