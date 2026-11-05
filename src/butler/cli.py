@@ -263,7 +263,7 @@ def open_claude(yes: bool = False, dry_run: bool = False, opening: str | None = 
     exe = _claude_path()
     if not exe:
         say("Next, I move into Claude Code: an AI helper that does the rest of the setup with you.")
-        say("It needs a paid Claude plan (Pro or Max) and a one-time sign-in in your browser.")
+        say("It needs a paid Claude plan (Pro, Max or Ultra) and a one-time sign-in in your browser.")
         if not yes:
             answer = _ask("Install Claude Code now? Press Enter for yes, or type no: ")
             if answer in {"n", "no"}:
