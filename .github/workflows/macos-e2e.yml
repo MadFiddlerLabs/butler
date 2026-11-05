@@ -63,8 +63,6 @@ jobs:
           packaging/macos/build-app.sh "$RUNNER_TEMP/Butler.app" v0.0.0-ci
           pkg="$(packaging/macos/build-pkg.sh --version v0.0.0-ci --out "$RUNNER_TEMP/dist" --helper "$RUNNER_TEMP/butler-ek" --app "$RUNNER_TEMP/Butler.app")"
           cp "$pkg" "$RUNNER_TEMP/Bento (1).pkg"
-      - name: Calendar access is asked for butler-ek, not the shell that started it
-        run: tests/e2e/calendar-responsibility.sh "$RUNNER_TEMP/butler-ek"
       - name: Install it as a student would, into the home folder, without admin rights
         run: |
           installer -pkg "$RUNNER_TEMP/Bento (1).pkg" -target CurrentUserHomeDirectory
@@ -115,6 +113,8 @@ jobs:
           # The settings Module 2 writes (the upgrade step left only a name), then the jobs.
           (cd "$HOME/Butler" && .venv/bin/python "$GITHUB_WORKSPACE/tests/e2e/install_step_settings.py")
           tests/e2e/schedule-gui.sh
+      - name: Calendar access is asked for butler-ek, not the shell that started it
+        run: tests/e2e/calendar-responsibility.sh "$RUNNER_TEMP/butler-ek"
 
   student:
     # A student's own account: standard (not an admin), with a space in its home folder's path.
