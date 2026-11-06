@@ -44,7 +44,7 @@ butler_uv() {
   sha="$(butler_uv_sha256 "$target")"
   echo "Getting uv $BUTLER_UV_VERSION, which gives Butler its own Python (https://docs.astral.sh/uv/)." >&2
   tmp="$(mktemp -d)"
-  if ! curl -fsSL --retry 3 -o "$tmp/uv.tar.gz" \
+  if ! curl -fsSL --retry 6 --retry-delay 5 -o "$tmp/uv.tar.gz" \
       "https://github.com/astral-sh/uv/releases/download/$BUTLER_UV_VERSION/uv-$target.tar.gz"; then
     rm -rf "$tmp"; echo "Couldn't download uv. Check the internet connection and try again." >&2; return 1
   fi
