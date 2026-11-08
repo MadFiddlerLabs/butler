@@ -624,21 +624,45 @@ class WindowsCommandTest(unittest.TestCase):
              mock.patch.object(cli.Path, "home", return_value=home):
             self.assertEqual(cli._claude_path(), str(home / ".local" / "bin" / "claude.exe"))
 
-    def test_claude_code_runs_as_a_child_on_windows_and_its_exit_code_comes_back(self):
+    def open_for_real(self, platform, exe: str, wait) -> tuple[int, str, mock.Mock, mock.Mock]:
+        """open_claude without the dry run, Claude Code's process stood in for by `wait`."""
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp, True)
         env = {k: v for k, v in os.environ.items() if k != "BUTLER_CLAUDE_DRY_RUN"}
-        with self.windows(), mock.patch.dict(os.environ, env, clear=True), \
-             mock.patch.object(cli, "_claude_path", return_value="C:\\claude.exe"), \
+        out = io.StringIO()
+        with platform(), mock.patch.dict(os.environ, env, clear=True), \
+             mock.patch.object(cli, "_claude_path", return_value=exe), \
              mock.patch.object(cli, "CLAUDE_WELCOMED", tmp / "claude-welcomed"), \
              mock.patch.object(cli.ss, "load", return_value={"claude_mode": "ask"}), \
              mock.patch.object(cli.progress, "report"), mock.patch.object(cli.os, "chdir"), \
-             mock.patch.object(cli.os, "execv") as execv, mock.patch.object(cli.subprocess, "run") as run, \
-             redirect_stdout(io.StringIO()):
-            run.return_value.returncode = 3
-            self.assertEqual(cli.open_claude(), 3)
-        execv.assert_not_called()
-        self.assertEqual(run.call_args.args[0][:3], ["C:\\claude.exe", "--permission-mode", "default"])
+             mock.patch.object(cli, "_watch_first"), \
+             mock.patch.object(cli.os, "execv") as execv, mock.patch.object(cli.subprocess, "Popen") as popen, \
+             redirect_stdout(out):
+            popen.return_value.wait.side_effect = wait
+            code = cli.open_claude()
+        return code, out.getvalue(), execv, popen
+
+    def test_claude_code_runs_as_a_child_and_its_exit_code_comes_back(self):
+        for platform, exe in ((self.windows, "C:\\claude.exe"), (self.mac, "/Users/sam/.local/bin/claude")):
+            with self.subTest(platform.__name__):
+                code, _, execv, popen = self.open_for_real(platform, exe, [3])
+                self.assertEqual(code, 3)
+                execv.assert_not_called()
+                self.assertEqual(popen.call_args.args[0][:3], [exe, "--permission-mode", "default"])
+
+    def test_when_claude_code_closes_it_says_the_way_back(self):
+        # A tester typed /exit and was left at a bare prompt, with no idea how to get back (8 Nov 2026).
+        _, out, _, _ = self.open_for_real(self.mac, "claude", [0])
+        self.assertIn("Claude Code is closed. Nothing is lost. To come back, open the Butler app, or type: butler resume",
+                      " ".join(out.split()))
+        _, out, _, _ = self.open_for_real(self.windows, "claude.exe", [0])
+        self.assertIn("To come back, open Butler from the Start menu, or type: butler resume", " ".join(out.split()))
+
+    def test_control_c_is_claude_codes_so_butler_keeps_waiting(self):
+        code, out, _, popen = self.open_for_real(self.mac, "claude", [KeyboardInterrupt, KeyboardInterrupt, 0])
+        self.assertEqual(code, 0)
+        self.assertEqual(popen.return_value.wait.call_count, 3)
+        self.assertIn("Claude Code is closed.", out)
 
 
 class ButlerCmdTest(unittest.TestCase):

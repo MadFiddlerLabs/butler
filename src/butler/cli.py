@@ -307,12 +307,24 @@ def open_claude(yes: bool = False, dry_run: bool = False, opening: str | None = 
     CLAUDE_WELCOMED.parent.mkdir(exist_ok=True)
     CLAUDE_WELCOMED.touch()
     os.chdir(ROOT)
-    if system.NAME == "windows":
-        # Windows has no exec: os.execv starts a new process and ends this one, and the window's
-        # prompt comes back while Claude Code is still running. So Claude Code runs as a child.
-        return subprocess.run(argv).returncode
-    os.execv(exe, argv)
-    return 0  # not reached
+    return _run_claude(argv)
+
+
+def _run_claude(argv: list[str]) -> int:
+    """Claude Code as a child, so the way back can be said when it closes: a tester typed /exit,
+    was left at a bare prompt, and didn't know how to get back to the course (8 Nov 2026). Control C
+    is Claude Code's to handle, so this waits through it instead of stopping. (On Windows a child
+    was needed anyway: os.execv there starts a new process, and the prompt came back too early.)"""
+    proc = subprocess.Popen(argv)
+    while True:
+        try:
+            code = proc.wait()
+            break
+        except KeyboardInterrupt:
+            continue
+    say()
+    say(f"Claude Code is closed. Nothing is lost. To come back, {way_back()}, or type: butler resume")
+    return code
 
 
 def cmd_claude_mode(args) -> int:
