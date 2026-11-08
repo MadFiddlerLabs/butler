@@ -69,6 +69,10 @@ def _weekly_if_due() -> None:
         return
     try:
         weekly.run(settings, day, dry_run=False, late=_late_note("letter", late, day, hour))
+    except NotSetUp as e:
+        # The letter is about money, and Lunch Money comes in Module 7. Until then there's no letter
+        # and nothing failed, so no "letter failed" email (CI met it on a Sunday, 8 Nov 2026).
+        log.info("weekly letter: %s", e)
     except Exception as e:
         llm.log_failure("weekly", e)
         mailer.send_or_queue(settings, f"weekly-failed-{year}-{week:02d}",
@@ -91,6 +95,8 @@ def _monthly_if_due() -> None:
         return
     try:
         monthly.run(settings, last, preview=False, late=_late_note("look-back", late, due, hour))
+    except NotSetUp as e:
+        log.info("monthly look-back: %s", e)   # as the weekly letter: no money connected, nothing failed
     except Exception as e:
         llm.log_failure("monthly", e)
         mailer.send_or_queue(settings, f"monthly-failed-{last:%Y-%m}", f"{brand(settings)} · monthly look-back failed",
