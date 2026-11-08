@@ -335,6 +335,9 @@ class CourseContractTest(unittest.TestCase):
             self.assertRegex(text, r"[Bb]efore a command that asks their permission, say in one plain sentence", name)
         self.assertIn("ask every one, one at a time", setup)
         self.assertIn("Say this before the page opens, not after", setup)
+        # A tester who keeps everything in Google was sent to the Mac's Calendar app (8 Nov 2026).
+        self.assertIn("On a Mac, ask first, before the helper or any permission:", setup)
+        self.assertIn("never steer them to the Mac's Calendar app", setup)
         self.assertIn("Anthropic asks for a card", setup)
         self.assertIn("Module 4 needs a card for Anthropic's API", setup)
 
