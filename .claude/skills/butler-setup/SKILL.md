@@ -171,10 +171,16 @@ Next: Module 3, Show your butler your calendar (`/butler-setup calendar`).
 
 The win: the preview shows their real day, and their to-dos.
 
-On a Mac, Butler reads Apple's Calendar and Reminders through the Calendar helper, in steps 1
-to 4 and 6. On Windows there's no Apple Calendar: Butler reads Google Calendar and keeps the
-to-do and shopping lists in Google Tasks. So on Windows, do "Google Calendar and Tasks" below in
-place of steps 1 to 4 and 6.
+Butler reads one of two calendars: Apple's Calendar and Reminders, through the Calendar helper
+(steps 1 to 4 and 6), or Google Calendar with the lists in Google Tasks ("Google Calendar and
+Tasks" below, in place of steps 1 to 4 and 6). Windows has no Apple Calendar, so on Windows it's
+always Google: don't ask.
+
+**On a Mac, ask first, before the helper or any permission:** "Where do you keep your family's
+calendars: in Google Calendar, or in the Mac's Calendar app?" Then follow their answer. If they
+use both, ask which one has the family's events. Google is as good a choice as Apple's: never
+steer them to the Mac's Calendar app. A tester who keeps everything in Google was asked to allow
+Calendar, an app she never uses, and couldn't see why (8 Nov 2026).
 
 1. **Xcode command line tools**, only if `bin/butler-ek` is missing. The downloaded package
    includes the helper, prebuilt and signed, so skip to step 3. Otherwise: `xcode-select -p`
@@ -186,9 +192,9 @@ place of steps 1 to 4 and 6.
    they click Allow. Then `bin/butler-ek reminder-lists`, and they allow Reminders. If they
    clicked Don't Allow: System Settings > Privacy & Security > Calendars (and Reminders),
    switch it on, and run the command again.
-4. If their calendars live in Google or Microsoft and don't show up, they add the account in
-   System Settings > Internet Accounts, with Calendars and Reminders switched on. A Mac
-   household that keeps everything in Google can use Google directly instead, as on Windows.
+4. If a calendar from Google or Microsoft doesn't show up, they add the account in
+   System Settings > Internet Accounts, with Calendars and Reminders switched on. If it turns
+   out everything is in Google, offer to switch to Google directly ("Google Calendar and Tasks").
 5. Interview. Lesson 3.4 lists these six questions, so ask every one, one at a time (a persona
    was asked two of them, and the brief put everyone's events under one person):
    1. Which calendars go in the brief?
@@ -203,7 +209,7 @@ place of steps 1 to 4 and 6.
 7. Update `calendar.include`, `holidays`, `write_to` and `people[].calendars` / `aliases`.
 8. Check: the config test passes, then `./run.sh preview`. Today's events appear per person.
 
-### Google Calendar and Tasks (Windows, or a Mac's choice)
+### Google Calendar and Tasks (Windows, or a Mac household's choice)
 
 Butler can add events and tasks, and mark tasks done. It never edits or deletes anything.
 
