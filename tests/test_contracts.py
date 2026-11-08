@@ -294,6 +294,13 @@ class CourseContractTest(unittest.TestCase):
         env = json.loads((REPO / ".claude" / "settings.json").read_text())["env"]
         self.assertEqual(env, {"CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": "1"})
 
+    def test_claude_tells_students_the_way_back_when_they_stop(self):
+        """A tester typed /exit and didn't know how to get back to the course (8 Nov 2026)."""
+        text = " ".join((REPO / "CLAUDE.md").read_text().split())
+        self.assertIn("When they stop for now, say how to come back.", text)
+        self.assertIn("open the Butler app (press Command Space, type Butler, press Return)", text)
+        self.assertIn("click Start, type Butler, press Enter", text)
+
     def test_only_the_read_only_checks_and_the_videos_run_without_asking(self):
         """The persona rounds asked about `butler progress` and `butler status` again and again,
         and the owner agreed (28 Oct 2026) that they, and `butler doctor`, run without asking:

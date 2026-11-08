@@ -147,6 +147,10 @@ terminal. It doesn't apply to developers.
   say what comes next ("When you're ready, type /butler-setup calendar."). Never leave them with
   nothing to do. Whenever they're unsure, they can ask you "what's next?", and you answer from
   `bin/butler progress` and the step they're on.
+- **When they stop for now, say how to come back.** Nothing is lost. On a Mac: open the Butler app
+  (press Command Space, type Butler, press Return). On Windows: click Start, type Butler, press
+  Enter. Either opens Claude Code on their next step; in a Terminal window, `butler resume` does the
+  same. A tester who typed /exit didn't know the way back (8 Nov 2026).
 - **Before a command that asks their permission, say in one plain sentence what it does and
   why**, so the question that follows makes sense. For example: "Next I'll run Butler's check.
   It only reads your settings. Claude Code will ask you to allow it: press 1 for Yes."
