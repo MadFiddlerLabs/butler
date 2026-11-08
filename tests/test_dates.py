@@ -108,6 +108,20 @@ class WeeklyAcrossDstTest(Tick):
         self.run_ticks(s, datetime(2026, 10, 24, 0, 0, tzinfo=UTC), datetime(2026, 10, 26, 0, 0, tzinfo=UTC))
         self.assertEqual([w.strftime("%a %H:%M") for w in self.weekly], ["Sun 17:00"])
 
+    def test_without_lunch_money_the_letters_wait_quietly(self):
+        """Before Module 7 there's no money to write about: no letter, no "letter failed" email
+        (setUp's send_or_queue fails the test if one is sent), and no retry every five minutes."""
+        tries = []
+        def not_set_up(*args, **kwargs):
+            tries.append(args[1])
+            raise tick.NotSetUp("no Lunch Money token in Keychain (service 'butler-lunchmoney')")
+        with mock.patch.object(tick.weekly, "run", side_effect=not_set_up), \
+             mock.patch.object(tick.monthly, "run", side_effect=not_set_up), \
+             mock.patch.object(tick, "_running_before", return_value=True):
+            self.run_ticks(settings("Europe/Lisbon"), datetime(2026, 10, 31, 0, 0, tzinfo=UTC),
+                           datetime(2026, 11, 2, 0, 0, tzinfo=UTC))
+        self.assertEqual(tries, [date(2026, 10, 1), date(2026, 11, 1)])
+
     def test_iso_weeks_wrapping_at_year_end(self):
         """2026 has 53 ISO weeks: Sunday 3 January 2027 is in week 53 of 2026. Each Sunday sends once."""
         s = settings("Europe/Lisbon")
