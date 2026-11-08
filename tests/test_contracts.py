@@ -287,6 +287,13 @@ class CourseContractTest(unittest.TestCase):
         self.assertEqual(settings["permissions"]["defaultMode"], "default")
         self.assertNotIn("settings.json", (REPO / ".gitignore").read_text())
 
+    def test_claude_code_asks_students_no_survey(self):
+        """Claude Code's "How is Claude doing this session?" asks for a number in the middle of a
+        lesson. A tester didn't know what to press (8 Nov 2026). Butler's folder turns it off."""
+        import json
+        env = json.loads((REPO / ".claude" / "settings.json").read_text())["env"]
+        self.assertEqual(env, {"CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": "1"})
+
     def test_only_the_read_only_checks_and_the_videos_run_without_asking(self):
         """The persona rounds asked about `butler progress` and `butler status` again and again,
         and the owner agreed (28 Oct 2026) that they, and `butler doctor`, run without asking:
