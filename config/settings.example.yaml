@@ -38,6 +38,9 @@ email:
   send_hour: 7          # the morning brief goes out at this hour, local time
   weekly_day: 6         # the weekly letter goes out this day: Monday = 0 ... Sunday = 6
   weekly_hour: 17
+  # true adds one line to the end of the weekly letter: "Written by our butler, which we built
+  # with Claude. Build yours: buildyourbutler.com". Off unless you turn it on (Module 9).
+  sign_letter: false
   monthly_hour: 8       # the monthly look-back, on the 1st
   recipients:
     - sam@example.com
