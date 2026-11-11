@@ -27,6 +27,15 @@ IDEAS = ROOT / "data" / "ideas.jsonl"
 QUESTIONS = ROOT / "data" / "questions.json"   # id -> {payee, text, asked}; replies resolve ids
 REPORTS = ROOT / "reports"
 DRIFT_MIN = 15   # euro-sized; scaled for the primary currency (fmt.scale)
+# The letter's signature, when the household turns on email.sign_letter (off by default). The
+# link's tags say only that a visit came from a letter: nothing about the household.
+SIGNATURE = "Written by our household butler. Build yours:"
+SIGNATURE_URL = "https://buildyourbutler.com/?utm_source=butler_letter&utm_medium=email"
+
+
+def signs_letter(settings: dict) -> bool:
+    """Whether the household chose to sign its weekly letter (email.sign_letter: true)."""
+    return (settings.get("email") or {}).get("sign_letter") is True
 
 
 # ---------- the day ----------
@@ -474,7 +483,7 @@ def sections(w: Week, words: dict) -> list[tuple[str, list[str]]]:
 
 
 def to_html(w: Week, secs: list[tuple[str, list[str]]], image_src=lambda n: f"cid:{n}",
-            banner: str = "") -> str:
+            banner: str = "", signed: bool = False) -> str:
     from html import escape
 
     from .render import EMAIL_TAIL, INK, MUTED, PAPER, RULE, _h2, email_head, one_off_note, portal_button
@@ -506,12 +515,16 @@ def to_html(w: Week, secs: list[tuple[str, list[str]]], image_src=lambda n: f"ci
                          'width="600" style="display:block;width:100%;max-width:600px;height:auto;margin:6px 0 12px">')
     parts.append(f'<p style="margin-top:32px;color:{MUTED};font-size:12px;border-top:1px solid {RULE};'
                  f'padding-top:10px">{escape(brand())}, {w.last_day:%A} letter. Reply to answer a question, add '
-                 'something to the week, or say what to change.</p></div>')
+                 'something to the week, or say what to change.</p>')
+    if signed:
+        parts.append(f'<p style="margin:6px 0 0;color:{MUTED};font-size:12px">{escape(SIGNATURE)} '
+                     f'<a href="{escape(SIGNATURE_URL)}" style="color:{MUTED}">buildyourbutler.com</a></p>')
+    parts.append("</div>")
     parts.append(EMAIL_TAIL)
     return "\n".join(parts)
 
 
-def to_text(w: Week, secs: list[tuple[str, list[str]]], banner: str = "") -> str:
+def to_text(w: Week, secs: list[tuple[str, list[str]]], banner: str = "", signed: bool = False) -> str:
     from .render import one_off_note
     lines = [f"Your week. Week ending {w.last_day:%A} {w.last_day.day} {w.last_day:%B %Y}",
              f"Open {brand()}: {portal_url()}" if portal_url() else "", ""]
@@ -522,6 +535,8 @@ def to_text(w: Week, secs: list[tuple[str, list[str]]], banner: str = "") -> str
         if heading == "Money" and one_off_note(w.money):
             lines.append(f"  {one_off_note(w.money)}")
         lines.append("")
+    if signed:
+        lines.append(f"{SIGNATURE} {SIGNATURE_URL}")
     return "\n".join(lines)
 
 
@@ -544,8 +559,9 @@ def preview_to_portal(settings: dict, last_day: date) -> str:
     banner = (f"Preview, built {strftime(datetime.now(tz(settings)), '%a %-d %b %H:%M')} from today's data. "
               f"The real letter goes out {strftime(last_day, '%A %-d %B')} at {settings['email'].get('weekly_hour', 17)}:00 "
               "and replaces this page.")
-    (ROOT / "out" / f"{stem}.html").write_text(to_html(w, secs, lambda n: f"{stem}-{n}.png", banner))
-    (ROOT / "out" / f"{stem}.txt").write_text(to_text(w, secs))
+    signed = signs_letter(settings)
+    (ROOT / "out" / f"{stem}.html").write_text(to_html(w, secs, lambda n: f"{stem}-{n}.png", banner, signed))
+    (ROOT / "out" / f"{stem}.txt").write_text(to_text(w, secs, signed=signed))
     return stem
 
 
@@ -566,14 +582,15 @@ def run(settings: dict, last_day: date, dry_run: bool, late: str = "") -> None:
     folder.mkdir(parents=True, exist_ok=True)
     for name, png in imgs.items():
         (folder / f"{stem}-{name}.png").write_bytes(png)
-    (folder / f"{stem}.html").write_text(to_html(w, secs, lambda n: f"{stem}-{n}.png", late))
-    text = to_text(w, secs, late)
+    signed = signs_letter(settings)
+    (folder / f"{stem}.html").write_text(to_html(w, secs, lambda n: f"{stem}-{n}.png", late, signed))
+    text = to_text(w, secs, late, signed)
     (folder / f"{stem}.txt").write_text(text)
     if dry_run:
         log.info("weekly dry run: wrote out/preview/%s.html", stem)
         return
     mailer.send_or_queue(settings, stem, f"{brand(settings)} · your week ahead, {strftime(last_day + timedelta(days=1), '%-d %B')}",
-                         text, to_html(w, secs, banner=late), images=imgs)
+                         text, to_html(w, secs, banner=late, signed=signed), images=imgs)
     asked = json.loads(QUESTIONS.read_text()) if QUESTIONS.exists() else {}
     asked.update({qid: {"payee": payee, "text": q, "asked": last_day.isoformat()}
                   for qid, q, payee in w.questions})

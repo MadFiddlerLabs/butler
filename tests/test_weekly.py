@@ -64,6 +64,46 @@ class LateLetterTest(unittest.TestCase):
             self.assertIn(LATE, (preview / "weekly-2026-42.html").read_text())
 
 
+class SignatureTest(unittest.TestCase):
+    """Invented: the Johnsons' letter for Sunday 18 October 2026."""
+    W = SimpleNamespace(last_day=date(2026, 10, 18))
+    SECS = [("Projects", ["Home: on track."])]
+
+    def test_off_unless_the_household_says_true(self):
+        for settings in ({}, {"email": {}}, {"email": {"sign_letter": False}}, {"email": {"sign_letter": "yes"}}, {"email": None}):
+            self.assertFalse(weekly.signs_letter(settings), settings)
+        self.assertTrue(weekly.signs_letter({"email": {"sign_letter": True}}))
+
+    def test_an_unsigned_letter_has_no_line_and_no_link(self):
+        both = weekly.to_text(self.W, self.SECS) + weekly.to_html(self.W, self.SECS)
+        self.assertNotIn("buildyourbutler.com", both)
+        self.assertNotIn(weekly.SIGNATURE, both)
+
+    def test_a_signed_letter_ends_with_the_line_and_a_tagged_link(self):
+        text = weekly.to_text(self.W, self.SECS, signed=True)
+        self.assertTrue(text.endswith(f"{weekly.SIGNATURE} {weekly.SIGNATURE_URL}"))
+        html = weekly.to_html(self.W, self.SECS, signed=True)
+        self.assertIn(f'href="{weekly.SIGNATURE_URL.replace("&", "&amp;")}"', html)
+        self.assertGreater(html.index(weekly.SIGNATURE), html.index("Reply to answer a question"))
+        self.assertEqual(weekly.SIGNATURE_URL, "https://buildyourbutler.com/?utm_source=butler_letter&utm_medium=email",
+                         "the link carries nothing about the household")
+
+    def test_run_signs_the_letter_only_when_set(self):
+        for sign, expected in ((True, True), (False, False)):
+            with tempfile.TemporaryDirectory() as tmp, \
+                 mock.patch.object(weekly, "ROOT", Path(tmp)), \
+                 mock.patch.object(weekly, "build_week", return_value=SimpleNamespace(last_day=date(2026, 10, 18), money=None)), \
+                 mock.patch.object(weekly, "write", return_value={}), mock.patch.object(weekly.projects, "load", return_value=[]), \
+                 mock.patch.object(weekly, "sections", return_value=self.SECS), \
+                 mock.patch.object(weekly.charts, "month_to_date", return_value=b"png"), \
+                 mock.patch.object(weekly.charts, "categories", return_value=None), \
+                 mock.patch.object(weekly.finance, "load_rules", return_value={"rules": {"day_to_day": []}}):
+                weekly.run({"email": {"sign_letter": sign}}, date(2026, 10, 18), dry_run=True)
+                preview = Path(tmp) / "out" / "preview"
+                for name in ("weekly-2026-42.txt", "weekly-2026-42.html"):
+                    self.assertEqual(weekly.SIGNATURE in (preview / name).read_text(), expected, (sign, name))
+
+
 def grocer(day: date, amount: float, **kw) -> Tx:
     return Tx(id=1, day=day, created=datetime(2026, 10, 1, tzinfo=timezone.utc), payee="Grocer",
               account="Everyday", amount=amount, kind=SPEND, category="Food", **kw)
