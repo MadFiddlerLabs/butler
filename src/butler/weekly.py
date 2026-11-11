@@ -29,7 +29,7 @@ REPORTS = ROOT / "reports"
 DRIFT_MIN = 15   # euro-sized; scaled for the primary currency (fmt.scale)
 # The letter's signature, when the household turns on email.sign_letter (off by default). The
 # link's tags say only that a visit came from a letter: nothing about the household.
-SIGNATURE = "Written by our household butler. Build yours:"
+SIGNATURE = "Written by our butler, which we built with Claude. Build yours:"
 SIGNATURE_URL = "https://buildyourbutler.com/?utm_source=butler_letter&utm_medium=email"
 
 

@@ -441,9 +441,9 @@ The win: a weekly letter and a monthly look-back, previewed.
    weekly hour changed, run `.venv/Scripts/python.exe run.py schedule install` again, so the
    computer also wakes for the letter.
 4. Offer the signature once, as a free choice: "Would you like your butler to sign the weekly
-   letter? It adds one small line at the end: 'Written by our household butler. Build yours:
-   buildyourbutler.com'. It helps other families find the free course. It's off unless you say
-   yes." Only on a clear yes, set `email.sign_letter: true` and preview the letter again so they
+   letter? It adds one small line at the end: 'Written by our butler, which we built with Claude.
+   Build yours: buildyourbutler.com'. It helps other families find the free course. It's off
+   unless you say yes." Only on a clear yes, set `email.sign_letter: true` and preview the letter again so they
    see the line. On no, or no answer, leave it out and don't ask again. Never sign the daily
    brief or the look-back. They can change their mind any time by asking you.
 
