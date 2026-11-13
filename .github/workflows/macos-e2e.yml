@@ -1,15 +1,38 @@
 # End to end on a real Mac, the way a student meets Butler: install with the one-line installer
 # (from this checkout), the first preview, the Calendar helper build, the launchd templates.
-# Weekly, the real hosted installer runs against GitHub main too.
+# Runs on pull requests that change Mac-specific files, and by hand before every release. Weekly,
+# only the real hosted installer runs, against GitHub main. macOS minutes cost ten times Linux's.
 name: macos-e2e
 
 on:
-  push:
-    branches: [main]
   pull_request:
+    paths:
+      # Only what differs between computers: the installers, helpers, launchers, schedule,
+      # updates and these tests. Anything else, this file included: run it by hand
+      # (docs/RELEASING.md, step 1).
+      - "packaging/**"
+      - "helpers/**"
+      - "bin/**"
+      - "launchd/**"
+      - "scripts/**"
+      - run.sh
+      - run.py
+      - requirements.lock
+      - "src/butler/system/**"
+      - src/butler/schedule.py
+      - src/butler/installed.py
+      - src/butler/first_run.py
+      - src/butler/updates.py
+      - src/butler/tick.py
+      - "tests/e2e/**"
   schedule:
     - cron: "17 6 * * 1"
   workflow_dispatch:
+
+# A newer push to the same pull request stops the older run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -17,6 +40,7 @@ permissions:
 
 jobs:
   e2e:
+    if: github.event_name != 'schedule'
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
@@ -40,6 +64,7 @@ jobs:
   package:
     # The download students get: build the universal helper and an unsigned package, check them,
     # then install it into this runner's home the way Installer does and check what landed.
+    if: github.event_name != 'schedule'
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
@@ -121,6 +146,7 @@ jobs:
     # Installer, the first run typed in a pty, `butler claude` with the real Claude Code installer,
     # the real launchd jobs and an update found by the tick: all as that account, on Apple silicon
     # and on Intel. tests/e2e/standard-user.sh says what a hosted runner can't do for it, and why.
+    if: github.event_name != 'schedule'
     strategy:
       fail-fast: false
       matrix:
@@ -140,6 +166,7 @@ jobs:
   updates:
     # Over-the-air updates with the real Installer: v0.0.1 → v0.0.2 keeps the household's files
     # and runs the migration; a broken v0.0.3 rolls back; an unsigned v0.0.4 is refused.
+    if: github.event_name != 'schedule'
     runs-on: macos-latest
     timeout-minutes: 40
     steps:

@@ -10,8 +10,10 @@ there is no version file to bump in the repository.
 
 ## Release checklist
 
-1. **Main is green**: the `tests` and `macos-e2e` workflows, including the `package` and
-   `updates` jobs.
+1. **Main is green**: the `tests` workflow, and `macos-e2e` and `windows-e2e` run by hand on main
+   for this release (`gh workflow run macos-e2e.yml --ref main`, the same for `windows-e2e.yml`).
+   They run on their own only for pull requests that change platform files, because macOS and
+   Windows minutes cost far more than Linux's. Wait for both, `package` and `updates` included.
 2. **The lock is current.** After any change to `requirements.txt`, run `scripts/lock.sh` and
    commit `requirements.lock` (docs/UPDATES.md, "Dependencies"). The `tests` workflow checks it.
 3. **Settings need no surprise.** A new setting must default to the old behaviour when it's
