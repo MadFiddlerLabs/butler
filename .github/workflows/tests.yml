@@ -1,6 +1,6 @@
 # Every push and pull request: pyflakes, shellcheck, the dependency lock, and the unit, integration, privacy and
-# contract tests (tests/), on Linux with every outside service faked, and on Windows as far as
-# Butler runs there yet. No secrets needed.
+# contract tests (tests/), on Linux with every outside service faked, and, for pull requests, on
+# Windows as far as Butler runs there yet. No secrets needed.
 # A second job reruns the suite at awkward dates (month and year ends, DST changes). A third makes
 # the README screenshots twice and checks they match (tests/test_screenshots.py).
 name: tests
@@ -9,6 +9,11 @@ on:
   push:
     branches: [main]
   pull_request:
+
+# A newer push to the same pull request stops the older run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -52,6 +57,8 @@ jobs:
   windows:
     # Butler on Windows (#40): the platform layer against the real Credential Manager, and the
     # rest of the suite as far as it runs there yet. tests/windows_skip.txt lists what doesn't.
+    # On pull requests only: the merge to main runs the same code again.
+    if: github.event_name == 'pull_request'
     runs-on: windows-latest
     timeout-minutes: 25
     steps:

@@ -6,13 +6,37 @@
 # do what a student does, as a new standard account, on ARM and x64: download, wizard, first
 # run, `butler claude`, the schedule (standard-user), and an update through the tick
 # (standard-user-update).
+# Runs on pull requests that change platform files, and by hand before every release.
 # No secrets: the brief leaves out the parts Claude writes, as it does before a key is stored.
 name: windows-e2e
 
 on:
-  push:
-    branches: [main]
   pull_request:
+    paths:
+      # Only what differs between computers: the installers, helpers, launchers, schedule,
+      # updates and these tests. Anything else, this file included: run it by hand
+      # (docs/RELEASING.md, step 1).
+      - "packaging/**"
+      - "helpers/**"
+      - "bin/**"
+      - "launchd/**"
+      - "scripts/**"
+      - run.sh
+      - run.py
+      - requirements.lock
+      - "src/butler/system/**"
+      - src/butler/schedule.py
+      - src/butler/installed.py
+      - src/butler/first_run.py
+      - src/butler/updates.py
+      - src/butler/tick.py
+      - "tests/e2e/**"
+  workflow_dispatch:
+
+# A newer push to the same pull request stops the older run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
