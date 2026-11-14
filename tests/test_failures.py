@@ -77,11 +77,17 @@ class ServicesDownTest(Case):
 
     def test_the_log_says_why(self):
         log = self.home.log()
-        for line in ("money failed", "prep failed", "news selection failed", "weather failed"):
+        for line in ("money failed", "prep failed", "news selection failed", "weather unavailable (HTTP Error 503"):
             self.assertIn(line, log)
         self.assertIn("Traceback", log)
         self.assertIn("HTTP Error 503", log)
         self.assert_no_secrets()
+
+    def test_the_weather_down_is_one_line_not_a_traceback(self):
+        # A slow Open-Meteo is the world's problem: a student reading the log shouldn't see a crash.
+        log = self.home.log()
+        self.assertNotIn("weather failed", log)
+        self.assertNotIn('weather.py"', log, "no traceback through the weather module")
 
 
 class TimeoutAndBrokenHelperTest(Case):

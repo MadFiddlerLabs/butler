@@ -162,6 +162,10 @@ def build(settings: dict, day: date, use_llm: bool, preview_projects: bool = Fal
     weather_line = ""
     try:
         weather_line = weather.today_line()
+    except OSError as e:
+        # Open-Meteo slow or down (a timeout, a refused connection, an HTTP error): the world's
+        # problem, so one line, not a traceback that reads like Butler broke.
+        log.warning("weather unavailable (%s)", _short(e))
     except Exception:
         log.exception("weather failed")
     heads = [headsup.line(i) for i in headsup.items(day, 14)]

@@ -400,6 +400,27 @@ class SyncTest(unittest.TestCase):
             progress.report("setup.first-brief", root=self.s.root)
         self.assertEqual([p["lesson"] for p in self.api.progress], ["setup.town", "setup.first-brief"])
 
+    def test_a_butler_that_reported_before_module_one_counted_sends_one_lesson_again_once(self):
+        # Reported Modules 2 and 3 before the website marked Module 1 from them (#329).
+        state = progress.load(self.s.root)
+        state["steps"] = {"calendar": "2026-11-02T09:00:00Z", "install": "2026-11-01T09:00:00Z"}
+        for step in state["steps"]:
+            for lesson in MAP[step]["lessons"]:
+                state["reported"][lesson] = {"status": "done", "at": state["steps"][step], "sent_at": "t"}
+        progress.save(state, self.s.root)
+        with mock.patch.object(account, "session", return_value=self.token):
+            progress.sync(self.s.root, self.s.folder)
+            progress.sync(self.s.root, self.s.folder)
+        self.assertEqual([(p["lesson"], p["at"]) for p in self.api.progress],
+                         [(MAP["install"]["lessons"][0], "2026-11-01T09:00:00Z")],
+                         "the earliest step's first lesson, at its own time, once")
+
+    def test_a_new_butler_sends_nothing_extra_for_module_one(self):
+        with mock.patch.object(account, "session", return_value=self.token):
+            state, _ = progress.sync(self.s.root, self.s.folder)
+        self.assertTrue(state["module_one_proven"], "its later reports reach a website that counts Module 1")
+        self.assertEqual(self.api.progress, [])
+
     def test_sync_never_raises(self):
         with mock.patch.object(progress, "detect", side_effect=RuntimeError("boom")):
             state, problem = progress.sync(self.s.root, self.s.folder)
