@@ -200,6 +200,20 @@ def queue(state: dict, lesson: str, status: str, at: str) -> None:
     state["queued"][lesson] = {"status": status, "at": at}
 
 
+def prove_module_one(state: dict) -> None:
+    """Sends the first passed step's first lesson again, once. Module 1 has no check: the website
+    marks it done when the butler reports any later lesson (buildyourbutler.com #329, 11 Nov 2026).
+    Butlers that reported their steps before then never send them again, so their Module 1 stayed
+    unfinished. The original time goes with it, so Module 1 counts as done when that step was."""
+    if state.get("module_one_proven"):
+        return
+    if state["steps"]:
+        step = min(state["steps"], key=lambda name: state["steps"][name])
+        lesson = course_map()[step]["lessons"][0]
+        state["queued"].setdefault(lesson, {"status": "done", "at": state["steps"][step]})
+    state["module_one_proven"] = True
+
+
 def detect(state: dict, folder: Folder, now: str) -> list[str]:
     """Queues every lesson of each step whose check passes for the first time. Returns those steps."""
     steps = course_map()
@@ -255,6 +269,7 @@ def sync(root: Path | None = None, folder: Folder | None = None, force: bool = F
         now = _now()
         for step in detect(state, folder or mac_folder(root), now):
             log.info("progress: /butler-setup %s passed its check", step)
+        prove_module_one(state)
         # Keychain is read only when there's something to send.
         problem = flush(state, _session() if state["queued"] else None, now, force)
         save(state, root)
