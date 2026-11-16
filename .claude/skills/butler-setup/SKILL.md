@@ -256,8 +256,8 @@ The win: Claude writes the news summaries and notes on what to prepare for.
    the app), Settings > Billing > API credits > **Link organization**, then pick the Console
    organization they just made. They can skip buying credit, but still set a spend limit. That
    credit expires each billing cycle.
-4. They add billing, then set a monthly spend limit: Settings > Billing > Spend limits, then
-   **Set limit**. Suggest $5 a month to start, as the course does. Prepaid credit expires, so
+4. They add billing (Settings > Billing), then set a monthly spend limit: Settings > Spend limits
+   (platform.claude.com/settings/spend-limits), then **Set limit**. Suggest $5 a month to start, as the course does. Prepaid credit expires, so
    suggest buying a small amount and topping up later. Then they create an API key. Ask what
    limit they set and write it to `llm.monthly_limit` (dollars, a number), so the portal's Money
    page shows "Claude this month: about $X of your $Y limit". It's an estimate; the Console
