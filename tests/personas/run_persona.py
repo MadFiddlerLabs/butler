@@ -89,6 +89,11 @@ KEYS = {"ENTER": "\r", "CTRL_C": "\x03", "TAB": "\t", "UP": "\x1b[A", "DOWN": "\
         "ESCAPE": "\x1b"}
 
 
+def used(response, name: str) -> dict | None:
+    """The input of the first call to tool `name` in a response, or None."""
+    return next((b.input for b in response.content if b.type == "tool_use" and b.name == name), None)
+
+
 def tool(name: str, description: str, properties: dict, required: list[str]) -> dict:
     return {"name": name, "description": description, "strict": True,
             "input_schema": {"type": "object", "properties": properties, "required": required,
@@ -195,6 +200,14 @@ INTERVIEW_TOOL = tool("interview", "Your answers, in your own words, for the peo
                       [*INTERVIEW, "carry_on", "top_changes"])
 
 
+# Every call sends the same tools, in this order, at the same effort: tools come first in the
+# cached prefix, and a different list or effort misses the cache and writes the whole
+# conversation again. A side question names the tool to answer with.
+SIDE_TOOLS = [PERMISSION_TOOL, CHOICE_TOOL, WINDOW_TOOL, DIARY_TOOL, VIDEO_TOOL, INTERVIEW_TOOL, REPORT_TOOL]
+ALL_TOOLS = TOOLS + SIDE_TOOLS
+SIDE_NAMES = {t["name"] for t in SIDE_TOOLS}
+PERSONA_EFFORT = "medium"
+
 INSTALLER_WAIT = 120   # seconds the `installer` command gets, as the student's account (install_mac)
 
 
@@ -231,6 +244,8 @@ class Run:
         self.rehearsal: dict = {}
         self.done = False
         self.cost = {"persona": 0.0, "claude_code": 0.0}
+        # The persona's tokens, to see how much of each call the cache served.
+        self.tokens = {"input": 0, "cache_read": 0, "cache_write": 0, "output": 0}
         self.log: list[str] = []
         self.notes: list[dict] = []
         self.windows: list[Terminal] = []
@@ -275,6 +290,9 @@ class Run:
         return self.cost["persona"] + self.cost["claude_code"] + self.outside.relay.cost
 
     def charge(self, usage) -> None:
+        for key, n in (("input", usage.input_tokens), ("cache_read", usage.cache_read_input_tokens),
+                       ("cache_write", usage.cache_creation_input_tokens), ("output", usage.output_tokens)):
+            self.tokens[key] += n or 0
         self.cost["persona"] += (usage.input_tokens * PRICES["input"] + usage.output_tokens * PRICES["output"]
                                  + (usage.cache_read_input_tokens or 0) * PRICES["cache_read"]
                                  + (usage.cache_creation_input_tokens or 0) * PRICES["cache_write"]) / 1e6
@@ -299,6 +317,8 @@ lessons say the way you, {self.persona['name']}, would, including your habits an
 
 How this works:
 - You can only see what your tools show you. Never assume what a screen says: look.
+- The answer, choose, window, diary, video, interview and report tools are only for when you're asked a question,
+  and the question names the one to use.
 - Read a lesson with read_lesson, then do its steps with the other tools. Move on with read_lesson("next").
 - Use terminal for Terminal windows (window 0 is the first one; new_window opens another), claude_code
   once Claude Code is open, and on_screen for anything you'd do with the mouse or in a browser.
@@ -327,14 +347,15 @@ In this session, you will also:
         turn and the report: round 3's check runs passed their cap by up to $1 without one."""
         return self.budget - max(0.75, 0.1 * self.budget) - self.spent()
 
-    async def ask(self, messages: list, tools: list, max_tokens: int = 4000, effort: str = "medium"):
+    async def ask(self, messages: list, max_tokens: int = 4000):
+        """One call to the persona's model. Always ALL_TOOLS and PERSONA_EFFORT, so it reads the cache."""
         if self.client is None:
             raise RuntimeError("a rehearsal asks no persona")
         if self.spent() >= self.budget - 0.1:
             raise RuntimeError("the run's budget is spent")
         response = await self.client.messages.create(
-            model=PERSONA_MODEL, max_tokens=max_tokens, system=self.system(), messages=messages, tools=tools,
-            output_config={"effort": effort}, cache_control={"type": "ephemeral"})
+            model=PERSONA_MODEL, max_tokens=max_tokens, system=self.system(), messages=messages, tools=ALL_TOOLS,
+            output_config={"effort": PERSONA_EFFORT}, cache_control={"type": "ephemeral"})
         self.charge(response.usage)
         return response
 
@@ -342,7 +363,7 @@ In this session, you will also:
         messages = [{"role": "user", "content": "Your computer is on and the course website is open. Start with the first lesson."}]
         self.messages = messages    # kept for the report, however the session ends
         while self.left() > 0:
-            response = await self.ask(messages, TOOLS)
+            response = await self.ask(messages)
             messages.append({"role": "assistant", "content": response.content})
             calls = [b for b in response.content if b.type == "tool_use"]
             for b in response.content:
@@ -398,6 +419,8 @@ In this session, you will also:
         if name == "finish":
             self.outcome = args
             return "Thank you."
+        if name in SIDE_NAMES:
+            return f"({name} is only for answering when you're asked a question. Carry on with the lesson.)"
         return f"(no such tool: {name})"
 
     # ---------- terminal windows ----------
@@ -570,9 +593,8 @@ In this session, you will also:
             if self.rehearse or self.left() <= 0:
                 return
             try:
-                response = await self.ask(side_question(messages, question), [VIDEO_TOOL if kind == "video" else DIARY_TOOL],
-                                          max_tokens=1500, effort="low")
-                answer = next((b.input for b in response.content if b.type == "tool_use"), None)
+                response = await self.ask(side_question(messages, f"{question}\n\nAnswer with the {kind} tool."), max_tokens=1500)
+                answer = used(response, kind)
             except Exception as e:  # noqa: BLE001 - a diary line that fails is skipped, not fatal
                 self.say("harness", f"diary question failed: {type(e).__name__}: {e}")
                 continue
@@ -596,8 +618,8 @@ In this session, you will also:
         if messages[-1]["role"] == "user":
             messages = messages + [{"role": "assistant", "content": "I'm done."}]
         try:
-            response = await self.ask(messages + [{"role": "user", "content": ask}], [INTERVIEW_TOOL], max_tokens=6000)
-            return next((b.input for b in response.content if b.type == "tool_use"), {})
+            response = await self.ask(messages + [{"role": "user", "content": ask}], max_tokens=6000)
+            return used(response, "interview") or {}
         except Exception as e:  # noqa: BLE001
             return {"failed": str(e)}
 
@@ -997,8 +1019,8 @@ In this session, you will also:
             try:
                 if self.left() <= 0:   # the run stops here: Claude Code stops with it
                     raise RuntimeError("the run's budget is spent")
-                response = await self.ask(snapshot, [PERMISSION_TOOL], max_tokens=1500, effort="low")
-                answer = next((b.input for b in response.content if b.type == "tool_use"), {"choice": "yes", "say": ""})
+                response = await self.ask(snapshot, max_tokens=1500)
+                answer = used(response, "answer") or {"choice": "yes", "say": ""}
             except Exception as e:  # noqa: BLE001 - a broken question shouldn't stop the run
                 if "budget is spent" in str(e):     # the run is over: Claude Code stops too
                     answer = {"choice": "no", "say": "Let's stop here for today."}
@@ -1026,8 +1048,8 @@ In this session, you will also:
                     + "\n\nThis is your decision, as you. Answer with the choose tool, one answer per question.")
         snapshot = side_question(messages, question)
         try:
-            response = await self.ask(snapshot, [CHOICE_TOOL], max_tokens=1500, effort="low")
-            picked = next((b.input["answers"] for b in response.content if b.type == "tool_use"), [])
+            response = await self.ask(snapshot, max_tokens=1500)
+            picked = (used(response, "choose") or {}).get("answers", [])
         except Exception:  # noqa: BLE001 - a broken question shouldn't stop the run
             self.fallbacks += 1
             picked = []
@@ -1055,8 +1077,8 @@ In this session, you will also:
             return forward(form or {})
         snapshot = side_question(self.messages, question)
         try:
-            response = await self.ask(snapshot, [WINDOW_TOOL], max_tokens=1500, effort="low")
-            return next(b.input for b in response.content if b.type == "tool_use")
+            response = await self.ask(snapshot, max_tokens=1500)
+            return used(response, "window") or {"button": "", "text": "", "ticked": []}
         except Exception:  # noqa: BLE001
             self.fallbacks += 1
             return {"button": "", "text": "", "ticked": []}
@@ -1097,8 +1119,8 @@ In this session, you will also:
         if messages[-1]["role"] == "user":
             messages = messages + [{"role": "assistant", "content": "I'm done."}]
         try:
-            response = await self.ask(messages + [{"role": "user", "content": ask}], [REPORT_TOOL], max_tokens=6000)
-            return next((b.input for b in response.content if b.type == "tool_use"), {"findings": [], "how_it_felt": ""})
+            response = await self.ask(messages + [{"role": "user", "content": ask}], max_tokens=6000)
+            return used(response, "report") or {"findings": [], "how_it_felt": ""}
         except Exception as e:  # noqa: BLE001
             return {"findings": [], "how_it_felt": f"(report failed: {e})"}
 
@@ -1314,6 +1336,8 @@ In this session, you will also:
                   "rehearsal": self.rehearsal if self.rehearse else None,
                   "cost_usd": {k: round(v, 3) for k, v in {**self.cost, "butler_claude": self.outside.relay.cost,
                                                            "total": self.spent()}.items()},
+                  "persona_tokens": {**self.tokens, "cache_hit": round(self.tokens["cache_read"] / max(
+                      1, self.tokens["input"] + self.tokens["cache_read"] + self.tokens["cache_write"]), 3)},
                   "minutes": round((time.monotonic() - started) / 60, 1)}
         (self.out / "run.json").write_text(json.dumps(result, indent=2, ensure_ascii=False))
         (self.out / "butler-claude.json").write_text(json.dumps(self.outside.relay.exchanges, indent=1, ensure_ascii=False),

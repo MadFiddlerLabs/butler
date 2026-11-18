@@ -199,6 +199,28 @@ class PersonasTest(unittest.TestCase):
                     self.assertEqual(valid_name(got), got, "the setup accepts what the site lets through")
                 self.assertEqual(bool(said), got == "Butler" and typed.strip() != "")
 
+    def test_every_persona_call_sends_the_same_tools_and_effort_so_it_reads_the_cache(self):
+        """Tools come first in the cached prefix, and effort is part of it too. In October each side
+        question sent its own tool and effort "low", so every diary line and permission answer missed
+        the cache and wrote the whole conversation again."""
+        import ast
+        tree = ast.parse((HERE / "personas" / "run_persona.py").read_text())
+        asks = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                and n.func.attr == "ask" and isinstance(n.func.value, ast.Name) and n.func.value.id == "self"]
+        self.assertGreaterEqual(len(asks), 7, "the main loop and every side question")
+        for call in asks:
+            self.assertEqual(len(call.args), 1, f"line {call.lineno}: only the messages, never a tool list")
+            self.assertEqual({k.arg for k in call.keywords} - {"max_tokens"}, set(), f"line {call.lineno}")
+        create = next(n for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                      and n.func.attr == "create" and any(k.arg == "tools" for k in n.keywords))
+        given = {k.arg: ast.unparse(k.value) for k in create.keywords}
+        self.assertEqual(given["tools"], "ALL_TOOLS")
+        self.assertEqual(given["output_config"], "{'effort': PERSONA_EFFORT}")
+        self.assertEqual(given["cache_control"], "{'type': 'ephemeral'}")
+        side = re.findall(r"used\(response, \"(\w+)\"\)", (HERE / "personas" / "run_persona.py").read_text())
+        names = re.findall(r'^(\w+)_TOOL = tool\("(\w+)"', (HERE / "personas" / "run_persona.py").read_text(), re.M)
+        self.assertLessEqual(set(side), {name for _, name in names}, "each side question answers with a real tool")
+
     def test_a_question_mid_action_is_one_the_api_takes_and_keeps_the_cache(self):
         """Claude Code's questions come while the persona's claude_code call runs. A plain question
         after a pending tool call is a 400 (every pilot answer fell back to "yes" for that)."""
