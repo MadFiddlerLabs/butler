@@ -27,6 +27,12 @@ def load(folder: Path) -> list[dict]:
     return [json.loads(p.read_text()) for p in sorted(folder.rglob("run.json"))]
 
 
+def cached(r: dict) -> str:
+    """How much of the persona's input the prompt cache served, when the run spent any."""
+    t = r.get("persona_tokens")
+    return f" ({t['cache_hit']:.0%} cached)" if t and t["cache_read"] + t["cache_write"] + t["input"] else ""
+
+
 def render(runs: list[dict]) -> str:
     if not runs:
         return "# Persona tests\n\nNo run finished: check the jobs' logs.\n"
@@ -39,7 +45,7 @@ def render(runs: list[dict]) -> str:
         out.append(f"| {r['name']} | {where(r)} | {r['seed']} | {r['outcome']['outcome']} | {r['reached']} "
                    f"({r['lessons_read']}/{r['lessons_total']}) | {'yes' if c['signed_in'] else 'no'} | "
                    f"{'yes' if c['first_brief'] else 'no'} | {'yes' if c['claude_code_opened'] else 'no'} | "
-                   f"${r['cost_usd']['total']:.2f} | {r['minutes']} |")
+                   f"${r['cost_usd']['total']:.2f}{cached(r)} | {r['minutes']} |")
     guessed = [r for r in runs if r["checks"].get("harness_answered")]
     if guessed:
         out += ["", "**The harness answered for the persona** (asking it failed) in: "
